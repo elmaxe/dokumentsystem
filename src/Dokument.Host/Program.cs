@@ -37,9 +37,14 @@ if (roles.Worker)
 
 var app = builder.Build();
 
-// The build-time OpenAPI generator starts the app without a database.
+// The build-time OpenAPI generator starts the app without a database or data volumes.
 if (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name != "GetDocument.Insider")
 {
+    if (roles.Server)
+    {
+        ServerRole.EnsureStorageDirectories(app.Services);
+    }
+
     await DatabaseStartup.EnsureDatabaseAsync(app.Services, applyMigrations: roles.Server);
 }
 

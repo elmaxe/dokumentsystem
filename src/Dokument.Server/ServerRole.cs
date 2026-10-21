@@ -24,8 +24,6 @@ public static class ServerRole
 
     public static WebApplication MapServerRole(this WebApplication app)
     {
-        EnsureStorageDirectories(app.Services.GetRequiredService<IOptions<StorageOptions>>().Value);
-
         app.MapOpenApi();
 
         var api = app.MapGroup("/api/v1");
@@ -43,8 +41,10 @@ public static class ServerRole
         Name: "Dokumentsystem",
         Version: typeof(ServerRole).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "dev"));
 
-    private static void EnsureStorageDirectories(StorageOptions storage)
+    /// <summary>Creates the data layout (docs/design.md §7) on the mounted volumes. Called on startup, not at build time.</summary>
+    public static void EnsureStorageDirectories(IServiceProvider services)
     {
+        var storage = services.GetRequiredService<IOptions<StorageOptions>>().Value;
         Directory.CreateDirectory(Path.Combine(storage.OriginalsPath, "blobs"));
         Directory.CreateDirectory(Path.Combine(storage.OriginalsPath, "tmp"));
         Directory.CreateDirectory(storage.DerivedPath);
