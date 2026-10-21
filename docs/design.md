@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.1** · Last updated: 2026-10-21
+> Status: **Draft v0.2** · Last updated: 2026-10-21
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -293,9 +293,29 @@ Also:
 
 - Uploading to an existing file (explicit "upload new version", or a name collision where the user chooses "replace") → `version_no + 1`.
 - **Restoring an old version** creates a *new* version pointing at the old blob. History is never rewritten.
-- **Retention:** an admin setting, e.g. *keep the last N versions* and/or *versions newer than X days*. The current version is always kept.
+- **Retention** (admin setting; defaults follow Google Drive): a non-current version is purged when it is **older than 30 days** or when the file has **more than 100 versions**, whichever comes first.
+  - The current version is always kept.
+  - Users can mark a version **"Keep forever"**, which exempts it from purging. It still counts toward quota.
 - **Quota counts all versions**, deduplicated per blob per owner.
 - Renditions and extracted text exist **per version**. Search indexes **only the current version**.
+
+### 8.3 Duplicate detection
+
+On disk, identical bytes are always stored once (§6). On top of that, **users are told** when they upload a file they already have.
+
+- **Before transfer:** the client computes SHA-256 locally, streamed so large files don't fill memory (`hash-wasm` in a Web Worker on web; a native streaming hash on mobile).
+  - It then calls `POST /uploads/check` with `[{name, size, sha256}]` for the whole batch.
+- **The server answers per file:** `new`, or `duplicate` with the matching locations ("Kvitton/2025/ikea.pdf", and "in trash" if that's where it is).
+- **UX:**
+  - **Single file:** "You already have this file in *Kvitton/2025*." Choices: **Skip** / **Upload anyway** / **Open existing**.
+  - **Batch:** one summary, "12 of 40 files are already in Dokumentsystem." Choices: **Skip duplicates** (default) / **Upload all** / **Review**.
+  - Selecting "Upload anyway" creates a second node that points at the same blob. This is instant: no bytes are transferred and no extra quota is used.
+- **Fallback:** if the client couldn't hash in advance (older client, huge file on a weak phone), the server detects the duplicate on completion. The upload tray then shows "Duplicate of …" with a **Remove this copy** action.
+- **Privacy rule:** matches are reported **only against nodes the user can already access**, whether owned or shared with them.
+  - A user must never learn that *someone else* has a file.
+  - The "instant, no transfer" shortcut is allowed only in that same case. Otherwise the client has to upload the real bytes, which prevents the classic "I know the hash, give me the file" dedup attack. The server still dedups on disk after verifying the hash.
+- **Folder uploads** are checked file by file, and the summary covers the whole folder.
+- An optional **"Duplicates" view** under Storage lists groups of identical files across the user's library, for cleanup.
 
 ---
 
@@ -312,7 +332,7 @@ Also:
   - The uploader is recorded on the version.
   - This prevents "your files are stranded in my account" problems.
 - **"Shared with me":** a virtual view listing the top-level nodes shared directly with the user. Users can "add a shortcut to My files" (a shortcut node) without copying.
-- **Public links:** viewer-only, with optional password, expiry and allow-download flag. Access goes through `/s/{token}` and is rate-limited. Every access is audited.
+- **Public links:** viewer-only (upload-capable "file request" links come later), with optional password, expiry and allow-download flag. Access goes through `/s/{token}` and is rate-limited. Every access is audited.
 - **Groups:** not in v1. User-to-user grants are enough for a family. The model leaves room for `grantee_group_id` later.
 
 ---
@@ -544,7 +564,8 @@ These are better in React DOM than through React Native Web.
 - **Append-only `audit_events`**, written **in the same transaction** as the change itself.
 - **Events:**
   - auth: login, logout, session revoked, API key created
-  - files: upload, new version, restore version, rename, move, download, preview open (configurable), trash, restore, permanent delete
+  - files: upload, new version, restore version, rename, move, download, trash, restore, permanent delete
+  - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged.
   - sharing: share granted/changed/revoked, link created/accessed/revoked
   - admin: settings changed, quota changed, user disabled
 - **Partitioned by month.** An admin setting controls retention (default 1 year).
@@ -627,15 +648,24 @@ These are better in React DOM than through React Native Web.
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export CLI, docs, multi-arch release |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search), remote ML URLs with fallback, transcription |
-| **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV |
+| **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders) |
 
 ---
 
-## 25. Open questions
+## 25. Decisions log
 
-1. **Project name** (the repo is `dokumentsystem`; is that the product name too?).
-2. **Version retention defaults:** keep the last N versions and/or versions newer than X days? Google's default is 100 versions / 30 days.
-3. **Should "preview opened" be an audit event** by default? It's useful, but noisy.
-4. **Duplicate detection UX:** only dedup storage silently, or also tell users "you already have this file in /X"?
-5. **Video:** transcode to MP4 once, or generate HLS for large files? MP4-once is simpler and probably sufficient.
-6. **Should public links allow uploads** ("file request" folders, e.g. for family to drop photos)?
+| # | Question | Decision |
+|---|---|---|
+| 1 | Product name | **Dokumentsystem** |
+| 2 | Version retention defaults | Same as Google Drive: non-current versions are kept **30 days or up to 100 versions**, whichever comes first. Admins can change this, and users can mark a version "Keep forever" (§8.2). |
+| 3 | Audit preview opens? | **No.** Downloads are audited, previews are not (§18). |
+| 4 | Duplicate uploads | **Tell the user**: a pre-upload check with Skip / Upload anyway / Open existing, limited to files the user can access (§8.3) |
+| 5 | Public links with upload ("file requests") | **Later** (roadmap) |
+| 6 | Storage layout | App-owned, content-addressed (§7) |
+| 7 | Sharing model | Personal folders shared to users; no team drives (§9) |
+| 8 | Virus scanning | Not in v1; hook for optional ClamAV (§21) |
+| 9 | WebDAV | Later |
+
+## 26. Open questions
+
+1. **Video:** transcode to MP4 once, or generate HLS for large files? MP4-once is simpler and probably sufficient.
