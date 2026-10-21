@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+**/dist
+packages/api/openapi.json
+packages/api/src/schema.d.ts
+src/
+tests/
+docs/
+*.md

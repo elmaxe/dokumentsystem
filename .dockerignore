@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/bin
+**/obj
+**/.turbo
+.data
+.env
+.git
+src/Dokument.Host/wwwroot
+src/Dokument.AppHost
+tests

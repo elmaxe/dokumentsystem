@@ -1,0 +1,21 @@
+{
+  "name": "@dokument/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Swedish and English strings shared by web and mobile (docs/design.md §23).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "i18next": "26.5.4"
+  },
+  "devDependencies": {
+    "vitest": "5.0.5"
+  }
+}

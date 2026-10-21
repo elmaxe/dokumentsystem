@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.2** · Last updated: 2026-10-21
+> Status: **Draft v0.3** · Last updated: 2026-10-21
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -49,12 +49,13 @@ Scale target: up to about 1M files and a few TB per instance.
 | Sharing | Per-user grants on files and folders (Viewer / Editor), plus public links |
 | Uploads | Resumable uploads using the tus protocol |
 | Search | BM25 (pg_search) over names and extracted text, with optional hybrid semantic search (VectorChord) |
-| Web | Vite + React + Tailwind + Radix/shadcn |
+| Web | Vite + React + TanStack Router/Query + Tailwind v4 + Radix/shadcn |
 | Mobile | Expo / React Native + NativeWind |
 | Design | Material 3–inspired, one fjord-blue accent, Albert Sans, light + dark themes; tokens in `docs/design-system/tokens.json` (§16) |
 | Virus scanning | Not in v1. A pipeline hook allows optional ClamAV later. |
 | WebDAV | Later (post v1) |
 | License | AGPL-3.0, matching Immich and compatible with pg_search and VectorChord |
+| Repo | One monorepo: .NET solution in `src/`, pnpm + Turborepo workspace in `apps/` and `packages/` (§3.2) |
 
 ---
 
@@ -103,22 +104,30 @@ Scale target: up to about 1M files and a few TB per instance.
 `server` and `worker` are the **same image** with a different `ROLE` environment variable. They share all domain code, so there is no API drift between them.
 You can run several workers, though one is enough for a NAS.
 
-### 3.2 Solution layout (.NET)
+### 3.2 Repository layout
 
 ```
+Dokumentsystem.slnx         .NET solution (central package versions in Directory.Packages.props)
 src/
   Dokument.Domain/          entities, value objects, domain rules (no I/O)
   Dokument.Application/     use cases, permissions, quota logic, job definitions
-  Dokument.Infrastructure/  EF Core, storage, queue, SMTP, ML client, Gotenberg client
-  Dokument.Server/          ASP.NET Core host (API, tus, SignalR, auth)
-  Dokument.Worker/          job handlers (thumbnails, extraction, purge, backup …)
-  Dokument.Host/            single entrypoint; picks role(s) from ROLE env var
-  Dokument.AppHost/         .NET Aspire for local dev orchestration
+  Dokument.Infrastructure/  EF Core + migrations, storage, queue, SMTP, ML client, Gotenberg client
+  Dokument.Server/          server role: API, tus, SignalR, auth, serves the web SPA
+  Dokument.Worker/          worker role: job handlers (thumbnails, extraction, purge, backup …)
+  Dokument.Host/            single entrypoint (`dokument`); picks role(s) from the ROLE env var
+  Dokument.AppHost/         .NET Aspire for local dev: Postgres, server, worker and Vite
 tests/
   *.UnitTests, *.IntegrationTests (Testcontainers + our Postgres image)
-ml/                         ML service (Python, see §10)
-web/, mobile/, packages/    frontend monorepo (see §15)
+apps/, packages/            pnpm + Turborepo workspace (see §15.1)
+ml/                         ML service (Python, see §11), from M7
+docker/postgres/            our Postgres image (§13.1)
+Dockerfile                  the app image (both roles)
+docker-compose.yml          NAS deployment (§4)
 ```
+
+- `ROLE` is `server`, `worker` or `server,worker`. Unset means both, for development and very small installs.
+- The server applies EF Core migrations on startup. The worker waits until they are applied.
+- The OpenAPI document is written to `packages/api/openapi.json` on every build, and `packages/api` generates the TypeScript client from it. CI fails if either is stale.
 
 ---
 
@@ -126,47 +135,56 @@ web/, mobile/, packages/    frontend monorepo (see §15)
 
 ### 4.1 Compose sketch
 
+The full file is [`docker-compose.yml`](../docker-compose.yml), configured through `.env` ([`.env.example`](../.env.example)). In short:
+
 ```yaml
 services:
   server:
-    image: ghcr.io/<org>/dokumentsystem:${VERSION}
-    environment: { ROLE: server, PUID: 1000, PGID: 1000, ... }
+    image: ghcr.io/elmaxe/dokumentsystem:${DOKUMENT_VERSION}
+    user: "${PUID}:${PGID}"
+    environment: { ROLE: server, DB_HOST: postgres, DB_PASSWORD: ..., PUBLIC_URL: ... }
     volumes:
-      - ${ORIGINALS_PATH}:/data/originals
-      - ${DERIVED_PATH}:/data/derived
-      - ${BACKUP_PATH}:/data/backups
-    ports: ["8080:8080"]
-    depends_on: [postgres]
+      - ${ORIGINALS_LOCATION}:/data/originals
+      - ${DERIVED_LOCATION}:/data/derived
+      - ${BACKUP_LOCATION}:/data/backups
+    ports: ["${DOKUMENT_PORT}:8080"]
+    depends_on: { postgres: { condition: service_healthy } }
   worker:
-    image: ghcr.io/<org>/dokumentsystem:${VERSION}
+    image: ghcr.io/elmaxe/dokumentsystem:${DOKUMENT_VERSION}
+    user: "${PUID}:${PGID}"
     environment: { ROLE: worker, ... }
+    read_only: true
     volumes:
-      - ${ORIGINALS_PATH}:/data/originals:ro
-      - ${DERIVED_PATH}:/data/derived
-      - ${BACKUP_PATH}:/data/backups
-  ml:            # optional; can instead run on another machine
-    image: ghcr.io/<org>/dokumentsystem-ml:${VERSION}   # -cuda / -openvino variants
-  gotenberg:     # optional; enables Office previews
-    image: gotenberg/gotenberg:8
+      - ${ORIGINALS_LOCATION}:/data/originals:ro
+      - ${DERIVED_LOCATION}:/data/derived
+      - ${BACKUP_LOCATION}:/data/backups
   postgres:
-    image: ghcr.io/<org>/dokumentsystem-postgres:${VERSION}
-    volumes: [ "${DB_PATH}:/var/lib/postgresql/data" ]
+    image: ghcr.io/elmaxe/dokumentsystem-postgres:${DOKUMENT_VERSION}
+    volumes: [ "${DB_DATA_LOCATION}:/var/lib/postgresql/data" ]
+  ml:         # profile "ml"; can instead run on another machine
+    image: ghcr.io/elmaxe/dokumentsystem-ml:${DOKUMENT_VERSION}   # -cuda / -openvino variants
+  gotenberg:  # profile "office"; enables Office previews
+    image: gotenberg/gotenberg:8
+  clamav:     # profile "clamav"; not used in v1 (§21)
+    image: clamav/clamav:stable
 ```
+
+Images are published to GHCR for amd64 and arm64: `edge` from the default branch, and version tags from releases.
 
 ### 4.2 NAS requirements
 
 - **Multi-arch images** (amd64 + arm64). Many Synology and QNAP boxes are ARM.
-- **`PUID`/`PGID`**, so files on the mounted volume get the owner the user expects. Containers run as non-root.
+- **`PUID`/`PGID`**, so files on the mounted volume get the owner the user expects. Compose runs the app containers as `PUID:PGID` (`user:`), so they are never root and need no entrypoint script.
 - **Low-resource profile:**
   - One worker with low concurrency.
   - Gotenberg and ML optional, so the base install fits in about 1 GB RAM.
   - Office previews and OCR are disabled until their services are configured.
 - **The DB volume must be on local disk**, not a network share. Postgres on SMB/NFS is a corruption risk.
-- Healthchecks on every service. `/health/live` and `/health/ready` endpoints.
+- Healthchecks on every service. `/health/live` and `/health/ready` endpoints. The image's `HEALTHCHECK` runs `dokument healthcheck`, since the runtime image has no curl. Readiness covers the database and the data directories.
 
 ### 4.3 Configuration
 
-- **Environment variables, for bootstrap only:** DB connection, OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`.
+- **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`.
 - **Everything else is admin settings stored in the DB** and edited in the UI:
   - quota defaults
   - trash and version retention
@@ -443,8 +461,9 @@ Modeled on Immich's `immich-machine-learning`.
 
   It all stays inside Postgres, so **permission filtering is a normal SQL join**. No second system has to be kept in sync with ACLs.
 - **Why VectorChord?** It is the vector extension Immich standardized on. It's faster and lighter than plain pgvector at scale (IVF + RaBitQ). It's only needed when semantic search is enabled.
-- **Cost:** we ship and maintain **our own Postgres image**, as Immich does.
-  - Base: official `postgres` + `pg_search` + `pgvector` + `vchord`.
+- **Cost:** we ship and maintain **our own Postgres image**, as Immich does ([`docker/postgres`](../docker/postgres/Dockerfile)).
+  - Base: official `postgres:17` + `pg_search` + `pgvector` + `vchord`, preloaded via `shared_preload_libraries`.
+  - The extension files are copied from the upstream `paradedb/paradedb` and `tensorchord/vchord-postgres` images at pinned versions. Both are published for amd64 and arm64, so our image is multi-arch without per-arch downloads.
   - Extension versions are pinned per release, and the server **checks extension versions on startup** and refuses to start on a mismatch.
   - Upgrades: we document upgrade steps and `REINDEX` when needed.
 - **Fallback:** search sits behind an `ISearchEngine` interface. A plain-FTS implementation can exist for people running an external stock Postgres.
@@ -486,11 +505,11 @@ Modeled on Immich's `immich-machine-learning`.
 ### 15.1 Monorepo (pnpm + Turborepo)
 
 ```
-apps/web        Vite + React + TanStack Router/Query (desktop-class file manager, responsive)
+apps/web        Vite + React + TanStack Router/Query + Tailwind v4 (desktop-class file manager, responsive)
 apps/mobile     Expo (dev builds, not Expo Go) + Expo Router + NativeWind
 packages/api    TS client generated from the server OpenAPI spec (openapi-typescript / orval)
 packages/core   shared hooks, formatting, upload queue logic, permission helpers
-packages/tokens design tokens → Tailwind config (web) + NativeWind config (mobile)
+packages/tokens design tokens → Tailwind v4 theme CSS (web) + JS preset and theme variables (NativeWind)
 packages/i18n   sv + en strings (i18next), shared by web and mobile
 ```
 
@@ -543,7 +562,7 @@ The full system, with live component previews in both themes, is the **Dokuments
 
 ### 16.2 Tokens (`packages/tokens`)
 
-One JSON source generates the Tailwind theme for the web (CSS variables per theme, switched by `data-theme` and `prefers-color-scheme`) and the NativeWind theme for mobile (the same names, switched by `useColorScheme`). Components use token names only, never raw values.
+One JSON source, `docs/design-system/tokens.json`, is read at build time by `packages/tokens`. It generates the Tailwind v4 theme for the web (CSS variables per theme, switched by `data-theme` and `prefers-color-scheme`) and the NativeWind theme for mobile (the same names, switched by `useColorScheme`). Components use token names only, never raw values.
 
 **Colour roles** (Material 3 names, light / dark):
 
@@ -737,6 +756,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 | 8 | Virus scanning | Not in v1; hook for optional ClamAV (§21) |
 | 9 | WebDAV | Later |
 | 10 | Design system | **Approved** 2026-10-21: Material 3 roles, fjord-blue accent, Albert Sans, Material Symbols Rounded, 4 px grid (§16) |
+| 11 | Monorepo scaffold | 2026-10-21: .NET 10 LTS, Aspire 13, Postgres 17, Node 22 + pnpm + Turborepo, Tailwind v4 on web, AGPL-3.0 `LICENSE` (§3.2, §4.1, §15.1) |
 
 ## 26. Open questions
 

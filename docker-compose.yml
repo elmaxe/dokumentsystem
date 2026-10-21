@@ -1,0 +1,100 @@
+# Dokumentsystem on a NAS. Copy .env.example to .env, fill it in, then run `docker compose up -d`.
+# Optional services are behind profiles, e.g. `docker compose --profile office --profile ml up -d`.
+# See docs/design.md §4.
+
+name: dokumentsystem
+
+x-app: &app
+  image: ${DOKUMENT_IMAGE:-ghcr.io/elmaxe/dokumentsystem}:${DOKUMENT_VERSION:-edge}
+  # Runs as your NAS user so files on the data shares get the owner you expect (docs/design.md §4.2).
+  user: "${PUID:-1000}:${PGID:-1000}"
+  restart: unless-stopped
+
+x-app-env: &app-env
+  DB_HOST: postgres
+  DB_USERNAME: ${DB_USERNAME:-dokument}
+  DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+  DB_DATABASE: ${DB_DATABASE:-dokument}
+  PUBLIC_URL: ${PUBLIC_URL:-}
+  TZ: ${TZ:-Etc/UTC}
+
+services:
+  server:
+    <<: *app
+    environment:
+      <<: *app-env
+      ROLE: server
+    ports:
+      - "${DOKUMENT_PORT:-8080}:8080"
+    volumes:
+      - ${ORIGINALS_LOCATION:?Set ORIGINALS_LOCATION in .env}:/data/originals
+      - ${DERIVED_LOCATION:?Set DERIVED_LOCATION in .env}:/data/derived
+      - ${BACKUP_LOCATION:?Set BACKUP_LOCATION in .env}:/data/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    <<: *app
+    environment:
+      <<: *app-env
+      ROLE: worker
+    volumes:
+      # Originals are read-only for the worker, which parses untrusted files (docs/design.md §10.4).
+      - ${ORIGINALS_LOCATION}:/data/originals:ro
+      - ${DERIVED_LOCATION}:/data/derived
+      - ${BACKUP_LOCATION}:/data/backups
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+
+  postgres:
+    image: ${DOKUMENT_POSTGRES_IMAGE:-ghcr.io/elmaxe/dokumentsystem-postgres}:${DOKUMENT_VERSION:-edge}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-dokument}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE:-dokument}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    volumes:
+      # Must be on a local disk, not an SMB or NFS share (docs/design.md §4.2).
+      - ${DB_DATA_LOCATION:?Set DB_DATA_LOCATION in .env}:/var/lib/postgresql/data
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Machine learning: OCR, embeddings, transcription (docs/design.md §11). It can also run on another,
+  # stronger machine; either way, add its URL under Admin → Machine learning. Published from roadmap M7.
+  ml:
+    profiles: [ml]
+    image: ${DOKUMENT_ML_IMAGE:-ghcr.io/elmaxe/dokumentsystem-ml}:${DOKUMENT_VERSION:-edge}
+    restart: unless-stopped
+    volumes:
+      - ml-cache:/cache
+
+  # Office previews: converts DOCX, XLSX, PPTX and ODF to PDF (docs/design.md §10.3).
+  gotenberg:
+    profiles: [office]
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+
+  # Virus scanning (docs/design.md §21). Not used in v1; needs about 3–4 GB of RAM.
+  clamav:
+    profiles: [clamav]
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    volumes:
+      - clamav-db:/var/lib/clamav
+
+volumes:
+  ml-cache:
+  clamav-db:
