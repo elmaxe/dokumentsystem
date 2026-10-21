@@ -51,7 +51,7 @@ Scale target: up to about 1M files and a few TB per instance.
 | Search | BM25 (pg_search) over names and extracted text, with optional hybrid semantic search (VectorChord) |
 | Web | Vite + React + Tailwind + Radix/shadcn |
 | Mobile | Expo / React Native + NativeWind |
-| Design | Material 3–inspired, Immich / Google Photos look; shared design tokens |
+| Design | Material 3–inspired, one fjord-blue accent, Albert Sans, light + dark themes; tokens in `docs/design-system/tokens.json` (§16) |
 | Virus scanning | Not in v1. A pipeline hook allows optional ClamAV later. |
 | WebDAV | Later (post v1) |
 | License | AGPL-3.0, matching Immich and compatible with pg_search and VectorChord |
@@ -530,22 +530,93 @@ These are better in React DOM than through React Native Web.
 
 ## 16. Design system
 
-**Look and feel:** Material 3–inspired, close to Immich and Google Photos.
-- Calm neutral surfaces, one primary accent, rounded corners (12–16 px on cards), generous whitespace.
-- **Dark mode is first-class.**
+**Look and feel:** Material 3–inspired, close to Immich and Google Photos, with one fjord-blue accent. The chrome is calm and neutral, so people's thumbnails and the coloured file types carry the colour. **Dark mode is first-class**: it is designed, not inverted.
 
-- **Tokens (`packages/tokens`):**
-  - color roles (`primary`, `on-primary`, `surface`, `surface-container-{low,high}`, `outline`, `error`, …) for light and dark
-  - type scale
-  - spacing (4 px grid)
-  - radii, elevation, motion durations
+The full system, with live component previews in both themes, is the **Dokumentsystem Design System** artifact (https://claude.ai/artifact/QoaFs7759JbKMfxdQJNzDM). Its tokens are checked in at [`docs/design-system/tokens.json`](design-system/tokens.json), which seeds `packages/tokens`.
 
-  Generated from one source into the Tailwind theme (web) and NativeWind (mobile).
-- **Web components:** Radix primitives styled in the shadcn/ui pattern (we own the code). Includes button, icon button, chip, menu, dialog, sheet, tooltip, toast, tabs, data grid/list, breadcrumbs, progress, avatar and empty states.
-- **Icons:** Material Symbols (Apache-2.0), with consistent weight and size tokens.
-- **File-type visuals:** a coloured type badge and icon per MIME group (PDF red, doc blue, sheet green, …), used as the thumbnail fallback.
-- **Accessibility:** keyboard navigation everywhere, visible focus, WCAG AA contrast in both themes, `prefers-reduced-motion`.
-- **Deliverable before coding the UI:** a clickable mockup of the main screens (file browser, viewer, search results, share dialog, admin settings) to settle the look.
+### 16.1 Principles
+
+- **Files first.** Chrome uses neutral surfaces. Colour belongs to thumbnails, file-type icons and the single accent.
+- **State is said in words.** Upload status, quota and retention warnings pair a colour with an icon and a sentence ("Removed in 3 days", "Almost full").
+- **Nothing is lost silently.** Destructive actions confirm, and failed uploads stay in the tray until dismissed.
+- **Same system everywhere.** Web (desktop and phone) and the React Native app share tokens, wording and behaviour, but not component code (§15.1).
+
+### 16.2 Tokens (`packages/tokens`)
+
+One JSON source generates the Tailwind theme for the web (CSS variables per theme, switched by `data-theme` and `prefers-color-scheme`) and the NativeWind theme for mobile (the same names, switched by `useColorScheme`). Components use token names only, never raw values.
+
+**Colour roles** (Material 3 names, light / dark):
+
+| Role | Light | Dark | Use |
+|---|---|---|---|
+| `surface` | `#f6f8f9` | `#0e1417` | Page background |
+| `surface-container-lowest` | `#ffffff` | `#090f12` | File tiles, list rows, inputs |
+| `surface-container-low` | `#eef2f4` | `#161d20` | Nav, top bar, details panel |
+| `surface-container` | `#e8edf0` | `#1a2124` | Menus, upload tray, bottom nav |
+| `surface-container-high` / `-highest` | `#e1e7ea` / `#d9e0e4` | `#242b2f` / `#2f363a` | Dialogs and sheets / pressed fills, meter track |
+| `on-surface` / `on-surface-variant` | `#161c1f` / `#3f484d` | `#dde3e7` / `#bec8cd` | Text / metadata and inactive icons |
+| `outline` / `outline-variant` | `#6c767c` / `#bfc8cd` | `#899297` / `#3f484d` | Input borders / dividers and tile edges |
+| `primary` / `on-primary` | `#006781` / `#ffffff` | `#64d2f7` / `#003545` | The one accent: main button, focus ring, links, progress |
+| `primary-container` | `#bfe9ff` | `#004e62` | Selected files, drop target |
+| `secondary-container` | `#d3e5ee` | `#33474f` | Active nav item, selected chips, tonal buttons |
+| `error`, `success`, `warning` (+ `-container`) | `#b3261e`, `#1d6b3c`, `#795900` | `#ffb4ab`, `#86d9a0`, `#f2c14c` | Status, always with an icon and words |
+| `file-pdf` `-doc` `-sheet` `-slides` `-image` `-video` `-audio` `-archive` `-text` `-folder` | red, blue, green, orange, magenta, violet, teal, brown, grey, grey | lighter tints | File-type icons only |
+
+Every text pair meets WCAG AA (4.5:1) in both themes. Icons, borders and the focus ring meet 3:1.
+
+**Typography:** **Albert Sans** (SIL OFL) for all UI text, with the latin-ext subset for å, ä and ö. **IBM Plex Mono** only for checksums, keys and job ids. The same font files are bundled in the app with `expo-font`.
+
+| Style | Size / line | Weight | Use |
+|---|---|---|---|
+| `headline-md` / `headline-sm` | 28/36, 24/32 | 500 | Page title on desktop / phone |
+| `title-lg` / `title-md` / `title-sm` | 20/28, 16/24, 14/20 | 600 | Dialog titles / panel sections / group headings |
+| `body-lg` / `body-md` / `body-sm` | 16/24, 14/20, 12/16 | 400 | Phone default / desktop default / metadata |
+| `label-lg` / `label-md` / `label-sm` | 14/20, 12/16, 11/16 | 600 | Buttons / chips and nav / uppercase tags |
+| `mono-sm` | 12/16 | 400 | Hashes and keys |
+
+Sizes, dates and counts use tabular numbers.
+
+**Spacing:** 4 px grid (`space-1` = 4 … `space-12` = 48). The page gutter is 24 px on desktop and 16 px on phones.
+**Radii:** `xs` 4 (checkbox, badges), `sm` 8 (chips, inputs, menus, thumbnails), `md` 12 (tiles, upload tray), `lg` 16 (dialogs, sheets), `xl` 28 (search bar, nav pill), `full` (buttons, avatars, progress).
+**Elevation:** mostly tonal (the `surface-container` steps). Three shadows are reserved for things that float: hovered tiles, menus and the upload tray, and dialogs.
+**Sizes:** 24/20 px icons, 48 px minimum touch target, 40 px controls and dense rows, 176 px minimum tile width, 360 px details panel.
+**Motion:** 100 / 200 / 300 ms durations, with the Material emphasized easing. With `prefers-reduced-motion`, movement is replaced by instant changes.
+
+### 16.3 Layout and platforms
+
+| Width | Navigation | Content | Overlays |
+|---|---|---|---|
+| < 600 px (phone, and the RN app) | Bottom nav: My files, Shared with me, Search, Recent | Two-column grid or two-line list; floating action bar | Bottom sheets; upload FAB |
+| 600–839 px | Bottom nav | Wider grid | Dialogs |
+| 840–1199 px | Collapsed nav rail (88 px) | Grid / list | Dialogs |
+| ≥ 1200 px | Expanded nav (256 px) with storage meter | Grid / list + details panel (360 px) | Dialogs; upload tray bottom-right |
+
+Touch interactions replace the desktop ones: long-press instead of right-click and rubber-band selection, and tap to open instead of double-click.
+
+### 16.4 Core components
+
+Web components are Radix primitives styled in the shadcn/ui pattern (we own the code). The artifact's previews are the visual reference.
+
+- **Button** (filled / tonal / outlined / text / danger) and **IconButton**. At most one filled button per view.
+- **Chip:** search filters that mirror the operators ("Type: PDF" for `type:pdf`).
+- **FileTypeIcon:** a Material Symbol in the `file-*` colour per MIME group. Also the thumbnail fallback. Folders stay neutral.
+- **FileGrid:** folders first, then file tiles with 4:3 thumbnails. A shimmer shows while a thumbnail is pending; the thumbnail is swapped in over SignalR. Video tiles show a duration badge.
+- **FileList:** a sortable name / owner / modified / size table. Under 600 px of container width, the columns fold into a second line.
+- **ActionBar:** the selection count plus Share, Download, Move, Trash and More.
+- **UploadTray:** one row per tus upload, in one of the states hashing, uploading, paused, done, duplicate ("Remove this copy") or failed (Retry), each with an icon and words.
+- **DuplicateDialog:** the §8.3 prompt. A batch offers Skip duplicates / Upload all / Review; a single file offers Skip / Upload anyway / Open existing.
+- **ShareDialog:** add people, then people with access (inherited grants are labelled and cannot be lowered), then the public link with expiry, password and download chips. A bottom sheet on phones.
+- **VersionHistory:** the Versions tab of the details panel. It marks the current and "Keep forever" versions and warns "Removed in N days" per the retention policy.
+- **StorageMeter:** a warning at 80 % and a critical state at 95 %, in words as well as colour.
+- **NavRail**, **BottomNav**, **EmptyState** (also the drag-and-drop target that names the destination folder).
+
+### 16.5 Content and accessibility
+
+- Copy is in sv and en from day one. Swedish runs about 30 % longer, so never size a control to fit English text.
+- Copy is in sentence case, with no exclamation marks and no emoji. Buttons are verbs ("Copy link"), and toasts confirm in the past tense ("Link copied"). Errors say what happened and what to do next.
+- **Icons:** Material Symbols Rounded (Apache-2.0), outlined by default and filled when active or selected.
+- Keyboard navigation everywhere: arrow keys in the grid, Space to select, Enter to open, Delete to trash. Focus is shown by a visible 2 px focus ring. Every icon button has a label.
+- **Still to do before coding the UI:** a clickable mockup of the main screens (file browser, viewer, search results, admin settings), built from these components.
 
 ---
 
@@ -665,6 +736,7 @@ These are better in React DOM than through React Native Web.
 | 7 | Sharing model | Personal folders shared to users; no team drives (§9) |
 | 8 | Virus scanning | Not in v1; hook for optional ClamAV (§21) |
 | 9 | WebDAV | Later |
+| 10 | Design system | **Approved** 2026-10-21: Material 3 roles, fjord-blue accent, Albert Sans, Material Symbols Rounded, 4 px grid (§16) |
 
 ## 26. Open questions
 
