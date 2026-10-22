@@ -1,0 +1,123 @@
+/* The web UI's stylesheet: Tailwind v4, the generated token theme and the bundled fonts (docs/design.md §16.2).
+   Apps import this once. Components use token names only, never raw values. */
+@import "tailwindcss";
+@import "@dokument/tokens/theme.css";
+@import "@fontsource/albert-sans/400.css";
+@import "@fontsource/albert-sans/500.css";
+@import "@fontsource/albert-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "material-symbols/rounded.css";
+
+@source "./";
+
+/* The layout breakpoints from §16.3: phone < 600, bottom nav < 840, collapsed rail < 1200, expanded rail and details panel ≥ 1200. */
+@theme {
+  --breakpoint-sm: 600px;
+  --breakpoint-md: 840px;
+  --breakpoint-lg: 1200px;
+}
+
+/* The nav rail is collapsed (88px, labels under icons) until 1200px, then expanded (256px) with the
+   storage meter. data-rail="auto" follows the breakpoint; "expanded" and "collapsed" force it. */
+@custom-variant rail-expanded {
+  &:where([data-rail="expanded"], [data-rail="expanded"] *) {
+    @slot;
+  }
+  @media (width >= 1200px) {
+    &:where([data-rail="auto"], [data-rail="auto"] *) {
+      @slot;
+    }
+  }
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    background: var(--color-surface);
+    color: var(--color-on-surface);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    margin: 0;
+    font-size: var(--text-body-md);
+    line-height: var(--text-body-md--line-height);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  mark {
+    background: var(--color-primary-container);
+    color: var(--color-on-primary-container);
+    border-radius: 2px;
+  }
+}
+
+@utility icon {
+  font-family: "Material Symbols Rounded";
+  font-weight: normal;
+  font-style: normal;
+  font-size: var(--spacing-icon);
+  line-height: 1;
+  width: 1em;
+  height: 1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex: none;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  direction: ltr;
+  font-feature-settings: "liga";
+  font-variation-settings:
+    "FILL" var(--icon-fill, 0),
+    "wght" 400,
+    "opsz" var(--icon-opsz, 24);
+  user-select: none;
+}
+
+@utility icon-filled {
+  --icon-fill: 1;
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@theme {
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-indeterminate: indeterminate 1.2s var(--ease-emphasized) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    transition-duration: 0s !important;
+  }
+}
