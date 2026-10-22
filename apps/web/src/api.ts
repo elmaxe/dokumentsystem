@@ -5,6 +5,9 @@ let csrfToken: string | null = null;
 
 export const api = createApiClient({ csrfToken: () => csrfToken });
 
+/** For requests that don't go through the API client, such as tus uploads. */
+export const getCsrfToken = () => csrfToken;
+
 export const serverInfoQuery = queryOptions({
   queryKey: ["server", "info"],
   queryFn: async () => {

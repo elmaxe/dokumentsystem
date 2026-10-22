@@ -1,7 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
 import { sessionQuery } from "./api";
-import { HomePage } from "./HomePage";
+import { AppShell } from "./AppShell";
+import { FilesPage } from "./files/FilesPage";
+import { PlacePage } from "./PlacePage";
 import { SignInPage } from "./SignInPage";
 
 const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: Outlet });
@@ -17,14 +19,33 @@ const authenticatedRoute = createRoute({
     }
     return { session };
   },
-  component: Outlet,
+  component: AppShell,
 });
 
 const homeRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/",
-  component: HomePage,
+  component: function MyFilesRoute() {
+    return <FilesPage folderId={null} />;
+  },
 });
+
+const folderRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/folders/$folderId",
+  component: function FolderRoute() {
+    const { folderId } = folderRoute.useParams();
+    return <FilesPage key={folderId} folderId={folderId} />;
+  },
+});
+
+const placeRoutes = (["shared", "recent", "starred", "trash"] as const).map((place) =>
+  createRoute({
+    getParentRoute: () => authenticatedRoute,
+    path: `/${place}`,
+    component: () => <PlacePage place={place} />,
+  }),
+);
 
 export type SignInSearch = { returnTo?: string; error?: string };
 
@@ -42,7 +63,7 @@ const signInRoute = createRoute({
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, ...placeRoutes]), signInRoute]),
     context: { queryClient },
   });
 }

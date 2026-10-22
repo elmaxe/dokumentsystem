@@ -4,6 +4,7 @@ namespace Dokument.Server.Files;
 
 /// <param name="Size">Bytes of the current version. Null for folders.</param>
 /// <param name="MimeType">Of the current version. Null for folders.</param>
+/// <param name="Sha256">The current version's content hash, in hex. Null for folders.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -11,6 +12,7 @@ public sealed record NodeDto(
     string Name,
     long? Size,
     string? MimeType,
+    string? Sha256,
     Guid OwnerId,
     string OwnerName,
     DateTimeOffset CreatedAt,
@@ -25,6 +27,7 @@ public sealed record NodeDto(
         node.Name.Value,
         node.CurrentVersion?.Size,
         node.CurrentVersion?.MimeType,
+        node.CurrentVersion?.BlobHash.Hex,
         node.OwnerId,
         ownerNames.GetValueOrDefault(node.OwnerId, ""),
         node.CreatedAt,

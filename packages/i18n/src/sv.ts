@@ -42,6 +42,7 @@ export const sv: Strings = {
     save: "Spara ändringar",
     saved: "Ändringarna har sparats",
     undo: "Ångra",
+    notYet: "Inte tillgängligt än",
   },
   kinds: {
     folder: "Mapp",
@@ -131,6 +132,9 @@ export const sv: Strings = {
     skippedDuplicates_other: "Hoppade över {{count}} dubbletter",
     copyRemoved: "Den extra kopian har tagits bort",
     notInMockup: "Finns inte i mockupen än",
+    renamed: "Namnet är ändrat",
+    moved_one: "Flyttade {{count}} objekt",
+    moved_other: "Flyttade {{count}} objekt",
   },
   selection: {
     label: "Markerade filer",
@@ -287,6 +291,7 @@ export const sv: Strings = {
   storage: {
     title: "Lagring",
     used: "{{used}} av {{quota}} används",
+    usedUnlimited: "{{used}} används",
     warning: "Börjar bli fullt · {{amounts}}",
     critical: "Nästan fullt · {{amounts}}",
   },
@@ -361,5 +366,42 @@ export const sv: Strings = {
       member: "Medlem",
       edit: "Redigera {{name}}",
     },
+  },
+  dialogs: {
+    newFolder: {
+      title: "Ny mapp",
+      label: "Mappens namn",
+      create: "Skapa",
+    },
+    rename: {
+      title: "Byt namn",
+      label: "Namn",
+      save: "Byt namn",
+    },
+    move: {
+      title_one: "Flytta ”{{name}}”",
+      title_other: "Flytta {{count}} objekt",
+      here: "Flytta hit",
+      up: "Upp till {{folder}}",
+      open: "Öppna {{name}}",
+      noFolders: "Inga mappar här",
+    },
+    conflict: {
+      title_one: "”{{name}}” finns redan här",
+      title_other: "{{count}} filer finns redan här",
+      body: "Ladda upp som en ny version av den befintliga filen, eller behåll båda och lägg till en siffra i det nya namnet.",
+      newVersion: "Ladda upp som ny version",
+      keepBoth: "Behåll båda",
+      skip: "Hoppa över",
+    },
+  },
+  errors: {
+    generic: "Något gick fel. Försök igen.",
+    nameTaken: "Det finns redan något med det namnet här.",
+    invalidName: "Namn får inte vara tomma, ”.” eller ”..”, eller innehålla snedstreck.",
+    notFound: "Filen eller mappen finns inte längre.",
+    quotaExceeded: "Det finns inte tillräckligt med lagringsutrymme kvar för filen.",
+    changedWhileUploading: "Filen ändrades medan den laddades upp. Försök igen.",
+    moveIntoItself: "En mapp kan inte flyttas in i sig själv.",
   },
 };

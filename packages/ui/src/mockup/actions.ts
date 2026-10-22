@@ -46,17 +46,4 @@ export const selectionMore = (t: TFunction): MenuAction[] => [
   { id: "details", icon: "info", label: t("actions.details") },
 ];
 
-const extensions: [RegExp, Node["kind"]][] = [
-  [/\.pdf$/i, "pdf"],
-  [/\.(docx?|odt|rtf|pages)$/i, "doc"],
-  [/\.(xlsx?|ods|csv|numbers)$/i, "sheet"],
-  [/\.(pptx?|odp|key)$/i, "slides"],
-  [/\.(jpe?g|png|gif|webp|heic|avif|dng|svg)$/i, "image"],
-  [/\.(mp4|mov|mkv|webm|avi)$/i, "video"],
-  [/\.(mp3|m4a|flac|wav|ogg|opus)$/i, "audio"],
-  [/\.(zip|7z|rar|tar|gz)$/i, "archive"],
-  [/\.(txt|md|json|xml|log)$/i, "text"],
-];
-
-export const kindOf = (name: string): Node["kind"] =>
-  extensions.find(([pattern]) => pattern.test(name))?.[1] ?? "other";
+export { kindOf } from "../lib/files";

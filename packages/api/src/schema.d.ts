@@ -444,6 +444,7 @@ export interface components {
             /** Format: int64 */
             size: null | number;
             mimeType: null | string;
+            sha256: null | string;
             /** Format: uuid */
             ownerId: string;
             ownerName: string;

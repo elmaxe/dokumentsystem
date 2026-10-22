@@ -1,6 +1,3 @@
-@import "tailwindcss";
-@import "@dokument/tokens/theme.css";
-@import "@fontsource/albert-sans/400.css";
-@import "@fontsource/albert-sans/500.css";
-@import "@fontsource/albert-sans/600.css";
-@import "@fontsource/ibm-plex-mono/400.css";
+@import "@dokument/ui/styles.css";
+
+@source "./";

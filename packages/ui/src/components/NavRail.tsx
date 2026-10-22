@@ -13,7 +13,8 @@ export type NavRailProps = {
   newActions?: MenuAction[];
   onNewAction?: (id: string) => void;
   used: number;
-  quota: number;
+  /** Null means no limit. */
+  quota: number | null;
   /** auto collapses to 88px under 1200px and expands to 256px with the storage meter above (§16.3). */
   mode?: "auto" | "expanded" | "collapsed";
   className?: string;

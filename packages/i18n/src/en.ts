@@ -40,6 +40,7 @@ export const en = {
     save: "Save changes",
     saved: "Changes saved",
     undo: "Undo",
+    notYet: "Not available yet",
   },
   kinds: {
     folder: "Folder",
@@ -129,6 +130,9 @@ export const en = {
     skippedDuplicates_other: "Skipped {{count}} duplicates",
     copyRemoved: "Removed the extra copy",
     notInMockup: "Not part of the mockup yet",
+    renamed: "Renamed",
+    moved_one: "Moved {{count}} item",
+    moved_other: "Moved {{count}} items",
   },
   selection: {
     label: "Selected files",
@@ -283,6 +287,7 @@ export const en = {
   storage: {
     title: "Storage",
     used: "{{used}} of {{quota}} used",
+    usedUnlimited: "{{used}} used",
     warning: "Getting full · {{amounts}}",
     critical: "Almost full · {{amounts}}",
   },
@@ -356,5 +361,42 @@ export const en = {
       member: "Member",
       edit: "Edit {{name}}",
     },
+  },
+  dialogs: {
+    newFolder: {
+      title: "New folder",
+      label: "Folder name",
+      create: "Create",
+    },
+    rename: {
+      title: "Rename",
+      label: "Name",
+      save: "Rename",
+    },
+    move: {
+      title_one: "Move “{{name}}”",
+      title_other: "Move {{count}} items",
+      here: "Move here",
+      up: "Up to {{folder}}",
+      open: "Open {{name}}",
+      noFolders: "No folders in here",
+    },
+    conflict: {
+      title_one: "“{{name}}” already exists here",
+      title_other: "{{count}} files already exist here",
+      body: "Upload as a new version of the existing file, or keep both and add a number to the new name.",
+      newVersion: "Upload as new version",
+      keepBoth: "Keep both",
+      skip: "Skip",
+    },
+  },
+  errors: {
+    generic: "Something went wrong. Try again.",
+    nameTaken: "There's already something with that name here.",
+    invalidName: "Names can't be empty, “.” or “..”, or contain slashes.",
+    notFound: "That file or folder no longer exists.",
+    quotaExceeded: "There isn't enough storage left for this file.",
+    changedWhileUploading: "The file changed while it was uploading. Try again.",
+    moveIntoItself: "A folder can't be moved into itself.",
   },
 };

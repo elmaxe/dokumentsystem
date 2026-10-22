@@ -61,6 +61,14 @@ export function FileList<T extends FileItem>({
       className="@container overflow-hidden rounded-md border border-outline-variant bg-surface-container-lowest"
     >
       <table role="grid" aria-multiselectable className="w-full table-fixed border-collapse">
+        {/* Column widths live here, not on the header cells, because phones hide the header row. */}
+        <colgroup>
+          <col className="w-11" />
+          {columns.map((column) => (
+            <col key={column.key} className={column.className.replace(/\btext-right\b/, "")} />
+          ))}
+          <col className="w-12" />
+        </colgroup>
         <thead className="@max-[600px]:sr-only">
           <tr className="h-10 border-b border-outline-variant">
             <th className="w-11 pl-4">

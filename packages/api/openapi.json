@@ -939,6 +939,7 @@
           "name",
           "size",
           "mimeType",
+          "sha256",
           "ownerId",
           "ownerName",
           "createdAt",
@@ -973,6 +974,12 @@
             "format": "int64"
           },
           "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sha256": {
             "type": [
               "null",
               "string"

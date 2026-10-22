@@ -27,13 +27,15 @@ export type VersionHistoryProps = {
   versions: FileVersion[];
   onAction?: (action: VersionAction, version: FileVersion) => void;
   onUploadVersion?: () => void;
+  /** Offer "Delete this version" on old versions. */
+  canDelete?: boolean;
 };
 
 /**
  * The Versions tab of the details panel (§16.4). Marks the current and kept versions and warns
  * "Removed in N days" per the retention policy: 30 days or 100 versions (§8.2).
  */
-export function VersionHistory({ versions, onAction, onUploadVersion }: VersionHistoryProps) {
+export function VersionHistory({ versions, onAction, onUploadVersion, canDelete = true }: VersionHistoryProps) {
   const { t, i18n } = useTranslation();
   return (
     <div className="flex flex-col">
@@ -101,7 +103,7 @@ export function VersionHistory({ versions, onAction, onUploadVersion }: VersionH
                   version.keep
                     ? { id: "unkeep" as const, icon: "keep_off", label: t("versions.unkeep") }
                     : { id: "keep" as const, icon: "keep", label: t("versions.keep") },
-                  ...(version.current
+                  ...(version.current || !canDelete
                     ? []
                     : [
                         {

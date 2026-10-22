@@ -1,4 +1,5 @@
 import { createI18n, pickLanguage } from "@dokument/i18n";
+import { SnackbarProvider } from "@dokument/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
@@ -17,7 +18,9 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <I18nextProvider i18n={i18n}>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <SnackbarProvider>
+          <RouterProvider router={router} />
+        </SnackbarProvider>
       </QueryClientProvider>
     </I18nextProvider>
   </StrictMode>,
