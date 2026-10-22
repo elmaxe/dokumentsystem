@@ -16,7 +16,9 @@ var database = postgres.AddDatabase("Dokument", databaseName: "dokument");
 var keycloak = builder.AddKeycloak("keycloak", port: 8180)
     .WithRealmImport("keycloak");
 
-IResourceBuilder<ProjectResource> AddRole(string role) => builder.AddProject<Projects.Dokument_Host>(role)
+// Only the server uses the Host's launch profile. Both roles taking its fixed port 5080 made Aspire bind that port
+// for whichever came first, so the server could stay "not ready" and nothing waiting on it would start.
+IResourceBuilder<ProjectResource> AddRole(string role, string? launchProfile) => builder.AddProject<Projects.Dokument_Host>(role, launchProfile)
     .WithEnvironment("ROLE", role)
     .WithEnvironment("Storage__OriginalsPath", Path.Combine(dataRoot, "originals"))
     .WithEnvironment("Storage__DerivedPath", Path.Combine(dataRoot, "derived"))
@@ -24,14 +26,18 @@ IResourceBuilder<ProjectResource> AddRole(string role) => builder.AddProject<Pro
     .WithReference(database)
     .WaitFor(database);
 
-var server = AddRole("server")
+var server = AddRole("server", launchProfile: "http")
     .WithHttpHealthCheck("/health/ready")
     .WithEnvironment("OIDC_ISSUER", ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/dokument"))
     .WithEnvironment("OIDC_CLIENT_ID", "dokument")
     .WithEnvironment("OIDC_CLIENT_SECRET", "dokument-dev-secret")
     .WithEnvironment("OIDC_PROVIDER_NAME", "Keycloak (dev)")
     .WaitFor(keycloak);
-AddRole("worker").WithEndpointsInEnvironment(_ => false).WaitFor(server);
+AddRole("worker", launchProfile: null)
+    .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+    .WithHttpEndpoint(env: "HTTP_PORTS")
+    .WithHttpHealthCheck("/health/ready")
+    .WaitFor(server);
 
 // A fixed port, because the dev realm's redirect URI names it.
 var web = builder.AddViteApp("web", "../../apps/web")
