@@ -2,6 +2,8 @@
 // the server, a worker and the Vite dev server, and opens the Aspire dashboard. See docs/design.md §3.2.
 //
 // Sign in at http://localhost:5173 as alice/alice (admin), bob/bob (user) or carol/carol (no groups).
+// pgAdmin runs at http://localhost:5050, already connected to Postgres. The API reference (Scalar) is linked on the
+// server resource in the dashboard.
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -9,7 +11,9 @@ var dataRoot = Path.GetFullPath(Path.Combine(builder.AppHostDirectory, "../../.d
 
 var postgres = builder.AddPostgres("postgres")
     .WithDockerfile("../../docker/postgres")
-    .WithDataVolume("dokumentsystem-postgres");
+    .WithDataVolume("dokumentsystem-postgres")
+    // pgAdmin listens on IPv6 by default, which fails where Docker has IPv6 turned off.
+    .WithPgAdmin(pgAdmin => pgAdmin.WithHostPort(5050).WithEnvironment("PGADMIN_LISTEN_ADDRESS", "0.0.0.0"));
 var database = postgres.AddDatabase("Dokument", databaseName: "dokument");
 
 // The realm, client and test users are imported on every start, so the dev IdP needs no setup or volume.
@@ -33,6 +37,7 @@ var server = AddRole("server", launchProfile: "http")
     .WithEnvironment("OIDC_CLIENT_SECRET", "dokument-dev-secret")
     .WithEnvironment("OIDC_PROVIDER_NAME", "Keycloak (dev)")
     .WaitFor(keycloak);
+server.WithUrl(ReferenceExpression.Create($"{server.GetEndpoint("http")}/scalar"), "API reference (Scalar)");
 AddRole("worker", launchProfile: null)
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
     .WithHttpEndpoint(env: "HTTP_PORTS")
