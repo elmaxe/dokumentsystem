@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <AssemblyName>dokument</AssemblyName>
+    <RootNamespace>Dokument.Host</RootNamespace>
+    <UserSecretsId>dokumentsystem-host</UserSecretsId>
+    <!-- Writes the OpenAPI document on build; packages/api generates the TypeScript client from it. -->
+    <OpenApiDocumentsDirectory>$(MSBuildThisFileDirectory)../../packages/api</OpenApiDocumentsDirectory>
+    <OpenApiGenerateDocumentsOptions>--file-name openapi</OpenApiGenerateDocumentsOptions>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Dokument.Server\Dokument.Server.csproj" />
+    <ProjectReference Include="..\Dokument.Worker\Dokument.Worker.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+    <PackageReference Include="Serilog.AspNetCore" />
+  </ItemGroup>
+</Project>

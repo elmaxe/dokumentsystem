@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web and packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  dotnet:
+    name: .NET
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet tool restore
+      - run: dotnet build --configuration Release
+      - run: dotnet test --configuration Release --no-build
+      - name: Migrations match the model
+        run: dotnet ef migrations has-pending-model-changes -p src/Dokument.Infrastructure -s src/Dokument.Host --configuration Release --no-build
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: API client matches the server
+        run: |
+          pnpm install --frozen-lockfile --filter @dokument/api
+          pnpm --filter @dokument/api generate
+          git diff --exit-code -- packages/api || {
+            echo "::error::packages/api is stale. Run dotnet build and pnpm --filter @dokument/api generate, then commit the result."
+            exit 1
+          }
+
+  images:
+    name: Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: docker/postgres
+          tags: dokumentsystem-postgres:ci
+          load: true
+          cache-from: type=gha,scope=postgres
+          cache-to: type=gha,mode=max,scope=postgres
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: dokumentsystem:ci
+          load: true
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+      - name: Compose stack starts and is healthy
+        run: |
+          mkdir -p ci/data/originals ci/data/derived ci/data/backups
+          cat > .env <<ENV
+          DOKUMENT_IMAGE=dokumentsystem
+          DOKUMENT_POSTGRES_IMAGE=dokumentsystem-postgres
+          DOKUMENT_VERSION=ci
+          PUID=$(id -u)
+          PGID=$(id -g)
+          ORIGINALS_LOCATION=./ci/data/originals
+          DERIVED_LOCATION=./ci/data/derived
+          BACKUP_LOCATION=./ci/data/backups
+          DB_DATA_LOCATION=./ci/postgres
+          DB_PASSWORD=ci-password
+          ENV
+          docker compose up -d --wait --wait-timeout 180
+          curl --fail --silent http://localhost:8080/api/v1/server/info
+          curl --fail --silent http://localhost:8080/ | grep -q '<div id="root">'
+      - if: failure()
+        run: docker compose logs

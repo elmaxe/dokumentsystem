@@ -1,0 +1,21 @@
+{
+  "name": "@dokument/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Typed API client generated from the server's OpenAPI document (docs/design.md §15.1).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "openapi-typescript openapi.json -o src/schema.d.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0"
+  }
+}

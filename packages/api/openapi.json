@@ -1,0 +1,53 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Dokumentsystem API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/server/info": {
+      "get": {
+        "tags": [
+          "Server"
+        ],
+        "operationId": "GetServerInfo",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ServerInfo": {
+        "required": [
+          "name",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Server"
+    }
+  ]
+}

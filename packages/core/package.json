@@ -1,0 +1,18 @@
+{
+  "name": "@dokument/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Logic shared by web and mobile: formatting, upload queue, permission helpers (docs/design.md §15.1).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "5.0.5"
+  }
+}
