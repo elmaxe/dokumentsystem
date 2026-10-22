@@ -1,3 +1,4 @@
+using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,9 @@ public static class DependencyInjection
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
         services.AddDbContext<DokumentDbContext>(options =>
             options.UseNpgsql(DatabaseOptions.GetConnectionString(configuration)));
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<UserProvisioner>();
+        services.AddScoped<SessionStore>();
         return services;
     }
 }

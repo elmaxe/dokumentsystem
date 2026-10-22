@@ -23,7 +23,7 @@ FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS
 ARG TARGETARCH
 ARG VERSION=0.0.0-dev
 WORKDIR /repo
-COPY global.json Directory.Build.props Directory.Packages.props ./
+COPY global.json nuget.config Directory.Build.props Directory.Packages.props ./
 COPY src/Dokument.Domain/*.csproj src/Dokument.Domain/
 COPY src/Dokument.Application/*.csproj src/Dokument.Application/
 COPY src/Dokument.Infrastructure/*.csproj src/Dokument.Infrastructure/

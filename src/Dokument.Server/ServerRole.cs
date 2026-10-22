@@ -1,10 +1,15 @@
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Dokument.Infrastructure.Storage;
+using Dokument.Server.Auth;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Scalar.AspNetCore;
 
 namespace Dokument.Server;
 
@@ -19,19 +24,36 @@ public static class ServerRole
             return Task.CompletedTask;
         }));
         builder.Services.AddProblemDetails();
+        builder.Services.ConfigureHttpJsonOptions(options =>
+            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
+        builder.AddDokumentAuth();
         return builder;
     }
 
     public static WebApplication MapServerRole(this WebApplication app)
     {
-        app.MapOpenApi();
-
-        var api = app.MapGroup("/api/v1");
-        api.MapGet("/server/info", GetServerInfo).WithName("GetServerInfo").WithTags("Server");
+        app.UsePublicUrl(PublicUrl.FromConfiguration(app.Configuration));
 
         // The built web app is copied into wwwroot by the Docker image. Unknown non-API paths go to the SPA router.
         app.UseDefaultFiles();
         app.UseStaticFiles();
+
+        app.UseRouting();
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.UseRateLimiter();
+        app.UseCsrfProtection();
+
+        app.MapOpenApi();
+        if (app.Environment.IsDevelopment())
+        {
+            // Interactive API reference at /scalar, reading /openapi/v1.json. Development only.
+            app.MapScalarApiReference();
+        }
+
+        var api = app.MapGroup("/api/v1");
+        api.MapGet("/server/info", GetServerInfo).WithName("GetServerInfo").WithTags("Server").AllowAnonymous();
+        api.MapAuthEndpoints();
         app.MapFallback("/api/{**path}", () => TypedResults.NotFound());
         app.MapFallbackToFile("index.html");
         return app;

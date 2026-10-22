@@ -10,6 +10,7 @@ You need Docker with Compose v2.
 
 1. Copy `docker-compose.yml` and `.env.example` into a folder on the NAS, and rename `.env.example` to `.env`.
 2. In `.env`, set `DB_PASSWORD`, your `PUID`/`PGID` (`id` shows them), and the data locations. Keep `DB_DATA_LOCATION` on a local disk, not a network share.
+   - For sign-in, set `PUBLIC_URL` and the `OIDC_*` values for your identity provider ([design §5](docs/design.md#5-authentication-and-sessions)).
 3. Run `docker compose up -d` and open `http://<nas>:8080`.
 
 Optional services are Compose profiles: `--profile office` (Office previews through Gotenberg), `--profile ml` (machine learning, from roadmap M7) and `--profile clamav` (virus scanning, not used in v1).
@@ -24,7 +25,9 @@ dotnet tool restore
 dotnet run --project src/Dokument.AppHost
 ```
 
-The Aspire dashboard opens with Postgres (built from `docker/postgres`), the server, a worker and the Vite dev server. Local files go to `.data/`.
+The Aspire dashboard opens with Postgres (built from `docker/postgres`), Keycloak, the server, a worker and the Vite dev server. Local files go to `.data/`. Open http://localhost:5173 and sign in as `alice`/`alice` (admin), `bob`/`bob` or `carol`/`carol`. pgAdmin is at http://localhost:5050, and the API reference (Scalar) is at `/scalar` on the server; the dashboard links both.
+
+The integration tests run against our Postgres image, so build it once first: `docker build -t dokumentsystem-postgres:ci docker/postgres`.
 
 | Task | Command |
 | --- | --- |

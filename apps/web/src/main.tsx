@@ -4,13 +4,14 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
-import { router } from "./router";
+import { createAppRouter } from "./router";
 import "./index.css";
 
 const language = pickLanguage(navigator.languages);
 document.documentElement.lang = language;
 const i18n = await createI18n(language);
 const queryClient = new QueryClient();
+const router = createAppRouter(queryClient);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
