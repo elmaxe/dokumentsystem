@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.3** · Last updated: 2026-10-21
+> Status: **Draft v0.4** · Last updated: 2026-10-22
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -200,26 +200,53 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 ## 5. Authentication and sessions
 
 - **Login:** OIDC authorization code flow with PKCE against the user's IdP (Authentik, Authelia, Keycloak, Pocket ID, …).
-  - Web: the server performs the flow (confidential client).
-  - Mobile: the app opens the system browser and redirects back to a custom scheme. The server then exchanges the code.
-- **Sessions:** after a successful OIDC login, the server issues **its own session**:
-  - Web: httpOnly, Secure, SameSite=Lax cookie, with CSRF protection on mutations.
-  - Mobile: an opaque bearer token stored in the secure enclave/keystore.
-  - Sessions can be listed and revoked by the user ("active devices") and by admins.
+  - Web: the server performs the flow as a confidential client (ASP.NET's OpenIdConnect handler). The browser navigates to `GET /api/v1/auth/login?returnTo=…`, and the IdP redirects back to `/api/v1/auth/callback`. Only local paths are accepted as `returnTo`.
+  - The IdP's response comes back as a query string, so the short-lived correlation cookies can be SameSite=Lax. That also lets login work over plain http on a LAN.
+  - Mobile: the app opens the system browser and redirects back to a custom scheme. The server then exchanges the code. The hand-off to the app is built in M5. Bearer sessions are already accepted.
+- **Configuration** is bootstrap env (§4.3). Sign-in stays off until `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set, so a fresh install still starts.
+
+  | Variable | Default | Meaning |
+  |---|---|---|
+  | `OIDC_ISSUER` | — | Issuer URL, e.g. `https://auth.example.com/application/o/dokument/` |
+  | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | — | The confidential client registered at the IdP. Its redirect URI is `${PUBLIC_URL}/api/v1/auth/callback`. |
+  | `OIDC_SCOPE` | `openid profile email` | Add `groups` for IdPs that need it (e.g. Authelia) |
+  | `OIDC_GROUPS_CLAIM` | `groups` | Read from the ID token and the userinfo endpoint |
+  | `OIDC_USER_GROUP` | unset (anyone at the IdP may log in) | Allow-list group |
+  | `OIDC_ADMIN_GROUP` | `dokument-admins` | Members get the admin role |
+  | `OIDC_PROVIDER_NAME` | unset | Shown on the button: "Sign in with …" |
+
+- **`PUBLIC_URL`** sets the scheme, host and path base that the app sees itself at, behind the reverse proxy. It drives the redirect URI and the cookie's Secure flag.
+- **Sessions:** after a successful OIDC login, the server issues **its own session**. The IdP's tokens are discarded.
+  - The token is 256 random bits. Only its SHA-256 is stored in `sessions`, so a leaked database doesn't hand out live sessions.
+  - **Lifetime:** a session expires after **30 days without use**. Each use slides the expiry forward, with at most one write every 5 minutes.
+  - **Web:** an httpOnly, SameSite=Lax cookie (`dokument_session`). It is Secure whenever `PUBLIC_URL` is https.
+    - CSRF: mutations made with the cookie must send `X-CSRF-Token`. Its value is a hash of the session token, returned by `GET /api/v1/auth/session`.
+  - **Mobile:** the same opaque token, sent as `Authorization: Bearer`. It is stored in the secure enclave/keystore and needs no CSRF token.
+  - **Revoking:** users list and revoke their own sessions ("active devices": `GET/DELETE /api/v1/sessions`). Admins do the same for anyone (`/api/v1/admin/users/{id}/sessions`, `/api/v1/admin/sessions/{id}`). A revoked session stops working on its next request.
+  - **Sign out** revokes the current session only. It does not end the user's session at the IdP.
 - **API keys:** personal, scoped (read-only / read-write), for scripts, rclone and WebDAV later.
 - **User provisioning:** users are created on first login (JIT), with a stable identity from `iss` + `sub`.
-  - An optional **allow-list**: only users in IdP group `dokument-users` may log in.
-  - `dokument-admins` group → admin role. Mapping is re-evaluated on each login.
+  - Email, display name and role are refreshed on every login. Disabled users are refused, and their sessions stop working.
+  - An optional **allow-list**: only users in the IdP group named by `OIDC_USER_GROUP` (e.g. `dokument-users`) may log in. Admins are always allowed.
+  - The `dokument-admins` group → admin role. The mapping is re-evaluated on each login.
   - An optional claim sets the quota tier.
+- **Rate limiting:** 20 login starts per minute per IP.
 - **Break-glass:** a CLI command in the container (`dokument admin reset-oidc` / `create-admin-token`) for when the IdP is broken.
+- **Local development:** Aspire runs Keycloak with a `dokument` realm. Its test users are alice (admin), bob (user) and carol (no groups); each password is the username.
+- **Built in M0:** login, sessions, CSRF and active devices. **Still to come:**
+  - API keys and the break-glass CLI
+  - auth audit events, with the audit table in M1
+  - the quota claim, with quotas in M1
+  - the mobile hand-off, in M5
 
 ---
 
 ## 6. Data model (sketch)
 
 ```
-users(id, oidc_issuer, oidc_subject, email, display_name, role, quota_bytes NULL→default,
-      used_bytes, reserved_bytes, locale, created_at, disabled_at)
+users(id, oidc_issuer, oidc_subject, email, display_name, role {user|admin}, quota_bytes NULL→default,
+      used_bytes, reserved_bytes, locale, created_at, last_login_at, disabled_at,
+      UNIQUE (oidc_issuer, oidc_subject))
 
 nodes(id, owner_id, parent_id NULL, kind {folder|file}, name, name_normalized,
       path ltree,                 -- materialized path of ids, for subtree queries
@@ -253,7 +280,8 @@ audit_events(id, at, actor_user_id NULL, actor_kind {user|link|system|api_key}, 
 notifications(id, user_id, type, data jsonb, created_at, read_at)
 notification_prefs(user_id, type, email bool, in_app bool)
 settings(key, value jsonb, updated_by, updated_at)
-sessions(id, user_id, kind, token_hash, device_name, created_at, last_seen_at, revoked_at)
+sessions(id, user_id, kind {cookie|bearer}, token_hash UNIQUE, device_name, created_at, last_seen_at,
+         expires_at, revoked_at)
 api_keys(id, user_id, name, token_hash, scopes, created_at, last_used_at, revoked_at)
 ```
 
@@ -757,6 +785,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 | 9 | WebDAV | Later |
 | 10 | Design system | **Approved** 2026-10-21: Material 3 roles, fjord-blue accent, Albert Sans, Material Symbols Rounded, 4 px grid (§16) |
 | 11 | Monorepo scaffold | 2026-10-21: .NET 10 LTS, Aspire 13, Postgres 17, Node 22 + pnpm + Turborepo, Tailwind v4 on web, AGPL-3.0 `LICENSE` (§3.2, §4.1, §15.1) |
+| 12 | Sessions | 2026-10-22: opaque tokens, stored hashed, expire after 30 days idle (sliding). Cookie + `X-CSRF-Token` on web, bearer on mobile. Sign-out is local, not at the IdP (§5). |
 
 ## 26. Open questions
 

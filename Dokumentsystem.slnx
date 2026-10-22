@@ -9,6 +9,7 @@
     <Project Path="src/Dokument.Worker/Dokument.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Dokument.IntegrationTests/Dokument.IntegrationTests.csproj" />
     <Project Path="tests/Dokument.UnitTests/Dokument.UnitTests.csproj" />
   </Folder>
 </Solution>
