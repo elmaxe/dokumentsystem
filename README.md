@@ -33,6 +33,7 @@ The integration tests run against our Postgres image, so build it once first: `d
 | --- | --- |
 | Build and test .NET | `dotnet build` · `dotnet test` |
 | Lint, typecheck, test, build the web side | `pnpm lint` · `pnpm typecheck` · `pnpm test` · `pnpm build` |
+| Browse the UI components and the clickable mockup (Storybook) | `pnpm --filter @dokument/ui dev`, then open http://localhost:6006 |
 | Refresh the API client after an endpoint change | `dotnet build` then `pnpm --filter @dokument/api generate` |
 | Add a migration | `dotnet ef migrations add <Name> -p src/Dokument.Infrastructure -s src/Dokument.Host -o Persistence/Migrations` |
 

@@ -13,11 +13,15 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
   },
   {
-    files: ["apps/web/**/*.{ts,tsx}"],
+    files: ["apps/web/**/*.{ts,tsx}", "packages/ui/**/*.{ts,tsx}"],
     plugins: { "react-hooks": reactHooks, "react-refresh": reactRefresh },
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
     },
+  },
+  {
+    files: ["packages/ui/.storybook/**", "**/*.stories.tsx"],
+    rules: { "react-refresh/only-export-components": "off" },
   },
 );

@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.4** · Last updated: 2026-10-22
+> Status: **Draft v0.5** · Last updated: 2026-10-22
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -538,10 +538,11 @@ apps/mobile     Expo (dev builds, not Expo Go) + Expo Router + NativeWind
 packages/api    TS client generated from the server OpenAPI spec (openapi-typescript / orval)
 packages/core   shared hooks, formatting, upload queue logic, permission helpers
 packages/tokens design tokens → Tailwind v4 theme CSS (web) + JS preset and theme variables (NativeWind)
+packages/ui     web components (§16.4), Storybook and the clickable mockup (§16.5); web only
 packages/i18n   sv + en strings (i18next), shared by web and mobile
 ```
 
-The web and mobile apps share **logic and tokens, not UI components**. The web needs:
+The web and mobile apps share **logic and tokens, not UI components**. `packages/ui` is for the web app only. The web needs:
 - drag-and-drop to and from the OS
 - rubber-band and shift-click selection
 - keyboard shortcuts
@@ -663,7 +664,8 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - Copy is in sentence case, with no exclamation marks and no emoji. Buttons are verbs ("Copy link"), and toasts confirm in the past tense ("Link copied"). Errors say what happened and what to do next.
 - **Icons:** Material Symbols Rounded (Apache-2.0), outlined by default and filled when active or selected.
 - Keyboard navigation everywhere: arrow keys in the grid, Space to select, Enter to open, Delete to trash. Focus is shown by a visible 2 px focus ring. Every icon button has a label.
-- **Still to do before coding the UI:** a clickable mockup of the main screens (file browser, viewer, search results, admin settings), built from these components.
+- **Clickable mockup:** `packages/ui` holds the components in Storybook (`pnpm --filter @dokument/ui dev`), with toolbar switches for light/dark, sv/en and phone to desktop widths. The **Screens** stories are one app on fake data: the file browser, viewer, search results and admin settings, with selection, sharing, uploads and the duplicate prompt working locally.
+- Dates in lists come from `formatFileDate` in `packages/core`: "Today 09:14", "Yesterday", "12 Mar", then "21 Jun 2025". English uses British day-month order and a 24-hour clock.
 
 ---
 
@@ -786,6 +788,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 | 10 | Design system | **Approved** 2026-10-21: Material 3 roles, fjord-blue accent, Albert Sans, Material Symbols Rounded, 4 px grid (§16) |
 | 11 | Monorepo scaffold | 2026-10-21: .NET 10 LTS, Aspire 13, Postgres 17, Node 22 + pnpm + Turborepo, Tailwind v4 on web, AGPL-3.0 `LICENSE` (§3.2, §4.1, §15.1) |
 | 12 | Sessions | 2026-10-22: opaque tokens, stored hashed, expire after 30 days idle (sliding). Cookie + `X-CSRF-Token` on web, bearer on mobile. Sign-out is local, not at the IdP (§5). |
+| 13 | UI components | 2026-10-22: web components live in `packages/ui` (Radix + Tailwind v4, Storybook 10). The mobile app gets its own components on the same tokens (§15.1, §16.5) |
 
 ## 26. Open questions
 
