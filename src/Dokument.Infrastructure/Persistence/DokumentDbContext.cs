@@ -50,7 +50,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(s => s.UserId).HasColumnName("user_id");
             e.Property(s => s.Kind).HasColumnName("kind").HasConversion(LowercaseEnum<SessionKind>());
             e.Property(s => s.TokenHash).HasColumnName("token_hash");
-            e.Property(s => s.DeviceName).HasColumnName("device_name");
+            e.Property(s => s.DeviceName).HasColumnName("device_name").HasConversion(d => d!.Value, v => DeviceName.From(v));
             e.Property(s => s.CreatedAt).HasColumnName("created_at");
             e.Property(s => s.LastSeenAt).HasColumnName("last_seen_at");
             e.Property(s => s.ExpiresAt).HasColumnName("expires_at");

@@ -42,8 +42,8 @@ public static class SessionAuthentication
         IsEssential = true,
     };
 
-    public static void SetCookie(HttpContext context, string token, DateTimeOffset expires) =>
-        context.Response.Cookies.Append(CookieName, token, CookieOptions(context.Request, expires));
+    public static void SetCookie(HttpContext context, SessionToken token, DateTimeOffset expires) =>
+        context.Response.Cookies.Append(CookieName, token.Value, CookieOptions(context.Request, expires));
 
     public static void DeleteCookie(HttpContext context) =>
         context.Response.Cookies.Delete(CookieName, CookieOptions(context.Request, expires: null));
@@ -61,10 +61,20 @@ public sealed class SessionAuthenticationHandler(
 {
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var (token, fromCookie) = ReadToken();
-        if (token is null)
+        var (raw, fromCookie) = ReadToken();
+        if (raw is null)
         {
             return AuthenticateResult.NoResult();
+        }
+
+        if (!SessionToken.TryParse(raw, out var token))
+        {
+            if (fromCookie && !Response.HasStarted)
+            {
+                SessionAuthentication.DeleteCookie(Context);
+            }
+
+            return AuthenticateResult.Fail("The session token is malformed.");
         }
 
         var (session, refreshed) = await sessions.ValidateAsync(token, Context.RequestAborted);

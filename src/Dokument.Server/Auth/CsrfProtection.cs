@@ -1,4 +1,4 @@
-using Dokument.Application.Identity;
+using Dokument.Domain.Identity;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 
@@ -16,8 +16,8 @@ public static class CsrfProtection
         var user = context.User;
         if (!HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method) && !HttpMethods.IsOptions(request.Method) &&
             user.Identity?.IsAuthenticated == true && user.IsCookieSession() &&
-            context.Items[SessionAuthentication.TokenItem] is string token &&
-            !SessionToken.CsrfTokenMatches(token, request.Headers[SessionAuthentication.CsrfHeader]))
+            context.Items[SessionAuthentication.TokenItem] is SessionToken token &&
+            !token.CsrfTokenMatches(request.Headers[SessionAuthentication.CsrfHeader]))
         {
             await Results.Problem(
                 title: "Missing or invalid CSRF token",

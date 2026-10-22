@@ -1,4 +1,3 @@
-using Dokument.Application.Identity;
 using Dokument.Domain.Identity;
 using Dokument.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +8,7 @@ namespace Dokument.Infrastructure.Identity;
 public sealed class SessionStore(DokumentDbContext db, TimeProvider time)
 {
     /// <summary>Creates a session and returns it with its token. The token is not stored and can't be recovered later.</summary>
-    public async Task<(Session Session, string Token)> CreateAsync(Guid userId, SessionKind kind, string? deviceName, CancellationToken ct = default)
+    public async Task<(Session Session, SessionToken Token)> CreateAsync(Guid userId, SessionKind kind, DeviceName? deviceName, CancellationToken ct = default)
     {
         var now = time.GetUtcNow();
         var token = SessionToken.Create();
@@ -17,7 +16,7 @@ public sealed class SessionStore(DokumentDbContext db, TimeProvider time)
         {
             UserId = userId,
             Kind = kind,
-            TokenHash = SessionToken.Hash(token),
+            TokenHash = token.Hash(),
             DeviceName = deviceName,
             CreatedAt = now,
             LastSeenAt = now,
@@ -32,9 +31,9 @@ public sealed class SessionStore(DokumentDbContext db, TimeProvider time)
     /// Returns the active session for a token, with its user, and slides its expiry. The session is null if the token is
     /// unknown, expired or revoked, or the user is disabled. <c>Refreshed</c> says whether the expiry moved.
     /// </summary>
-    public async Task<(Session? Session, bool Refreshed)> ValidateAsync(string token, CancellationToken ct = default)
+    public async Task<(Session? Session, bool Refreshed)> ValidateAsync(SessionToken token, CancellationToken ct = default)
     {
-        var hash = SessionToken.Hash(token);
+        var hash = token.Hash();
         var session = await db.Sessions.Include(s => s.User).SingleOrDefaultAsync(s => s.TokenHash == hash, ct);
         var now = time.GetUtcNow();
         if (session is null || !session.IsActive(now) || session.User is not { IsDisabled: false })

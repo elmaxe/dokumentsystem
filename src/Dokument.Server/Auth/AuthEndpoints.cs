@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Dokument.Application.Identity;
 using Dokument.Domain.Identity;
 using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Persistence;
@@ -52,8 +51,8 @@ public static class AuthEndpoints
             return TypedResults.Unauthorized();
         }
 
-        var csrfToken = principal.IsCookieSession() && context.Items[SessionAuthentication.TokenItem] is string token
-            ? SessionToken.CsrfToken(token)
+        var csrfToken = principal.IsCookieSession() && context.Items[SessionAuthentication.TokenItem] is SessionToken token
+            ? token.CsrfToken()
             : null;
         return TypedResults.Ok(new CurrentSession(UserProfile.From(user), principal.SessionId(), csrfToken));
     }
@@ -100,5 +99,5 @@ public sealed record UserProfile(Guid Id, string DisplayName, string? Email, Use
 public sealed record SessionInfo(Guid Id, SessionKind Kind, string? DeviceName, DateTimeOffset CreatedAt, DateTimeOffset LastSeenAt, bool Current)
 {
     public static SessionInfo From(Session session, Guid currentSessionId) =>
-        new(session.Id, session.Kind, session.DeviceName, session.CreatedAt, session.LastSeenAt, session.Id == currentSessionId);
+        new(session.Id, session.Kind, session.DeviceName?.Value, session.CreatedAt, session.LastSeenAt, session.Id == currentSessionId);
 }

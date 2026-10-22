@@ -1,3 +1,4 @@
+using Dokument.Domain.Identity;
 using Dokument.Server.Auth;
 using Microsoft.Extensions.Configuration;
 
@@ -29,7 +30,22 @@ public class AuthHelpersTests
     [InlineData(null, null)]
     public void DeviceNames_are_readable(string? userAgent, string? expected)
     {
-        Assert.Equal(expected, DeviceNames.FromUserAgent(userAgent));
+        Assert.Equal(expected, DeviceName.FromUserAgent(userAgent)?.Value);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("   ", null)]
+    [InlineData(" Pixel 9 ", "Pixel 9")]
+    public void DeviceName_is_trimmed_and_never_blank(string? value, string? expected)
+    {
+        Assert.Equal(expected, DeviceName.From(value)?.Value);
+    }
+
+    [Fact]
+    public void DeviceName_is_shortened()
+    {
+        Assert.Equal(DeviceName.MaxLength, DeviceName.From(new string('x', 500))!.Value.Length);
     }
 
     [Fact]

@@ -1,4 +1,3 @@
-using Dokument.Application.Identity;
 using Dokument.Domain.Identity;
 
 namespace Dokument.UnitTests;
@@ -55,20 +54,43 @@ public class SessionTests
         var b = SessionToken.Create();
 
         Assert.NotEqual(a, b);
-        Assert.Equal(43, a.Length);
-        Assert.Equal(32, SessionToken.Hash(a).Length);
-        Assert.Equal(SessionToken.Hash(a), SessionToken.Hash(a));
+        Assert.Equal(43, a.Value.Length);
+        Assert.Equal(32, a.Hash().Length);
+        Assert.Equal(a.Hash(), a.Hash());
+    }
+
+    [Fact]
+    public void Tokens_round_trip_and_reject_garbage()
+    {
+        var token = SessionToken.Create();
+
+        Assert.True(SessionToken.TryParse(token.Value, out var parsed));
+        Assert.Equal(token, parsed);
+        Assert.False(SessionToken.TryParse(null, out _));
+        Assert.False(SessionToken.TryParse("", out _));
+        Assert.False(SessionToken.TryParse(token.Value[..42], out _));
+        Assert.False(SessionToken.TryParse(token.Value[..42] + "!", out _));
+        Assert.False(SessionToken.TryParse(token.Value + "A", out _));
+    }
+
+    [Fact]
+    public void Tokens_never_print_their_secret()
+    {
+        var token = SessionToken.Create();
+
+        Assert.DoesNotContain(token.Value, token.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(token.Value, $"{new { token }}", StringComparison.Ordinal);
     }
 
     [Fact]
     public void Csrf_token_is_tied_to_the_session_token()
     {
         var token = SessionToken.Create();
-        var csrf = SessionToken.CsrfToken(token);
+        var csrf = token.CsrfToken();
 
-        Assert.True(SessionToken.CsrfTokenMatches(token, csrf));
-        Assert.False(SessionToken.CsrfTokenMatches(SessionToken.Create(), csrf));
-        Assert.False(SessionToken.CsrfTokenMatches(token, null));
-        Assert.NotEqual(token, csrf);
+        Assert.True(token.CsrfTokenMatches(csrf));
+        Assert.False(SessionToken.Create().CsrfTokenMatches(csrf));
+        Assert.False(token.CsrfTokenMatches(null));
+        Assert.NotEqual(token.Value, csrf);
     }
 }

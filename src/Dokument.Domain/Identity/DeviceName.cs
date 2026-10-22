@@ -1,9 +1,23 @@
-namespace Dokument.Server.Auth;
+namespace Dokument.Domain.Identity;
 
-/// <summary>Turns a User-Agent into a readable name for the "active devices" list, e.g. "Firefox on Linux".</summary>
-public static class DeviceNames
+/// <summary>A readable name for a session in the "active devices" list, e.g. "Firefox on Linux". Never blank, at most 100 characters.</summary>
+public sealed record DeviceName
 {
-    public static string? FromUserAgent(string? userAgent)
+    public const int MaxLength = 100;
+
+    private DeviceName(string value) => Value = value;
+
+    public string Value { get; }
+
+    /// <summary>Trims and shortens the name. Returns null for a blank one.</summary>
+    public static DeviceName? From(string? value)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrEmpty(trimmed) ? null : new DeviceName(trimmed.Length <= MaxLength ? trimmed : trimmed[..MaxLength]);
+    }
+
+    /// <summary>Names the browser and OS from a User-Agent, falling back to the raw string.</summary>
+    public static DeviceName? FromUserAgent(string? userAgent)
     {
         if (string.IsNullOrWhiteSpace(userAgent))
         {
@@ -28,13 +42,14 @@ public static class DeviceNames
             : Has("Linux") ? "Linux"
             : null;
 
-        var name = (browser, os) switch
+        return From((browser, os) switch
         {
             (not null, not null) => $"{browser} on {os}",
             (not null, null) => browser,
             (null, not null) => os,
             _ => userAgent,
-        };
-        return name.Length <= 100 ? name : name[..100];
+        });
     }
+
+    public override string ToString() => Value;
 }

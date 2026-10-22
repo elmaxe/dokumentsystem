@@ -19,7 +19,7 @@ public sealed class Session
     public required byte[] TokenHash { get; init; }
 
     /// <summary>A readable name for the "active devices" list, e.g. "Firefox on Linux".</summary>
-    public string? DeviceName { get; set; }
+    public DeviceName? DeviceName { get; set; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset LastSeenAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }

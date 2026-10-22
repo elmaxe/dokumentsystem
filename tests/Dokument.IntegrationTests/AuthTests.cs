@@ -164,14 +164,14 @@ public sealed class AuthTests(PostgresFixture postgres)
         await app.LoginAsync(browser, Alice);
         var userId = (await DokumentApp.GetSessionAsync(browser)).User.Id;
 
-        string token;
+        SessionToken token;
         await using (var scope = app.Services.CreateAsyncScope())
         {
-            (_, token) = await scope.ServiceProvider.GetRequiredService<SessionStore>().CreateAsync(userId, SessionKind.Bearer, "Pixel 9");
+            (_, token) = await scope.ServiceProvider.GetRequiredService<SessionStore>().CreateAsync(userId, SessionKind.Bearer, DeviceName.From("Pixel 9"));
         }
 
         using var phone = app.CreateClient();
-        phone.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        phone.DefaultRequestHeaders.Authorization = new("Bearer", token.Value);
         var session = (await phone.GetFromJsonAsync<CurrentSession>("/api/v1/auth/session", Json.Options))!;
         Assert.Null(session.CsrfToken);
         Assert.Equal(HttpStatusCode.NoContent, (await phone.PostAsync("/api/v1/auth/logout", null)).StatusCode);

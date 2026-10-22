@@ -118,7 +118,7 @@ public static class AuthSetup
         }
 
         var (session, token) = await http.RequestServices.GetRequiredService<SessionStore>().CreateAsync(
-            user.Id, SessionKind.Cookie, DeviceNames.FromUserAgent(context.Request.Headers.UserAgent), http.RequestAborted);
+            user.Id, SessionKind.Cookie, DeviceName.FromUserAgent(context.Request.Headers.UserAgent), http.RequestAborted);
         SessionAuthentication.SetCookie(http, token, session.ExpiresAt);
         logger.LogInformation("User {UserId} signed in as {Role}", user.Id, user.Role);
 
