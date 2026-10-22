@@ -149,6 +149,219 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The items in a folder, or at the top of My files when folderId is left out. */
+        get: operations["ListFolder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetNode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CreateFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["RenameNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MoveNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The original bytes, as an attachment. Supports ranges. Audited, unlike previews. */
+        get: operations["DownloadFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ListVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/versions/{versionId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["RestoreVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/versions/{versionId}/keep-forever": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["SetKeepForever"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uploads/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Run before uploading: which of these files (by SHA-256) the user already has. */
+        post: operations["CheckDuplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uploads/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Upload anyway: adds a file with content the user already has, without sending the bytes. */
+        post: operations["CopyFromContent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetStorage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uploads/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The state of a tus upload, and once complete, the file it produced and any duplicates of it. */
+        get: operations["GetUpload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -157,11 +370,101 @@ export interface components {
             enabled: boolean;
             providerName: null | string;
         };
+        CopyFromContentRequest: {
+            /** Format: uuid */
+            folderId: null | string;
+            name: string;
+            sha256: string;
+            /** Format: date-time */
+            clientModifiedAt: null | string;
+            onConflict?: components["schemas"]["NameConflictPolicy"];
+        };
+        CreateFolderRequest: {
+            /** Format: uuid */
+            folderId: null | string;
+            name: string;
+        };
         CurrentSession: {
             user: components["schemas"]["UserProfile"];
             /** Format: uuid */
             sessionId: string;
             csrfToken: null | string;
+        };
+        DuplicateCheckItem: {
+            name: string;
+            /** Format: int64 */
+            size: number;
+            sha256: string;
+        };
+        DuplicateCheckRequest: {
+            files: components["schemas"]["DuplicateCheckItem"][];
+        };
+        DuplicateCheckResponse: {
+            files: components["schemas"]["DuplicateCheckResult"][];
+        };
+        DuplicateCheckResult: {
+            sha256: string;
+            duplicates: components["schemas"]["DuplicateMatch"][];
+        };
+        DuplicateMatch: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            path: components["schemas"]["PathEntry"][];
+            inTrash: boolean;
+        };
+        FolderListing: {
+            folder: null | components["schemas"]["NodeDto"];
+            path: components["schemas"]["PathEntry"][];
+            items: components["schemas"]["NodeDto"][];
+        };
+        KeepForeverRequest: {
+            keepForever: boolean;
+        };
+        MoveRequest: {
+            /** Format: uuid */
+            folderId: null | string;
+        };
+        /**
+         * @default fail
+         * @enum {unknown}
+         */
+        NameConflictPolicy: "fail" | "keepBoth" | "newVersion";
+        NodeDetails: {
+            node: components["schemas"]["NodeDto"];
+            path: components["schemas"]["PathEntry"][];
+        };
+        NodeDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            parentId: null | string;
+            kind: components["schemas"]["NodeKind"];
+            name: string;
+            /** Format: int64 */
+            size: null | number;
+            mimeType: null | string;
+            /** Format: uuid */
+            ownerId: string;
+            ownerName: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            modifiedAt: string;
+            /** Format: uuid */
+            currentVersionId: null | string;
+            /** Format: int32 */
+            versionNumber: null | number;
+        };
+        /** @enum {unknown} */
+        NodeKind: "folder" | "file";
+        PathEntry: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        RenameRequest: {
+            name: string;
         };
         ServerInfo: {
             name: string;
@@ -180,6 +483,27 @@ export interface components {
         };
         /** @enum {unknown} */
         SessionKind: "cookie" | "bearer";
+        StorageUsage: {
+            /** Format: int64 */
+            usedBytes: number;
+            /** Format: int64 */
+            quotaBytes: null | number;
+        };
+        UploadStatus: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: int64 */
+            size: number;
+            /** Format: int64 */
+            offset: number;
+            complete: boolean;
+            /** Format: uuid */
+            nodeId: null | string;
+            /** Format: date-time */
+            expiresAt: string;
+            duplicates: components["schemas"]["DuplicateMatch"][];
+        };
         UserProfile: {
             /** Format: uuid */
             id: string;
@@ -189,6 +513,29 @@ export interface components {
         };
         /** @enum {unknown} */
         UserRole: "user" | "admin";
+        VersionDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            number: number;
+            /** Format: int64 */
+            size: number;
+            mimeType: string;
+            originalName: string;
+            /** Format: uuid */
+            uploadedBy: string;
+            uploadedByName: string;
+            /** Format: date-time */
+            uploadedAt: string;
+            /** Format: date-time */
+            clientModifiedAt: null | string;
+            keepForever: boolean;
+            current: boolean;
+            /** Format: int32 */
+            restoredFrom: null | number;
+            /** Format: date-time */
+            purgeAt: null | string;
+        };
     };
     responses: never;
     parameters: never;
@@ -389,6 +736,310 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    ListFolder: {
+        parameters: {
+            query?: {
+                folderId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderListing"];
+                };
+            };
+        };
+    };
+    GetNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDetails"];
+                };
+            };
+        };
+    };
+    CreateFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+        };
+    };
+    RenameNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+        };
+    };
+    MoveNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+        };
+    };
+    DownloadFile: {
+        parameters: {
+            query?: {
+                versionId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ListVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionDto"][];
+                };
+            };
+        };
+    };
+    RestoreVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionDto"];
+                };
+            };
+        };
+    };
+    SetKeepForever: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeepForeverRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionDto"];
+                };
+            };
+        };
+    };
+    CheckDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateCheckResponse"];
+                };
+            };
+        };
+    };
+    CopyFromContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CopyFromContentRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+        };
+    };
+    GetStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageUsage"];
+                };
+            };
+        };
+    };
+    GetUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadStatus"];
+                };
             };
         };
     };

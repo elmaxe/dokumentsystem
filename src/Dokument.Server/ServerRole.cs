@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Dokument.Infrastructure.Storage;
 using Dokument.Server.Auth;
+using Dokument.Server.Files;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -24,8 +25,15 @@ public static class ServerRole
             return Task.CompletedTask;
         }));
         builder.Services.AddProblemDetails();
+        builder.Services.AddExceptionHandler<DriveExceptionHandler>();
+        builder.Services.AddHostedService<UploadCleanup>();
         builder.Services.ConfigureHttpJsonOptions(options =>
-            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
+        {
+            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+
+            // Numbers are numbers: without this the OpenAPI schema types every integer as "number | string".
+            options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
+        });
         builder.AddDokumentAuth();
         return builder;
     }
@@ -33,6 +41,7 @@ public static class ServerRole
     public static WebApplication MapServerRole(this WebApplication app)
     {
         app.UsePublicUrl(PublicUrl.FromConfiguration(app.Configuration));
+        app.UseExceptionHandler();
 
         // The built web app is copied into wwwroot by the Docker image. Unknown non-API paths go to the SPA router.
         app.UseDefaultFiles();
@@ -54,6 +63,8 @@ public static class ServerRole
         var api = app.MapGroup("/api/v1");
         api.MapGet("/server/info", GetServerInfo).WithName("GetServerInfo").WithTags("Server").AllowAnonymous();
         api.MapAuthEndpoints();
+        api.MapFileEndpoints();
+        api.MapTusEndpoints();
         app.MapFallback("/api/{**path}", () => TypedResults.NotFound());
         app.MapFallbackToFile("index.html");
         return app;

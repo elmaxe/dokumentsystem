@@ -1,3 +1,4 @@
+using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Storage;
@@ -17,6 +18,11 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<UserProvisioner>();
         services.AddScoped<SessionStore>();
+        services.AddSingleton<BlobStore>();
+        services.AddSingleton<UploadLocks>();
+        services.AddScoped<AuditLog>();
+        services.AddScoped<DriveService>();
+        services.AddScoped<UploadService>();
         return services;
     }
 }
