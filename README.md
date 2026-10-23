@@ -32,6 +32,7 @@ The integration tests run against our Postgres image, so build it once first: `d
 | Task | Command |
 | --- | --- |
 | Build and test .NET | `dotnet build` · `dotnet test` |
+| Format the C# code (CSharpier, checked in CI) | `dotnet csharpier format .` |
 | Lint, typecheck, test, build the web side | `pnpm lint` · `pnpm typecheck` · `pnpm test` · `pnpm build` |
 | Browse the UI components and the clickable mockup (Storybook) | `pnpm --filter @dokument/ui dev`, then open http://localhost:6006 |
 | Refresh the API client after an endpoint change | `dotnet build` then `pnpm --filter @dokument/api generate` |
