@@ -27,6 +27,7 @@ public static class ServerRole
         builder.Services.AddProblemDetails();
         builder.Services.AddExceptionHandler<DriveExceptionHandler>();
         builder.Services.AddHostedService<UploadCleanup>();
+        builder.Services.AddScoped<NodeDtoMapper>();
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));

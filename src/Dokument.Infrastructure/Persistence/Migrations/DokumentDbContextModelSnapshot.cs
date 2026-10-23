@@ -444,6 +444,144 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Jobs.Job", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("LockedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("locked_by");
+
+                    b.Property<DateTimeOffset?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("locked_until");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer")
+                        .HasColumnName("priority");
+
+                    b.Property<DateTimeOffset>("RunAfter")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("run_after");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("subject");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Type", "Subject");
+
+                    b.HasIndex("Type", "Priority", "RunAfter")
+                        .HasDatabaseName("ix_jobs_due")
+                        .HasFilter("status IN ('queued', 'running')");
+
+                    b.ToTable("jobs", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Previews.BlobPreview", b =>
+                {
+                    b.Property<byte[]>("BlobHash")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob_hash");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer")
+                        .HasColumnName("height");
+
+                    b.Property<int?>("PageCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("page_count");
+
+                    b.Property<int>("PipelineVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("pipeline_version");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.HasKey("BlobHash");
+
+                    b.ToTable("blob_previews", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Previews.Rendition", b =>
+                {
+                    b.Property<byte[]>("BlobHash")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob_hash");
+
+                    b.Property<string>("Kind")
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("integer")
+                        .HasColumnName("height");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("mime_type");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("storage_key");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.HasKey("BlobHash", "Kind");
+
+                    b.ToTable("renditions", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Infrastructure.Persistence.Setting", b =>
                 {
                     b.Property<string>("Key")
@@ -530,6 +668,24 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Previews.BlobPreview", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.Blob", null)
+                        .WithOne()
+                        .HasForeignKey("Dokument.Domain.Previews.BlobPreview", "BlobHash")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Previews.Rendition", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.Blob", null)
+                        .WithMany()
+                        .HasForeignKey("BlobHash")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

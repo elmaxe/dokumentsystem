@@ -3,14 +3,16 @@ using Dokument.Application.Files;
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
 using Dokument.Domain.Identity;
+using Dokument.Domain.Jobs;
 using Dokument.Infrastructure.Persistence;
+using Dokument.Infrastructure.Previews;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace Dokument.Infrastructure.Files;
 
 /// <summary>Folders, files and versions (docs/design.md §6, §8). Every operation checks access through <see cref="NodeAccess"/>.</summary>
-public sealed class DriveService(DokumentDbContext db, BlobStore blobs, AuditLog audit, TimeProvider time)
+public sealed class DriveService(DokumentDbContext db, BlobStore blobs, AuditLog audit, PreviewService previews, TimeProvider time)
 {
     private IQueryable<Node> Live(Actor actor) => db.Nodes.VisibleTo(actor).Where(n => n.TrashedAt == null);
 
@@ -310,6 +312,7 @@ public sealed class DriveService(DokumentDbContext db, BlobStore blobs, AuditLog
         node.CurrentVersion = version;
         node.ModifiedAt = now;
         await db.Blobs.Where(b => b.Hash == hash).ExecuteUpdateAsync(s => s.SetProperty(b => b.RefCount, b => b.RefCount + 1), ct);
+        await previews.RequestAsync(hash, JobPriority.Interactive, ct);
         return version;
     }
 
