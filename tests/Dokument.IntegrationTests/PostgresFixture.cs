@@ -11,7 +11,10 @@ namespace Dokument.IntegrationTests;
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer container = new PostgreSqlBuilder(Environment.GetEnvironmentVariable("DOKUMENT_TEST_POSTGRES_IMAGE") ?? "dokumentsystem-postgres:ci")
+    private readonly PostgreSqlContainer container = new PostgreSqlBuilder(
+        Environment.GetEnvironmentVariable("DOKUMENT_TEST_POSTGRES_IMAGE")
+            ?? "dokumentsystem-postgres:ci"
+    )
         .WithImagePullPolicy(_ => false)
         .Build();
 
@@ -26,6 +29,9 @@ public sealed class PostgresFixture : IAsyncLifetime
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand($"CREATE DATABASE {name}", connection);
         await command.ExecuteNonQueryAsync();
-        return new NpgsqlConnectionStringBuilder(container.GetConnectionString()) { Database = name }.ConnectionString;
+        return new NpgsqlConnectionStringBuilder(container.GetConnectionString())
+        {
+            Database = name,
+        }.ConnectionString;
     }
 }

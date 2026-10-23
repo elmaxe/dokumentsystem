@@ -20,7 +20,8 @@ public sealed record DerivedKey
 
     /// <summary>For values read back from the database.</summary>
     public static DerivedKey From(string value) =>
-        value.StartsWith("thumbs/", StringComparison.Ordinal) && !value.Contains("..", StringComparison.Ordinal)
+        value.StartsWith("thumbs/", StringComparison.Ordinal)
+        && !value.Contains("..", StringComparison.Ordinal)
             ? new DerivedKey(value)
             : throw new ArgumentException("Not a derived storage key.", nameof(value));
 

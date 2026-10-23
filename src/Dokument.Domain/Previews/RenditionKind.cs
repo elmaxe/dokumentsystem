@@ -19,28 +19,31 @@ public enum RenditionKind
 public static class RenditionKinds
 {
     /// <summary>The longest edge in pixels. Smaller sources are never scaled up.</summary>
-    public static int MaxEdge(this RenditionKind kind) => kind switch
-    {
-        RenditionKind.ThumbSmall => 256,
-        RenditionKind.ThumbMedium => 640,
-        RenditionKind.Preview => 2048,
-        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-    };
+    public static int MaxEdge(this RenditionKind kind) =>
+        kind switch
+        {
+            RenditionKind.ThumbSmall => 256,
+            RenditionKind.ThumbMedium => 640,
+            RenditionKind.Preview => 2048,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
 
     /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>.</summary>
-    public static string Key(this RenditionKind kind) => kind switch
-    {
-        RenditionKind.ThumbSmall => "thumb_s",
-        RenditionKind.ThumbMedium => "thumb_m",
-        RenditionKind.Preview => "preview",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-    };
+    public static string Key(this RenditionKind kind) =>
+        kind switch
+        {
+            RenditionKind.ThumbSmall => "thumb_s",
+            RenditionKind.ThumbMedium => "thumb_m",
+            RenditionKind.Preview => "preview",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
 
-    public static RenditionKind FromKey(string key) => key switch
-    {
-        "thumb_s" => RenditionKind.ThumbSmall,
-        "thumb_m" => RenditionKind.ThumbMedium,
-        "preview" => RenditionKind.Preview,
-        _ => throw new ArgumentException($"\"{key}\" isn't a rendition kind.", nameof(key)),
-    };
+    public static RenditionKind FromKey(string key) =>
+        key switch
+        {
+            "thumb_s" => RenditionKind.ThumbSmall,
+            "thumb_m" => RenditionKind.ThumbMedium,
+            "preview" => RenditionKind.Preview,
+            _ => throw new ArgumentException($"\"{key}\" isn't a rendition kind.", nameof(key)),
+        };
 }

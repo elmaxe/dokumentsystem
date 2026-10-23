@@ -8,11 +8,15 @@ internal static class HealthCheckCommand
 {
     public static async Task<int> RunAsync()
     {
-        var port = Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORTS")?.Split(';', ',')[0] ?? "8080";
+        var port =
+            Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORTS")?.Split(';', ',')[0]
+            ?? "8080";
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         try
         {
-            using var response = await http.GetAsync(new Uri($"http://127.0.0.1:{port}/health/ready"));
+            using var response = await http.GetAsync(
+                new Uri($"http://127.0.0.1:{port}/health/ready")
+            );
             return response.IsSuccessStatusCode ? 0 : 1;
         }
         catch (HttpRequestException)

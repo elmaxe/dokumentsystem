@@ -9,8 +9,18 @@ namespace Dokument.IntegrationTests;
 
 public sealed class AuthTests(PostgresFixture postgres)
 {
-    private static readonly FakeUser Alice = new("alice-sub", "Alice Andersson", "alice@example.com", "family");
-    private static readonly FakeUser Bob = new("bob-sub", "Bob Berg", "bob@example.com", "dokument-admins");
+    private static readonly FakeUser Alice = new(
+        "alice-sub",
+        "Alice Andersson",
+        "alice@example.com",
+        "family"
+    );
+    private static readonly FakeUser Bob = new(
+        "bob-sub",
+        "Bob Berg",
+        "bob@example.com",
+        "dokument-admins"
+    );
 
     [Fact]
     public async Task Login_creates_the_user_and_a_cookie_session()
@@ -22,7 +32,10 @@ public sealed class AuthTests(PostgresFixture postgres)
 
         Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
         Assert.Equal("/folders/42", callback.Headers.Location!.ToString());
-        var cookie = Assert.Single(callback.Headers.GetValues("Set-Cookie"), c => c.StartsWith(SessionAuthentication.CookieName + "=", StringComparison.Ordinal));
+        var cookie = Assert.Single(
+            callback.Headers.GetValues("Set-Cookie"),
+            c => c.StartsWith(SessionAuthentication.CookieName + "=", StringComparison.Ordinal)
+        );
         Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=lax", cookie, StringComparison.OrdinalIgnoreCase);
 
@@ -48,7 +61,10 @@ public sealed class AuthTests(PostgresFixture postgres)
         Assert.Equal(UserRole.Admin, session.User.Role);
         Assert.Equal((await DokumentApp.GetSessionAsync(first)).User.Id, session.User.Id);
 
-        var sessions = await second.GetFromJsonAsync<List<SessionInfo>>("/api/v1/sessions", Json.Options);
+        var sessions = await second.GetFromJsonAsync<List<SessionInfo>>(
+            "/api/v1/sessions",
+            Json.Options
+        );
         Assert.Equal(2, sessions!.Count);
         Assert.Single(sessions, s => s.Current);
     }
@@ -56,13 +72,19 @@ public sealed class AuthTests(PostgresFixture postgres)
     [Fact]
     public async Task User_group_is_an_allow_list()
     {
-        await using var app = await DokumentApp.StartAsync(postgres, new Dictionary<string, string?> { ["OIDC_USER_GROUP"] = "dokument-users" });
+        await using var app = await DokumentApp.StartAsync(
+            postgres,
+            new Dictionary<string, string?> { ["OIDC_USER_GROUP"] = "dokument-users" }
+        );
         using var browser = app.CreateBrowser();
 
         var callback = await app.LoginAsync(browser, Alice);
 
         Assert.Equal("/signin?error=not_allowed", callback.Headers.Location!.ToString());
-        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.GetAsync("/api/v1/auth/session")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            (await browser.GetAsync("/api/v1/auth/session")).StatusCode
+        );
     }
 
     [Fact]
@@ -75,14 +97,21 @@ public sealed class AuthTests(PostgresFixture postgres)
 
         await using (var scope = app.Services.CreateAsyncScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<Infrastructure.Persistence.DokumentDbContext>();
+            var db =
+                scope.ServiceProvider.GetRequiredService<Infrastructure.Persistence.DokumentDbContext>();
             (await db.Users.FindAsync(userId))!.DisabledAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync();
         }
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.GetAsync("/api/v1/auth/session")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            (await browser.GetAsync("/api/v1/auth/session")).StatusCode
+        );
         using var again = app.CreateBrowser();
-        Assert.Equal("/signin?error=disabled", (await app.LoginAsync(again, Alice)).Headers.Location!.ToString());
+        Assert.Equal(
+            "/signin?error=disabled",
+            (await app.LoginAsync(again, Alice)).Headers.Location!.ToString()
+        );
     }
 
     [Fact]
@@ -104,12 +133,18 @@ public sealed class AuthTests(PostgresFixture postgres)
         await app.LoginAsync(browser, Alice);
         var session = await DokumentApp.GetSessionAsync(browser);
 
-        Assert.Equal(HttpStatusCode.Forbidden, (await browser.PostAsync("/api/v1/auth/logout", null)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await browser.PostAsync("/api/v1/auth/logout", null)).StatusCode
+        );
 
         using var logout = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout");
         logout.Headers.Add(SessionAuthentication.CsrfHeader, session.CsrfToken);
         Assert.Equal(HttpStatusCode.NoContent, (await browser.SendAsync(logout)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.GetAsync("/api/v1/auth/session")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            (await browser.GetAsync("/api/v1/auth/session")).StatusCode
+        );
     }
 
     [Fact]
@@ -123,11 +158,17 @@ public sealed class AuthTests(PostgresFixture postgres)
         var laptopSession = await DokumentApp.GetSessionAsync(laptop);
         var phoneSession = await DokumentApp.GetSessionAsync(phone);
 
-        using var revoke = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/sessions/{phoneSession.SessionId}");
+        using var revoke = new HttpRequestMessage(
+            HttpMethod.Delete,
+            $"/api/v1/sessions/{phoneSession.SessionId}"
+        );
         revoke.Headers.Add(SessionAuthentication.CsrfHeader, laptopSession.CsrfToken);
         Assert.Equal(HttpStatusCode.NoContent, (await laptop.SendAsync(revoke)).StatusCode);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await phone.GetAsync("/api/v1/auth/session")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            (await phone.GetAsync("/api/v1/auth/session")).StatusCode
+        );
         Assert.Equal(HttpStatusCode.OK, (await laptop.GetAsync("/api/v1/auth/session")).StatusCode);
     }
 
@@ -142,18 +183,33 @@ public sealed class AuthTests(PostgresFixture postgres)
         var aliceSession = await DokumentApp.GetSessionAsync(alice);
         var bobSession = await DokumentApp.GetSessionAsync(bob);
 
-        using var revoke = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/sessions/{bobSession.SessionId}");
+        using var revoke = new HttpRequestMessage(
+            HttpMethod.Delete,
+            $"/api/v1/sessions/{bobSession.SessionId}"
+        );
         revoke.Headers.Add(SessionAuthentication.CsrfHeader, aliceSession.CsrfToken);
         Assert.Equal(HttpStatusCode.NotFound, (await alice.SendAsync(revoke)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await alice.GetAsync($"/api/v1/admin/users/{bobSession.User.Id}/sessions")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await alice.GetAsync($"/api/v1/admin/users/{bobSession.User.Id}/sessions")).StatusCode
+        );
 
         // Bob is an admin and may revoke Alice's session.
-        var aliceSessions = await bob.GetFromJsonAsync<List<SessionInfo>>($"/api/v1/admin/users/{aliceSession.User.Id}/sessions", Json.Options);
+        var aliceSessions = await bob.GetFromJsonAsync<List<SessionInfo>>(
+            $"/api/v1/admin/users/{aliceSession.User.Id}/sessions",
+            Json.Options
+        );
         Assert.Single(aliceSessions!);
-        using var adminRevoke = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/admin/sessions/{aliceSession.SessionId}");
+        using var adminRevoke = new HttpRequestMessage(
+            HttpMethod.Delete,
+            $"/api/v1/admin/sessions/{aliceSession.SessionId}"
+        );
         adminRevoke.Headers.Add(SessionAuthentication.CsrfHeader, bobSession.CsrfToken);
         Assert.Equal(HttpStatusCode.NoContent, (await bob.SendAsync(adminRevoke)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await alice.GetAsync("/api/v1/auth/session")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            (await alice.GetAsync("/api/v1/auth/session")).StatusCode
+        );
     }
 
     [Fact]
@@ -167,15 +223,25 @@ public sealed class AuthTests(PostgresFixture postgres)
         SessionToken token;
         await using (var scope = app.Services.CreateAsyncScope())
         {
-            (_, token) = await scope.ServiceProvider.GetRequiredService<SessionStore>().CreateAsync(userId, SessionKind.Bearer, DeviceName.From("Pixel 9"));
+            (_, token) = await scope
+                .ServiceProvider.GetRequiredService<SessionStore>()
+                .CreateAsync(userId, SessionKind.Bearer, DeviceName.From("Pixel 9"));
         }
 
         using var phone = app.CreateClient();
         phone.DefaultRequestHeaders.Authorization = new("Bearer", token.Value);
-        var session = (await phone.GetFromJsonAsync<CurrentSession>("/api/v1/auth/session", Json.Options))!;
+        var session = (
+            await phone.GetFromJsonAsync<CurrentSession>("/api/v1/auth/session", Json.Options)
+        )!;
         Assert.Null(session.CsrfToken);
-        Assert.Equal(HttpStatusCode.NoContent, (await phone.PostAsync("/api/v1/auth/logout", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await phone.GetAsync("/api/v1/auth/session")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            (await phone.PostAsync("/api/v1/auth/logout", null)).StatusCode
+        );
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            (await phone.GetAsync("/api/v1/auth/session")).StatusCode
+        );
     }
 
     [Fact]
@@ -184,7 +250,10 @@ public sealed class AuthTests(PostgresFixture postgres)
         await using var app = await DokumentApp.StartAsync(postgres);
         using var client = app.CreateClient();
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/sessions")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            (await client.GetAsync("/api/v1/sessions")).StatusCode
+        );
         var config = await client.GetFromJsonAsync<AuthConfig>("/api/v1/auth/config", Json.Options);
         Assert.True(config!.Enabled);
     }

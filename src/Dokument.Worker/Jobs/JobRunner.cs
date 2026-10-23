@@ -15,7 +15,8 @@ internal sealed partial class JobRunner(
     IServiceScopeFactory scopes,
     IEnumerable<JobHandlerRegistration> registrations,
     IOptions<WorkerOptions> options,
-    ILogger<JobRunner> logger) : BackgroundService
+    ILogger<JobRunner> logger
+) : BackgroundService
 {
     private static readonly TimeSpan PruneAfter = TimeSpan.FromDays(7);
 
@@ -24,14 +25,25 @@ internal sealed partial class JobRunner(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var loops = registrations
-            .SelectMany(r => Enumerable.Range(0, Math.Max(1, r.Concurrency)).Select(_ => RunLoopAsync(r, stoppingToken)))
+            .SelectMany(r =>
+                Enumerable
+                    .Range(0, Math.Max(1, r.Concurrency))
+                    .Select(_ => RunLoopAsync(r, stoppingToken))
+            )
             .Append(PruneLoopAsync(stoppingToken))
             .ToList();
-        LogStarted(logger, workerId, string.Join(", ", registrations.Select(r => $"{r.Type} ×{r.Concurrency}")));
+        LogStarted(
+            logger,
+            workerId,
+            string.Join(", ", registrations.Select(r => $"{r.Type} ×{r.Concurrency}"))
+        );
         await Task.WhenAll(loops);
     }
 
-    private async Task RunLoopAsync(JobHandlerRegistration registration, CancellationToken stoppingToken)
+    private async Task RunLoopAsync(
+        JobHandlerRegistration registration,
+        CancellationToken stoppingToken
+    )
     {
         try
         {
@@ -58,24 +70,31 @@ internal sealed partial class JobRunner(
                 }
             }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
     /// <summary>Claims and runs one job. False when nothing was due.</summary>
-    private async Task<bool> RunNextAsync(JobHandlerRegistration registration, CancellationToken stoppingToken)
+    private async Task<bool> RunNextAsync(
+        JobHandlerRegistration registration,
+        CancellationToken stoppingToken
+    )
     {
         await using var scope = scopes.CreateAsyncScope();
         var queue = scope.ServiceProvider.GetRequiredService<JobQueue>();
         var timeout = options.Value.JobTimeout;
-        var job = await queue.ClaimAsync(registration.Type, workerId, lease: timeout * 2, stoppingToken);
+        var job = await queue.ClaimAsync(
+            registration.Type,
+            workerId,
+            lease: timeout * 2,
+            stoppingToken
+        );
         if (job is null)
         {
             return false;
         }
 
-        var handler = (IJobHandler)scope.ServiceProvider.GetRequiredService(registration.HandlerType);
+        var handler = (IJobHandler)
+            scope.ServiceProvider.GetRequiredService(registration.HandlerType);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         deadline.CancelAfter(timeout);
         try
@@ -91,7 +110,9 @@ internal sealed partial class JobRunner(
         }
         catch (Exception e)
         {
-            var error = deadline.IsCancellationRequested ? $"Timed out after {timeout}." : $"{e.GetType().Name}: {e.Message}";
+            var error = deadline.IsCancellationRequested
+                ? $"Timed out after {timeout}."
+                : $"{e.GetType().Name}: {e.Message}";
             LogFailed(logger, e, job.Type.Name, job.Subject, job.Attempts);
             await queue.FailAsync(job, error, RetryPolicy.Default, CancellationToken.None);
         }
@@ -108,7 +129,9 @@ internal sealed partial class JobRunner(
                 try
                 {
                     await using var scope = scopes.CreateAsyncScope();
-                    await scope.ServiceProvider.GetRequiredService<JobQueue>().PruneAsync(PruneAfter, stoppingToken);
+                    await scope
+                        .ServiceProvider.GetRequiredService<JobQueue>()
+                        .PruneAsync(PruneAfter, stoppingToken);
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
@@ -118,19 +141,34 @@ internal sealed partial class JobRunner(
                 await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
             }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Worker {WorkerId} started: {Handlers}")]
     private static partial void LogStarted(ILogger logger, string workerId, string handlers);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Job {Type} {Subject} done (attempt {Attempt})")]
-    private static partial void LogSucceeded(ILogger logger, string type, string subject, int attempt);
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Job {Type} {Subject} done (attempt {Attempt})"
+    )]
+    private static partial void LogSucceeded(
+        ILogger logger,
+        string type,
+        string subject,
+        int attempt
+    );
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Job {Type} {Subject} failed (attempt {Attempt})")]
-    private static partial void LogFailed(ILogger logger, Exception e, string type, string subject, int attempt);
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Job {Type} {Subject} failed (attempt {Attempt})"
+    )]
+    private static partial void LogFailed(
+        ILogger logger,
+        Exception e,
+        string type,
+        string subject,
+        int attempt
+    );
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Job queue error ({Type}); retrying shortly")]
     private static partial void LogQueueError(ILogger logger, Exception e, string type);

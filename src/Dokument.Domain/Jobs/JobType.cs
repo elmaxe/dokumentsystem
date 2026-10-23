@@ -14,7 +14,8 @@ public sealed record JobType
     public string Name { get; }
 
     public static JobType From(string name) =>
-        name.Length is > 0 and <= 64 && name.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '.')
+        name.Length is > 0 and <= 64
+        && name.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '.')
             ? new JobType(name)
             : throw new ArgumentException($"\"{name}\" isn't a job type name.", nameof(name));
 

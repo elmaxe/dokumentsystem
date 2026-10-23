@@ -25,25 +25,32 @@ public static class SessionAuthentication
     /// <summary>The raw token of the current request, kept for the CSRF check.</summary>
     internal const string TokenItem = "dokument.session.token";
 
-    public static Guid UserId(this ClaimsPrincipal principal) => Guid.Parse(principal.FindFirstValue(UserIdClaim)!);
+    public static Guid UserId(this ClaimsPrincipal principal) =>
+        Guid.Parse(principal.FindFirstValue(UserIdClaim)!);
 
-    public static Guid SessionId(this ClaimsPrincipal principal) => Guid.Parse(principal.FindFirstValue(SessionIdClaim)!);
+    public static Guid SessionId(this ClaimsPrincipal principal) =>
+        Guid.Parse(principal.FindFirstValue(SessionIdClaim)!);
 
     public static bool IsCookieSession(this ClaimsPrincipal principal) =>
         principal.FindFirstValue(SessionKindClaim) == nameof(SessionKind.Cookie);
 
-    public static CookieOptions CookieOptions(HttpRequest request, DateTimeOffset? expires) => new()
-    {
-        HttpOnly = true,
-        Secure = request.IsHttps,
-        SameSite = SameSiteMode.Lax,
-        Path = "/",
-        Expires = expires,
-        IsEssential = true,
-    };
+    public static CookieOptions CookieOptions(HttpRequest request, DateTimeOffset? expires) =>
+        new()
+        {
+            HttpOnly = true,
+            Secure = request.IsHttps,
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+            Expires = expires,
+            IsEssential = true,
+        };
 
     public static void SetCookie(HttpContext context, SessionToken token, DateTimeOffset expires) =>
-        context.Response.Cookies.Append(CookieName, token.Value, CookieOptions(context.Request, expires));
+        context.Response.Cookies.Append(
+            CookieName,
+            token.Value,
+            CookieOptions(context.Request, expires)
+        );
 
     public static void DeleteCookie(HttpContext context) =>
         context.Response.Cookies.Delete(CookieName, CookieOptions(context.Request, expires: null));
@@ -57,7 +64,8 @@ public sealed class SessionAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,
-    SessionStore sessions) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    SessionStore sessions
+) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -78,7 +86,10 @@ public sealed class SessionAuthenticationHandler(
         }
 
         var (session, refreshed) = await sessions.ValidateAsync(token, Context.RequestAborted);
-        if (session?.User is not { } user || session.Kind != (fromCookie ? SessionKind.Cookie : SessionKind.Bearer))
+        if (
+            session?.User is not { } user
+            || session.Kind != (fromCookie ? SessionKind.Cookie : SessionKind.Bearer)
+        )
         {
             if (fromCookie && !Response.HasStarted)
             {
@@ -105,8 +116,11 @@ public sealed class SessionAuthenticationHandler(
             ],
             SessionAuthentication.Scheme,
             nameType: ClaimTypes.Name,
-            roleType: SessionAuthentication.RoleClaim);
-        return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SessionAuthentication.Scheme));
+            roleType: SessionAuthentication.RoleClaim
+        );
+        return AuthenticateResult.Success(
+            new AuthenticationTicket(new ClaimsPrincipal(identity), SessionAuthentication.Scheme)
+        );
     }
 
     private (string? Token, bool FromCookie) ReadToken()
@@ -118,7 +132,9 @@ public sealed class SessionAuthenticationHandler(
             return (bearer.Length > 0 ? bearer : null, false);
         }
 
-        return Request.Cookies.TryGetValue(SessionAuthentication.CookieName, out var cookie) && cookie.Length > 0
+        return
+            Request.Cookies.TryGetValue(SessionAuthentication.CookieName, out var cookie)
+            && cookie.Length > 0
             ? (cookie, true)
             : (null, false);
     }

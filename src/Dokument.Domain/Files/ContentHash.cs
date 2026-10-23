@@ -18,7 +18,9 @@ public sealed record ContentHash
     public string Hex => Convert.ToHexStringLower(bytes);
 
     public static ContentHash FromBytes(ReadOnlySpan<byte> value) =>
-        value.Length == ByteLength ? new ContentHash(value.ToArray()) : throw new ArgumentException("A SHA-256 is 32 bytes.", nameof(value));
+        value.Length == ByteLength
+            ? new ContentHash(value.ToArray())
+            : throw new ArgumentException("A SHA-256 is 32 bytes.", nameof(value));
 
     /// <summary>Accepts 64 hex digits in either case.</summary>
     public static bool TryParse(string? hex, [NotNullWhen(true)] out ContentHash? hash)
@@ -33,12 +35,15 @@ public sealed record ContentHash
         return true;
     }
 
-    public static async Task<ContentHash> ComputeAsync(Stream stream, CancellationToken ct = default) =>
-        new(await SHA256.HashDataAsync(stream, ct));
+    public static async Task<ContentHash> ComputeAsync(
+        Stream stream,
+        CancellationToken ct = default
+    ) => new(await SHA256.HashDataAsync(stream, ct));
 
     public byte[] ToArray() => (byte[])bytes.Clone();
 
-    public bool Equals(ContentHash? other) => other is not null && bytes.AsSpan().SequenceEqual(other.bytes);
+    public bool Equals(ContentHash? other) =>
+        other is not null && bytes.AsSpan().SequenceEqual(other.bytes);
 
     public override int GetHashCode() => BitConverter.ToInt32(bytes, 0);
 
