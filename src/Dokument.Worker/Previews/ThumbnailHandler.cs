@@ -4,6 +4,7 @@ using Dokument.Domain.Previews;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
+using Dokument.Infrastructure.Telemetry;
 using Dokument.Worker.Jobs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -38,10 +39,17 @@ internal sealed partial class ThumbnailHandler(
             return;
         }
 
-        var result = await Task.Run(
-            () => thumbnailer.Render(blobs.PathOf(blob.StorageKey), ct),
-            ct
-        );
+        RenderResult result;
+        using (var render = DokumentTelemetry.ActivitySource.StartActivity("thumbnail render"))
+        {
+            render?.SetTag("dokument.blob.size", blob.Size);
+            result = await Task.Run(
+                () => thumbnailer.Render(blobs.PathOf(blob.StorageKey), ct),
+                ct
+            );
+            render?.SetTag("dokument.preview.status", result.Status.ToString().ToLowerInvariant());
+        }
+
         if (result.Status == PreviewStatus.Failed)
         {
             LogUnreadable(logger, job.Subject, result.Reason);
@@ -84,6 +92,13 @@ internal sealed partial class ThumbnailHandler(
         preview.PageCount = result.PageCount;
         preview.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+        foreach (var rendition in renditions)
+        {
+            DokumentTelemetry.RenditionsGenerated.Add(
+                1,
+                new KeyValuePair<string, object?>("dokument.rendition.kind", rendition.Kind.Key())
+            );
+        }
 
         // Kinds this run didn't make, e.g. a preview the new pipeline no longer needs.
         foreach (var gone in old.Where(o => renditions.All(r => r.Kind != o.Kind)))

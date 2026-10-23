@@ -1,5 +1,7 @@
 using System.Reflection;
 using Dokument.Infrastructure.Telemetry;
+using Dokument.Server.Auth;
+using Dokument.Worker;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -11,7 +13,7 @@ namespace Dokument.Host;
 /// <summary>
 /// OpenTelemetry traces, metrics and logs (docs/design.md §22.1). Off until <c>OTEL_EXPORTER_OTLP_ENDPOINT</c> (or a
 /// per-signal endpoint) is set; Aspire sets it in development. Everything else is the standard <c>OTEL_*</c> variables,
-/// which the SDK reads itself.
+/// which the SDK reads itself. <c>METRICS_PORT</c> separately turns on a Prometheus <c>/metrics</c> endpoint.
 /// </summary>
 internal sealed class Telemetry(IConfiguration configuration, HostRoles roles)
 {
@@ -22,8 +24,24 @@ internal sealed class Telemetry(IConfiguration configuration, HostRoles roles)
     internal bool TracesEnabled =>
         BaseEndpoint is not null || Setting("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") is not null;
 
-    internal bool MetricsEnabled =>
+    internal bool OtlpMetricsEnabled =>
         BaseEndpoint is not null || Setting("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT") is not null;
+
+    /// <summary>
+    /// The port for Prometheus scraping, from <c>METRICS_PORT</c>. It is its own listener, never the public port, so a
+    /// reverse proxy in front of the app can't expose it.
+    /// </summary>
+    internal int? PrometheusPort =>
+        Setting("METRICS_PORT") switch
+        {
+            null => null,
+            var value when int.TryParse(value, out var port) && port is > 0 and <= 65535 => port,
+            var value => throw new InvalidOperationException(
+                $"METRICS_PORT must be a port number, not \"{value}\"."
+            ),
+        };
+
+    internal bool MetricsEnabled => OtlpMetricsEnabled || PrometheusPort is not null;
 
     /// <summary>The OTLP endpoint for logs, as the full URL the Serilog sink wants, or null when logs are not exported.</summary>
     internal string? LogsEndpoint
@@ -77,6 +95,20 @@ internal sealed class Telemetry(IConfiguration configuration, HostRoles roles)
                             activity.SetTag("url.path", null);
                             activity.SetTag("url.query", null);
                         };
+
+                        // The signed-in user, as the opaque id only.
+                        options.EnrichWithHttpResponse = (activity, response) =>
+                        {
+                            if (
+                                response.HttpContext.User.FindFirst(
+                                    SessionAuthentication.UserIdClaim
+                                ) is
+                                { } userId
+                            )
+                            {
+                                activity.SetTag("dokument.user.id", userId.Value);
+                            }
+                        };
                     })
                     .AddHttpClientInstrumentation()
                     .AddOtlpExporter()
@@ -101,8 +133,34 @@ internal sealed class Telemetry(IConfiguration configuration, HostRoles roles)
                         "System.Net.NameResolution",
                         "System.Runtime"
                     )
-                    .AddOtlpExporter()
             );
+            if (OtlpMetricsEnabled)
+            {
+                otel.WithMetrics(metrics => metrics.AddOtlpExporter());
+            }
+
+            if (PrometheusPort is { } port)
+            {
+                otel.WithMetrics(metrics =>
+                    metrics.AddPrometheusHttpListener(options =>
+                    {
+                        options.Port = port;
+
+                        // Every interface, since the container is reached from the scraper's network. The Host
+                        // option must be a real host name, so the prefix is replaced here instead.
+                        options.ConfigureHttpListener = (_, listener) =>
+                        {
+                            listener.Prefixes.Clear();
+                            listener.Prefixes.Add($"http://+:{port}/");
+                        };
+                    })
+                );
+            }
+
+            if (roles.Worker)
+            {
+                services.AddMetricsSampler();
+            }
         }
     }
 

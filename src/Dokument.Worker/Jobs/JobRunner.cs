@@ -100,10 +100,15 @@ internal sealed partial class JobRunner(
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         deadline.CancelAfter(timeout);
 
-        // One span per run (docs/design.md §22.1). The subject is left out: it can identify the file's content.
+        // One span per run (docs/design.md §22.1), linked to the trace that queued the job. The subject is left out: it
+        // can identify the file's content.
         using var activity = DokumentTelemetry.ActivitySource.StartActivity(
             $"job {job.Type.Name}",
-            ActivityKind.Consumer
+            ActivityKind.Consumer,
+            parentContext: default,
+            links: ActivityContext.TryParse(job.TraceParent, null, out var queuedBy)
+                ? [new ActivityLink(queuedBy)]
+                : null
         );
         activity?.SetTag("job.type", job.Type.Name);
         activity?.SetTag("job.id", job.Id);

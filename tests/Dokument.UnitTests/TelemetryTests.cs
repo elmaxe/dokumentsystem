@@ -66,6 +66,29 @@ public class TelemetryTests
     }
 
     [Fact]
+    public void Metrics_port_turns_on_metrics_alone()
+    {
+        var telemetry = Create(("METRICS_PORT", "9464"));
+
+        Assert.Equal(9464, telemetry.PrometheusPort);
+        Assert.True(telemetry.MetricsEnabled);
+        Assert.False(telemetry.OtlpMetricsEnabled);
+        Assert.False(telemetry.TracesEnabled);
+        Assert.Null(telemetry.LogsEndpoint);
+    }
+
+    [Theory]
+    [InlineData("metrics")]
+    [InlineData("0")]
+    [InlineData("70000")]
+    public void Rejects_a_bad_metrics_port(string value)
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            Create(("METRICS_PORT", value)).PrometheusPort
+        );
+    }
+
+    [Fact]
     public void Parses_headers_as_the_spec_says()
     {
         var headers = Telemetry.ParseHeaders(

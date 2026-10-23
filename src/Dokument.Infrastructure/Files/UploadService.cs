@@ -3,6 +3,7 @@ using Dokument.Application.Files;
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
 using Dokument.Infrastructure.Persistence;
+using Dokument.Infrastructure.Telemetry;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dokument.Infrastructure.Files;
@@ -26,6 +27,7 @@ public sealed class UploadService(
         CancellationToken ct = default
     )
     {
+        using var activity = DokumentTelemetry.ActivitySource.StartActivity("upload create");
         var name = DriveService.ParseName(request.Name);
         if (request.Size < 0)
         {
@@ -74,6 +76,8 @@ public sealed class UploadService(
             await tx.CommitAsync(ct);
         }
 
+        activity?.SetTag("dokument.upload.id", upload.Id);
+        activity?.SetTag("dokument.upload.size", upload.Size);
         if (upload.Size == 0)
         {
             await CompleteAsync(actor, upload, ct);
@@ -103,6 +107,8 @@ public sealed class UploadService(
         CancellationToken ct = default
     )
     {
+        using var activity = DokumentTelemetry.ActivitySource.StartActivity("upload append");
+        activity?.SetTag("dokument.upload.id", id);
         using var held =
             locks.TryEnter(id)
             ?? throw new DriveException(
@@ -131,6 +137,8 @@ public sealed class UploadService(
             ct
         );
         upload.Offset += written;
+        activity?.SetTag("dokument.upload.bytes", written);
+        DokumentTelemetry.UploadBytes.Add(written);
         upload.ExpiresAt = time.GetUtcNow() + Upload.Lifetime;
 
         // Saved even if the client went away, so the next HEAD reports the bytes that did arrive.
@@ -201,7 +209,15 @@ public sealed class UploadService(
 
     private async Task CompleteAsync(Actor actor, Upload upload, CancellationToken ct)
     {
-        var hash = await blobs.HashTempAsync(upload.Id, ct);
+        using var activity = DokumentTelemetry.ActivitySource.StartActivity("upload finish");
+        activity?.SetTag("dokument.upload.id", upload.Id);
+        ContentHash hash;
+        using (var hashing = DokumentTelemetry.ActivitySource.StartActivity("upload hash"))
+        {
+            hashing?.SetTag("dokument.upload.size", upload.Size);
+            hash = await blobs.HashTempAsync(upload.Id, ct);
+        }
+
         if (upload.ClaimedHash is not null && upload.ClaimedHash != hash)
         {
             await DiscardAsync(upload, ct);
@@ -241,6 +257,7 @@ public sealed class UploadService(
         }
 
         upload.ResultNodeId = added.Node.Id;
+        activity?.SetTag("dokument.node.id", added.Node.Id);
         upload.CompletedAt = time.GetUtcNow();
         upload.ExpiresAt = upload.CompletedAt.Value + Upload.Lifetime;
         await db.SaveChangesAsync(ct);

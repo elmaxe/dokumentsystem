@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -183,6 +185,56 @@ public sealed class PreviewTests(PostgresFixture postgres)
     }
 
     /// <summary>Polls the top of My files, as the web grid does, until no thumbnail is pending.</summary>
+    [Fact]
+    public async Task A_thumbnail_job_links_back_to_the_upload_that_queued_it()
+    {
+        // What an OpenTelemetry SDK would see (docs/design.md §22.1), without an exporter.
+        var finished = new ConcurrentBag<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name is "Dokument" or "Microsoft.AspNetCore",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = finished.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        await using var app = await DokumentApp.StartAsync(postgres, FastWorker);
+        using var alice = await SignInAsync(app, Alice);
+        var photo = await UploadAsync(alice, "spår.png", TestFiles.Png(300, 200), null);
+        await WaitUntilSettledAsync(alice);
+
+        await using var scope = app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<DokumentDbContext>();
+        var version = await db.FileVersions.SingleAsync(
+            v => v.NodeId == photo,
+            TestContext.Current.CancellationToken
+        );
+        var job = await db.Jobs.SingleAsync(
+            j => j.Subject == version.BlobHash.Hex,
+            TestContext.Current.CancellationToken
+        );
+        Assert.True(ActivityContext.TryParse(job.TraceParent, null, out var queuedBy));
+
+        var upload = Assert.Single(
+            finished,
+            a =>
+                a.OperationName == "upload finish"
+                && Equals(a.GetTagItem("dokument.node.id"), photo)
+        );
+        Assert.Equal(upload.TraceId, queuedBy.TraceId);
+        var run = Assert.Single(
+            finished,
+            a => a.OperationName == "job thumbnail" && Equals(a.GetTagItem("job.id"), job.Id)
+        );
+        Assert.Equal(queuedBy, Assert.Single(run.Links).Context);
+        Assert.Equal("succeeded", run.GetTagItem("job.outcome"));
+        Assert.Contains(
+            finished,
+            a => a.OperationName == "thumbnail render" && a.TraceId == run.TraceId
+        );
+    }
+
     private static async Task<Dictionary<Guid, NodeDto>> WaitUntilSettledAsync(HttpClient client)
     {
         var deadline = DateTime.UtcNow.AddSeconds(30);

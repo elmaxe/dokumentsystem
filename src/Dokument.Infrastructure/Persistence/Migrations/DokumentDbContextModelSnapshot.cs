@@ -493,6 +493,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("subject");
 
+                    b.Property<string>("TraceParent")
+                        .HasColumnType("text")
+                        .HasColumnName("trace_parent");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("text")

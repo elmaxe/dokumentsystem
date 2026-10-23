@@ -29,4 +29,25 @@ public static class DokumentTelemetry
         unit: "{run}",
         description: "Job runs that failed."
     );
+
+    /// <summary>Bytes received by uploads, counted as chunks arrive.</summary>
+    public static readonly Counter<long> UploadBytes = Meter.CreateCounter<long>(
+        "dokument.uploads.bytes",
+        unit: "By",
+        description: "Bytes received by uploads."
+    );
+
+    /// <summary>Original downloads, counted once per download like the audit log, not per range request.</summary>
+    public static readonly Counter<long> Downloads = Meter.CreateCounter<long>(
+        "dokument.downloads",
+        unit: "{download}",
+        description: "Original file downloads."
+    );
+
+    /// <summary>Thumbnails and previews written, by <c>dokument.rendition.kind</c>.</summary>
+    public static readonly Counter<long> RenditionsGenerated = Meter.CreateCounter<long>(
+        "dokument.renditions.generated",
+        unit: "{rendition}",
+        description: "Thumbnails and previews generated."
+    );
 }
