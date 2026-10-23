@@ -60,7 +60,14 @@ internal static partial class Pdfium
     public static partial nint FPDFBitmap_Create(int width, int height, int alpha);
 
     [LibraryImport(Library)]
-    public static partial void FPDFBitmap_FillRect(nint bitmap, int left, int top, int width, int height, uint color);
+    public static partial void FPDFBitmap_FillRect(
+        nint bitmap,
+        int left,
+        int top,
+        int width,
+        int height,
+        uint color
+    );
 
     [LibraryImport(Library)]
     public static partial nint FPDFBitmap_GetBuffer(nint bitmap);
@@ -72,5 +79,14 @@ internal static partial class Pdfium
     public static partial void FPDFBitmap_Destroy(nint bitmap);
 
     [LibraryImport(Library)]
-    public static partial void FPDF_RenderPageBitmap(nint bitmap, nint page, int startX, int startY, int sizeX, int sizeY, int rotate, int flags);
+    public static partial void FPDF_RenderPageBitmap(
+        nint bitmap,
+        nint page,
+        int startX,
+        int startY,
+        int sizeX,
+        int sizeY,
+        int rotate,
+        int flags
+    );
 }

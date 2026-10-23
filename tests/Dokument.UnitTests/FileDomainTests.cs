@@ -14,7 +14,8 @@ public class NodeNameTests
     [InlineData("a/b")]
     [InlineData("a\\b")]
     [InlineData("tab\there")]
-    public void Rejects_unusable_names(string value) => Assert.False(NodeName.TryCreate(value, out _, out _));
+    public void Rejects_unusable_names(string value) =>
+        Assert.False(NodeName.TryCreate(value, out _, out _));
 
     [Fact]
     public void Rejects_names_over_255_bytes()
@@ -70,12 +71,16 @@ public class ContentHashTests
     [InlineData("")]
     [InlineData("abc")]
     [InlineData("zz" + "b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")]
-    public void Rejects_anything_else(string? value) => Assert.False(ContentHash.TryParse(value, out _));
+    public void Rejects_anything_else(string? value) =>
+        Assert.False(ContentHash.TryParse(value, out _));
 
     [Fact]
     public async Task Computes_SHA256()
     {
-        var hash = await ContentHash.ComputeAsync(new MemoryStream(), TestContext.Current.CancellationToken);
+        var hash = await ContentHash.ComputeAsync(
+            new MemoryStream(),
+            TestContext.Current.CancellationToken
+        );
         Assert.Equal(Hex, hash.Hex);
         Assert.Equal($"blobs/e3/b0/{Hex}", StorageKey.For(hash).Value);
     }
@@ -85,18 +90,19 @@ public class VersionRetentionTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 22, 12, 0, 0, TimeSpan.Zero);
 
-    private static FileVersion Version(int number, DateTimeOffset at, bool keep = false) => new()
-    {
-        NodeId = Guid.Empty,
-        Number = number,
-        BlobHash = ContentHash.FromBytes(new byte[32]),
-        Size = 1,
-        MimeType = "text/plain",
-        OriginalName = NodeName.From("a.txt"),
-        UploadedBy = Guid.Empty,
-        UploadedAt = at,
-        KeepForever = keep,
-    };
+    private static FileVersion Version(int number, DateTimeOffset at, bool keep = false) =>
+        new()
+        {
+            NodeId = Guid.Empty,
+            Number = number,
+            BlobHash = ContentHash.FromBytes(new byte[32]),
+            Size = 1,
+            MimeType = "text/plain",
+            OriginalName = NodeName.From("a.txt"),
+            UploadedBy = Guid.Empty,
+            UploadedAt = at,
+            KeepForever = keep,
+        };
 
     [Fact]
     public void Old_versions_go_30_days_after_they_were_replaced()
@@ -117,7 +123,11 @@ public class VersionRetentionTests
     {
         var versions = Enumerable.Range(1, 4).Select(n => Version(n, Now.AddHours(n - 5))).ToList();
 
-        var dates = new VersionRetention(TimeSpan.FromDays(30), MaxVersions: 3).PurgeDates(versions, versions[^1].Id, Now);
+        var dates = new VersionRetention(TimeSpan.FromDays(30), MaxVersions: 3).PurgeDates(
+            versions,
+            versions[^1].Id,
+            Now
+        );
 
         Assert.Equal(Now, dates[1]);
         Assert.True(dates[2] > Now);
@@ -130,12 +140,14 @@ public class TusMetadataTests
     public void Reads_the_upload_request_from_metadata()
     {
         var folder = Guid.NewGuid();
-        var header = string.Join(',',
+        var header = string.Join(
+            ',',
             $"filename {B64("Kvitto åäö.pdf")}",
             $"folderId {B64(folder.ToString())}",
             $"modifiedAt {B64("1761134400000")}",
             $"onConflict {B64("keepBoth")}",
-            "flag");
+            "flag"
+        );
 
         Assert.True(TusEndpoints.TryParseMetadata(header, out var metadata, out _));
         Assert.Equal("", metadata["flag"]);
@@ -143,7 +155,10 @@ public class TusMetadataTests
         Assert.Equal("Kvitto åäö.pdf", request.Name);
         Assert.Equal(folder, request.FolderId);
         Assert.Equal(NameConflictPolicy.KeepBoth, request.OnConflict);
-        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1761134400000), request.ClientModifiedAt);
+        Assert.Equal(
+            DateTimeOffset.FromUnixTimeMilliseconds(1761134400000),
+            request.ClientModifiedAt
+        );
     }
 
     [Fact]
@@ -151,8 +166,11 @@ public class TusMetadataTests
     {
         Assert.False(TusEndpoints.TryParseMetadata("filename !!!", out _, out _));
         Assert.False(TusEndpoints.TryReadRequest(new() { ["sha256"] = "nope" }, 1, out _, out _));
-        Assert.False(TusEndpoints.TryReadRequest(new() { ["onConflict"] = "overwrite" }, 1, out _, out _));
+        Assert.False(
+            TusEndpoints.TryReadRequest(new() { ["onConflict"] = "overwrite" }, 1, out _, out _)
+        );
     }
 
-    private static string B64(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+    private static string B64(string value) =>
+        Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
 }

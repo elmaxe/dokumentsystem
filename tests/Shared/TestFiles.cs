@@ -13,7 +13,9 @@ internal static class TestFiles
         using var red = xyz[0] * (255.0 / width);
         using var green = xyz[1] * (255.0 / height);
         using var blue = (xyz[0] * 0) + 64;
-        return red.Bandjoin(green, blue).Cast(Enums.BandFormat.Uchar).Copy(interpretation: Enums.Interpretation.Srgb);
+        return red.Bandjoin(green, blue)
+            .Cast(Enums.BandFormat.Uchar)
+            .Copy(interpretation: Enums.Interpretation.Srgb);
     }
 
     public static byte[] Png(int width, int height)
@@ -25,7 +27,8 @@ internal static class TestFiles
     /// <summary>A JPEG whose pixels are stored sideways, with EXIF orientation 6 ("rotate 90° clockwise to view").</summary>
     public static byte[] SidewaysJpeg(int storedWidth, int storedHeight)
     {
-        using var image = Gradient(storedWidth, storedHeight).Mutate(m => m.Set(GValue.GIntType, "orientation", 6));
+        using var image = Gradient(storedWidth, storedHeight)
+            .Mutate(m => m.Set(GValue.GIntType, "orientation", 6));
         return image.JpegsaveBuffer(q: 90);
     }
 
@@ -40,7 +43,9 @@ internal static class TestFiles
         var content = 3 + pages;
         for (var i = 0; i < pages; i++)
         {
-            objects.Add($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents {content} 0 R >>");
+            objects.Add(
+                $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents {content} 0 R >>"
+            );
         }
 
         const string stream = "0 0 0 rg 50 692 200 100 re f";
@@ -61,7 +66,9 @@ internal static class TestFiles
             pdf.Append($"{offset:D10} 00000 n \n");
         }
 
-        pdf.Append($"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        pdf.Append(
+            $"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
+        );
         return Encoding.ASCII.GetBytes(pdf.ToString());
     }
 }

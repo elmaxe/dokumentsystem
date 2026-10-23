@@ -21,7 +21,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     width = table.Column<int>(type: "integer", nullable: true),
                     height = table.Column<int>(type: "integer", nullable: true),
                     page_count = table.Column<int>(type: "integer", nullable: true),
-                    updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    updated_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
                 },
                 constraints: table =>
                 {
@@ -31,8 +34,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         column: x => x.blob_hash,
                         principalTable: "blobs",
                         principalColumn: "hash",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "jobs",
@@ -44,17 +49,30 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     status = table.Column<string>(type: "text", nullable: false),
                     priority = table.Column<int>(type: "integer", nullable: false),
                     attempts = table.Column<int>(type: "integer", nullable: false),
-                    run_after = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    run_after = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
                     locked_by = table.Column<string>(type: "text", nullable: true),
-                    locked_until = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    locked_until = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
                     last_error = table.Column<string>(type: "text", nullable: true),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    finished_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    created_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
+                    finished_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_jobs", x => x.id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "renditions",
@@ -66,7 +84,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     mime_type = table.Column<string>(type: "text", nullable: false),
                     width = table.Column<int>(type: "integer", nullable: false),
                     height = table.Column<int>(type: "integer", nullable: false),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    created_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
                 },
                 constraints: table =>
                 {
@@ -76,32 +97,33 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         column: x => x.blob_hash,
                         principalTable: "blobs",
                         principalColumn: "hash",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "ix_jobs_due",
                 table: "jobs",
                 columns: new[] { "type", "priority", "run_after" },
-                filter: "status IN ('queued', 'running')");
+                filter: "status IN ('queued', 'running')"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_jobs_type_subject",
                 table: "jobs",
-                columns: new[] { "type", "subject" });
+                columns: new[] { "type", "subject" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "blob_previews");
+            migrationBuilder.DropTable(name: "blob_previews");
 
-            migrationBuilder.DropTable(
-                name: "jobs");
+            migrationBuilder.DropTable(name: "jobs");
 
-            migrationBuilder.DropTable(
-                name: "renditions");
+            migrationBuilder.DropTable(name: "renditions");
         }
     }
 }

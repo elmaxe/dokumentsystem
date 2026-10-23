@@ -14,9 +14,16 @@ namespace Dokument.Infrastructure.Previews;
 public sealed class PreviewService(DokumentDbContext db, JobQueue jobs, DerivedStore derived)
 {
     /// <summary>Queues thumbnails for <paramref name="hash"/> unless they are already made. Adds to the unit of work; the caller saves.</summary>
-    public async Task RequestAsync(ContentHash hash, JobPriority priority, CancellationToken ct = default)
+    public async Task RequestAsync(
+        ContentHash hash,
+        JobPriority priority,
+        CancellationToken ct = default
+    )
     {
-        var done = await db.BlobPreviews.AnyAsync(p => p.BlobHash == hash && p.PipelineVersion >= BlobPreview.CurrentPipelineVersion, ct);
+        var done = await db.BlobPreviews.AnyAsync(
+            p => p.BlobHash == hash && p.PipelineVersion >= BlobPreview.CurrentPipelineVersion,
+            ct
+        );
         if (!done)
         {
             await jobs.EnqueueAsync(JobType.Thumbnail, hash.Hex, priority, ct);
@@ -29,18 +36,25 @@ public sealed class PreviewService(DokumentDbContext db, JobQueue jobs, DerivedS
     /// admin to retry. Returns how many were queued.
     /// </summary>
     public Task<int> EnqueueMissingAsync(DateTimeOffset now, CancellationToken ct = default) =>
-        db.Database.ExecuteSqlAsync($"""
+        db.Database.ExecuteSqlAsync(
+            $"""
             INSERT INTO jobs (id, type, subject, status, priority, attempts, run_after, created_at)
-            SELECT gen_random_uuid(), {JobType.Thumbnail.Name}, encode(b.hash, 'hex'), 'queued', {(int)JobPriority.Background}, 0, {now}, {now}
+            SELECT gen_random_uuid(), {JobType.Thumbnail.Name}, encode(b.hash, 'hex'), 'queued', {(int)
+                JobPriority.Background}, 0, {now}, {now}
             FROM blobs b
             WHERE b.ref_count > 0
               AND NOT EXISTS (SELECT 1 FROM blob_previews p WHERE p.blob_hash = b.hash AND p.pipeline_version >= {BlobPreview.CurrentPipelineVersion})
               AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.type = {JobType.Thumbnail.Name} AND j.subject = encode(b.hash, 'hex')
                               AND j.status IN ('queued', 'running', 'failed'))
-            """, ct);
+            """,
+            ct
+        );
 
     /// <summary>For a folder listing: which of these blobs have a thumbnail, and which are still being worked on.</summary>
-    public async Task<Dictionary<ContentHash, ThumbnailState>> ThumbnailStatesAsync(IReadOnlyCollection<ContentHash> hashes, CancellationToken ct = default)
+    public async Task<Dictionary<ContentHash, ThumbnailState>> ThumbnailStatesAsync(
+        IReadOnlyCollection<ContentHash> hashes,
+        CancellationToken ct = default
+    )
     {
         var distinct = hashes.Distinct().ToList();
         if (distinct.Count == 0)
@@ -48,25 +62,47 @@ public sealed class PreviewService(DokumentDbContext db, JobQueue jobs, DerivedS
             return [];
         }
 
-        var ready = (await db.BlobPreviews.AsNoTracking()
-            .Where(p => distinct.Contains(p.BlobHash) && p.Status == PreviewStatus.Ready)
-            .Select(p => p.BlobHash)
-            .ToListAsync(ct)).ToHashSet();
+        var ready = (
+            await db
+                .BlobPreviews.AsNoTracking()
+                .Where(p => distinct.Contains(p.BlobHash) && p.Status == PreviewStatus.Ready)
+                .Select(p => p.BlobHash)
+                .ToListAsync(ct)
+        ).ToHashSet();
         var subjects = distinct.Select(h => h.Hex).ToList();
-        var pending = (await db.Jobs.AsNoTracking()
-            .Where(j => j.Type == JobType.Thumbnail && subjects.Contains(j.Subject) && (j.Status == JobStatus.Queued || j.Status == JobStatus.Running))
-            .Select(j => j.Subject)
-            .ToListAsync(ct)).ToHashSet();
+        var pending = (
+            await db
+                .Jobs.AsNoTracking()
+                .Where(j =>
+                    j.Type == JobType.Thumbnail
+                    && subjects.Contains(j.Subject)
+                    && (j.Status == JobStatus.Queued || j.Status == JobStatus.Running)
+                )
+                .Select(j => j.Subject)
+                .ToListAsync(ct)
+        ).ToHashSet();
         return distinct.ToDictionary(
             h => h,
-            h => ready.Contains(h) ? ThumbnailState.Ready : pending.Contains(h.Hex) ? ThumbnailState.Pending : ThumbnailState.None);
+            h =>
+                ready.Contains(h) ? ThumbnailState.Ready
+                : pending.Contains(h.Hex) ? ThumbnailState.Pending
+                : ThumbnailState.None
+        );
     }
 
     /// <summary>The rendition's file on disk, or null if the blob has none of that kind.</summary>
-    public async Task<RenditionFile?> FindAsync(ContentHash hash, RenditionKind kind, CancellationToken ct = default)
+    public async Task<RenditionFile?> FindAsync(
+        ContentHash hash,
+        RenditionKind kind,
+        CancellationToken ct = default
+    )
     {
-        var rendition = await db.Renditions.AsNoTracking().SingleOrDefaultAsync(r => r.BlobHash == hash && r.Kind == kind, ct);
-        return rendition is null ? null : new RenditionFile(rendition, derived.PathOf(rendition.StorageKey));
+        var rendition = await db
+            .Renditions.AsNoTracking()
+            .SingleOrDefaultAsync(r => r.BlobHash == hash && r.Kind == kind, ct);
+        return rendition is null
+            ? null
+            : new RenditionFile(rendition, derived.PathOf(rendition.StorageKey));
     }
 }
 

@@ -19,18 +19,24 @@ public static class ServerRole
 {
     public static WebApplicationBuilder AddServerRole(this WebApplicationBuilder builder)
     {
-        builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>
-        {
-            document.Info.Title = "Dokumentsystem API";
-            return Task.CompletedTask;
-        }));
+        builder.Services.AddOpenApi(options =>
+            options.AddDocumentTransformer(
+                (document, _, _) =>
+                {
+                    document.Info.Title = "Dokumentsystem API";
+                    return Task.CompletedTask;
+                }
+            )
+        );
         builder.Services.AddProblemDetails();
         builder.Services.AddExceptionHandler<DriveExceptionHandler>();
         builder.Services.AddHostedService<UploadCleanup>();
         builder.Services.AddScoped<NodeDtoMapper>();
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
-            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+            options.SerializerOptions.Converters.Add(
+                new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
+            );
 
             // Numbers are numbers: without this the OpenAPI schema types every integer as "number | string".
             options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
@@ -62,7 +68,10 @@ public static class ServerRole
         }
 
         var api = app.MapGroup("/api/v1");
-        api.MapGet("/server/info", GetServerInfo).WithName("GetServerInfo").WithTags("Server").AllowAnonymous();
+        api.MapGet("/server/info", GetServerInfo)
+            .WithName("GetServerInfo")
+            .WithTags("Server")
+            .AllowAnonymous();
         api.MapAuthEndpoints();
         api.MapFileEndpoints();
         api.MapTusEndpoints();
@@ -71,9 +80,16 @@ public static class ServerRole
         return app;
     }
 
-    private static Ok<ServerInfo> GetServerInfo() => TypedResults.Ok(new ServerInfo(
-        Name: "Dokumentsystem",
-        Version: typeof(ServerRole).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "dev"));
+    private static Ok<ServerInfo> GetServerInfo() =>
+        TypedResults.Ok(
+            new ServerInfo(
+                Name: "Dokumentsystem",
+                Version: typeof(ServerRole)
+                    .Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                    ?.InformationalVersion
+                    ?? "dev"
+            )
+        );
 
     /// <summary>Creates the data layout (docs/design.md §7) on the mounted volumes. Called on startup, not at build time.</summary>
     public static void EnsureStorageDirectories(IServiceProvider services)

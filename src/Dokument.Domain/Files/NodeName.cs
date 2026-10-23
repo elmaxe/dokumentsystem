@@ -29,7 +29,11 @@ public sealed record NodeName
     /// <summary>The extension with its dot, e.g. ".pdf", or empty.</summary>
     public string Extension => Value.LastIndexOf('.') is > 0 and var dot ? Value[dot..] : "";
 
-    public static bool TryCreate(string? value, [NotNullWhen(true)] out NodeName? name, [NotNullWhen(false)] out string? error)
+    public static bool TryCreate(
+        string? value,
+        [NotNullWhen(true)] out NodeName? name,
+        [NotNullWhen(false)] out string? error
+    )
     {
         name = null;
         var normalized = value?.Trim().Normalize(NormalizationForm.FormC) ?? "";
@@ -37,8 +41,10 @@ public sealed record NodeName
         {
             "" => "The name can't be empty.",
             "." or ".." => "The name can't be \".\" or \"..\".",
-            _ when normalized.Any(c => c is '/' or '\\' || char.IsControl(c)) => "The name can't contain slashes or control characters.",
-            _ when Encoding.UTF8.GetByteCount(normalized) > MaxBytes => $"The name can be at most {MaxBytes} bytes long.",
+            _ when normalized.Any(c => c is '/' or '\\' || char.IsControl(c)) =>
+                "The name can't contain slashes or control characters.",
+            _ when Encoding.UTF8.GetByteCount(normalized) > MaxBytes =>
+                $"The name can be at most {MaxBytes} bytes long.",
             _ => null,
         };
         if (error is not null)
@@ -52,7 +58,9 @@ public sealed record NodeName
 
     /// <summary>For trusted values, such as names read back from the database.</summary>
     public static NodeName From(string value) =>
-        TryCreate(value, out var name, out var error) ? name : throw new ArgumentException(error, nameof(value));
+        TryCreate(value, out var name, out var error)
+            ? name
+            : throw new ArgumentException(error, nameof(value));
 
     /// <summary>"report (2).pdf" for n = 2: how a clashing upload is renamed when the user keeps both (§6).</summary>
     public NodeName WithCopyNumber(int n)

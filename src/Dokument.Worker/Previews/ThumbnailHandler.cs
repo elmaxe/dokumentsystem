@@ -16,7 +16,13 @@ namespace Dokument.Worker.Previews;
 /// unexpected errors (I/O, the database) make the job fail and retry.
 /// </summary>
 internal sealed partial class ThumbnailHandler(
-    DokumentDbContext db, BlobStore blobs, DerivedStore derived, Thumbnailer thumbnailer, TimeProvider time, ILogger<ThumbnailHandler> logger) : IJobHandler
+    DokumentDbContext db,
+    BlobStore blobs,
+    DerivedStore derived,
+    Thumbnailer thumbnailer,
+    TimeProvider time,
+    ILogger<ThumbnailHandler> logger
+) : IJobHandler
 {
     public async Task RunAsync(Job job, CancellationToken ct)
     {
@@ -32,7 +38,10 @@ internal sealed partial class ThumbnailHandler(
             return;
         }
 
-        var result = await Task.Run(() => thumbnailer.Render(blobs.PathOf(blob.StorageKey), ct), ct);
+        var result = await Task.Run(
+            () => thumbnailer.Render(blobs.PathOf(blob.StorageKey), ct),
+            ct
+        );
         if (result.Status == PreviewStatus.Failed)
         {
             LogUnreadable(logger, job.Subject, result.Reason);
@@ -44,7 +53,17 @@ internal sealed partial class ThumbnailHandler(
         {
             var key = DerivedKey.For(hash, image.Kind);
             await derived.WriteAsync(key, image.Bytes, ct);
-            renditions.Add(new Rendition { BlobHash = hash, Kind = image.Kind, StorageKey = key, Width = image.Width, Height = image.Height, CreatedAt = now });
+            renditions.Add(
+                new Rendition
+                {
+                    BlobHash = hash,
+                    Kind = image.Kind,
+                    StorageKey = key,
+                    Width = image.Width,
+                    Height = image.Height,
+                    CreatedAt = now,
+                }
+            );
         }
 
         var old = await db.Renditions.Where(r => r.BlobHash == hash).ToListAsync(ct);
@@ -73,6 +92,9 @@ internal sealed partial class ThumbnailHandler(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "No thumbnail for blob {Hash}: {Reason}")]
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "No thumbnail for blob {Hash}: {Reason}"
+    )]
     private static partial void LogUnreadable(ILogger logger, string hash, string? reason);
 }

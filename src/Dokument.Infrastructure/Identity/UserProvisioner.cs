@@ -8,7 +8,11 @@ namespace Dokument.Infrastructure.Identity;
 /// <summary>Creates users on first login and refreshes their profile and role on every login (docs/design.md §5).</summary>
 public sealed class UserProvisioner(DokumentDbContext db, TimeProvider time)
 {
-    public async Task<ProvisioningResult> ProvisionAsync(OidcIdentity identity, LoginPolicy policy, CancellationToken ct = default)
+    public async Task<ProvisioningResult> ProvisionAsync(
+        OidcIdentity identity,
+        LoginPolicy policy,
+        CancellationToken ct = default
+    )
     {
         var decision = policy.Evaluate(identity.Groups);
         if (!decision.Allowed)
@@ -28,10 +32,17 @@ public sealed class UserProvisioner(DokumentDbContext db, TimeProvider time)
         }
     }
 
-    private async Task<ProvisioningResult> UpsertAsync(OidcIdentity identity, UserRole role, CancellationToken ct)
+    private async Task<ProvisioningResult> UpsertAsync(
+        OidcIdentity identity,
+        UserRole role,
+        CancellationToken ct
+    )
     {
         var now = time.GetUtcNow();
-        var user = await db.Users.SingleOrDefaultAsync(u => u.OidcIssuer == identity.Issuer && u.OidcSubject == identity.Subject, ct);
+        var user = await db.Users.SingleOrDefaultAsync(
+            u => u.OidcIssuer == identity.Issuer && u.OidcSubject == identity.Subject,
+            ct
+        );
         if (user is null)
         {
             user = new User

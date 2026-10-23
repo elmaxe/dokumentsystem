@@ -35,14 +35,20 @@ public sealed class Job
 
     public bool IsActive => Status is JobStatus.Queued or JobStatus.Running;
 
-    public static Job Create(JobType type, string subject, JobPriority priority, DateTimeOffset now) => new()
-    {
-        Type = type,
-        Subject = subject,
-        Priority = priority,
-        CreatedAt = now,
-        RunAfter = now,
-    };
+    public static Job Create(
+        JobType type,
+        string subject,
+        JobPriority priority,
+        DateTimeOffset now
+    ) =>
+        new()
+        {
+            Type = type,
+            Subject = subject,
+            Priority = priority,
+            CreatedAt = now,
+            RunAfter = now,
+        };
 
     public void Succeed(DateTimeOffset now)
     {

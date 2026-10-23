@@ -6,15 +6,16 @@ public class SessionTests
 {
     private static readonly DateTimeOffset Start = new(2026, 10, 22, 8, 0, 0, TimeSpan.Zero);
 
-    private static Session NewSession() => new()
-    {
-        UserId = Guid.NewGuid(),
-        Kind = SessionKind.Cookie,
-        TokenHash = [],
-        CreatedAt = Start,
-        LastSeenAt = Start,
-        ExpiresAt = Start + Session.IdleLifetime,
-    };
+    private static Session NewSession() =>
+        new()
+        {
+            UserId = Guid.NewGuid(),
+            Kind = SessionKind.Cookie,
+            TokenHash = [],
+            CreatedAt = Start,
+            LastSeenAt = Start,
+            ExpiresAt = Start + Session.IdleLifetime,
+        };
 
     [Fact]
     public void Touch_waits_for_the_interval_before_writing()

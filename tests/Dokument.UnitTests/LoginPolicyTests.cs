@@ -19,7 +19,10 @@ public class LoginPolicyTests
         var policy = new LoginPolicy(UserGroup: "dokument-users", AdminGroup: "dokument-admins");
 
         Assert.False(policy.Evaluate(["family"]).Allowed);
-        Assert.Equal(new LoginDecision(true, UserRole.User), policy.Evaluate(["family", "dokument-users"]));
+        Assert.Equal(
+            new LoginDecision(true, UserRole.User),
+            policy.Evaluate(["family", "dokument-users"])
+        );
     }
 
     [Fact]

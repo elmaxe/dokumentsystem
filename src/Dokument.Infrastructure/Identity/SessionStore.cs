@@ -8,7 +8,12 @@ namespace Dokument.Infrastructure.Identity;
 public sealed class SessionStore(DokumentDbContext db, TimeProvider time)
 {
     /// <summary>Creates a session and returns it with its token. The token is not stored and can't be recovered later.</summary>
-    public async Task<(Session Session, SessionToken Token)> CreateAsync(Guid userId, SessionKind kind, DeviceName? deviceName, CancellationToken ct = default)
+    public async Task<(Session Session, SessionToken Token)> CreateAsync(
+        Guid userId,
+        SessionKind kind,
+        DeviceName? deviceName,
+        CancellationToken ct = default
+    )
     {
         var now = time.GetUtcNow();
         var token = SessionToken.Create();
@@ -31,10 +36,15 @@ public sealed class SessionStore(DokumentDbContext db, TimeProvider time)
     /// Returns the active session for a token, with its user, and slides its expiry. The session is null if the token is
     /// unknown, expired or revoked, or the user is disabled. <c>Refreshed</c> says whether the expiry moved.
     /// </summary>
-    public async Task<(Session? Session, bool Refreshed)> ValidateAsync(SessionToken token, CancellationToken ct = default)
+    public async Task<(Session? Session, bool Refreshed)> ValidateAsync(
+        SessionToken token,
+        CancellationToken ct = default
+    )
     {
         var hash = token.Hash();
-        var session = await db.Sessions.Include(s => s.User).SingleOrDefaultAsync(s => s.TokenHash == hash, ct);
+        var session = await db
+            .Sessions.Include(s => s.User)
+            .SingleOrDefaultAsync(s => s.TokenHash == hash, ct);
         var now = time.GetUtcNow();
         if (session is null || !session.IsActive(now) || session.User is not { IsDisabled: false })
         {
@@ -53,18 +63,24 @@ public sealed class SessionStore(DokumentDbContext db, TimeProvider time)
     public Task<List<Session>> ListActiveAsync(Guid userId, CancellationToken ct = default)
     {
         var now = time.GetUtcNow();
-        return db.Sessions
-            .Where(s => s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now)
+        return db
+            .Sessions.Where(s => s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now)
             .OrderByDescending(s => s.LastSeenAt)
             .ToListAsync(ct);
     }
 
     /// <summary>Revokes a session. With <paramref name="userId"/>, only if it belongs to that user. Returns false if there was nothing to revoke.</summary>
-    public async Task<bool> RevokeAsync(Guid sessionId, Guid? userId = null, CancellationToken ct = default)
+    public async Task<bool> RevokeAsync(
+        Guid sessionId,
+        Guid? userId = null,
+        CancellationToken ct = default
+    )
     {
         var now = time.GetUtcNow();
-        var revoked = await db.Sessions
-            .Where(s => s.Id == sessionId && s.RevokedAt == null && (userId == null || s.UserId == userId))
+        var revoked = await db
+            .Sessions.Where(s =>
+                s.Id == sessionId && s.RevokedAt == null && (userId == null || s.UserId == userId)
+            )
             .ExecuteUpdateAsync(set => set.SetProperty(s => s.RevokedAt, now), ct);
         return revoked > 0;
     }
