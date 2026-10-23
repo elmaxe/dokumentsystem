@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.5** · Last updated: 2026-10-22
+> Status: **Draft v0.6** · Last updated: 2026-10-22
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -248,17 +248,22 @@ users(id, oidc_issuer, oidc_subject, email, display_name, role {user|admin}, quo
       used_bytes, reserved_bytes, locale, created_at, last_login_at, disabled_at,
       UNIQUE (oidc_issuer, oidc_subject))
 
-nodes(id, owner_id, parent_id NULL, kind {folder|file}, name, name_normalized,
-      path ltree,                 -- materialized path of ids, for subtree queries
+nodes(id, owner_id, parent_id NULL, kind {folder|file}, name, name_key,
+      path ltree,                 -- ids (hex, no dashes) from the top down, for subtree queries
       current_version_id NULL,    -- files only
       starred_by …,               -- (separate table)
       created_at, modified_at, trashed_at NULL, trashed_root_id NULL,
-      UNIQUE (parent_id, name_normalized) WHERE trashed_at IS NULL)
+      UNIQUE NULLS NOT DISTINCT (owner_id, parent_id, name_key) WHERE trashed_at IS NULL)
 
-file_versions(id, node_id, version_no, blob_id, size, mime_type, original_name,
-              uploaded_by, uploaded_at, client_modified_at, comment NULL)
+file_versions(id, node_id, version_no, blob_hash, size, mime_type, original_name,
+              uploaded_by, uploaded_at, client_modified_at, restored_from NULL, keep_forever,
+              comment NULL)
 
-blobs(id = sha256, size, storage_key, ref_count, created_at)
+blobs(hash = sha256 PRIMARY KEY, size, storage_key, ref_count, created_at)
+
+uploads(id, user_id, owner_id, parent_id NULL, target_node_id NULL, name, size, upload_offset,
+        claimed_hash NULL, mime_type, client_modified_at, on_conflict {fail|keepBoth|newVersion},
+        created_at, expires_at, result_node_id NULL, completed_at NULL)   -- tus uploads in flight
 
 renditions(id, version_id, kind {thumb_s|thumb_m|preview_pdf|preview_jpg|video_web|poster|…},
            storage_key, mime_type, width, height, pipeline_version, created_at)
@@ -289,7 +294,8 @@ Notes:
 - **`nodes` vs `file_versions` vs `blobs`.** A node is the logical file in the tree. A version is one upload of it. A blob is the bytes on disk.
   - Uploading identical bytes **reuses the existing blob** (dedup by SHA-256).
   - Re-uploading identical content to the same file does **not** create a new version.
-- **Name uniqueness within a folder:** NFC-normalized and case-insensitive. Conflicts are resolved like Drive: either "file (1).pdf" or "upload as new version", chosen by the user.
+- **Name uniqueness within a folder:** NFC-normalized and case-insensitive (`name_key`). The top of each user's "My files" (parent NULL) counts as one folder, hence `NULLS NOT DISTINCT`. Conflicts are resolved like Drive: either "file (1).pdf" or "upload as new version", chosen by the user.
+- **Names** (`NodeName` in the domain) are trimmed, NFC, at most 255 UTF-8 bytes, never "." or "..", and contain no slashes or control characters, so `dokument export` can write any of them to disk.
 - **`path ltree`** makes subtree operations cheap: permission inheritance, "trash folder", "folder size", "search in folder".
 
 ---
@@ -299,7 +305,7 @@ Notes:
 ```
 /data/originals/            # PRECIOUS — back this up
   blobs/ab/cd/abcdef…sha256 # content-addressed, write-once, never modified
-  tmp/                      # in-flight uploads (tus), same filesystem for atomic rename
+  tmp/{upload_id}           # in-flight uploads (tus), same filesystem for atomic rename
 /data/derived/              # REGENERABLE — backup optional
   thumbs/{version_id}/{kind}.webp
   previews/{version_id}/…   # PDF renditions, web-playable video, posters
@@ -307,10 +313,10 @@ Notes:
 ```
 
 - **Write path:**
-  1. Stream the upload to `tmp/`, hashing it as it arrives.
-  2. Verify the size and the checksum, if the client supplied one.
+  1. Append each tus chunk to `tmp/{upload_id}` at the recorded offset.
+  2. When the last byte arrives, hash the temp file and compare it with the SHA-256 the client sent. A mismatch discards the upload. (Hashing as bytes arrive doesn't survive a resume, since a SHA-256 state can't be saved between requests, so the file is read once more instead.)
   3. `fsync`, then `rename()` to `blobs/…`. If the blob already exists, drop the temp file.
-  4. Commit the DB transaction.
+  4. Commit the DB transaction: the blob row (`ON CONFLICT DO NOTHING`), the node or version, `ref_count + 1`, the quota and the audit event.
 - **Blob deletion** happens only in the purge job (§12): when `ref_count` drops to 0, the blob is deleted **after** the DB commit (outbox pattern).
 - **Integrity job:** a scheduled sweep finds orphaned blobs, missing blobs and checksum mismatches (bit rot), and reports to admins.
 - **Export:** `dokument export --user X --to /path` writes the real folder tree with original names and mtimes. This is the "if the app dies, my files are still mine" guarantee.
@@ -321,15 +327,20 @@ Notes:
 
 ### 8.1 Upload flow
 
-1. **Client → `POST /uploads` (tus create)** with the target folder, name, size and optional SHA-256.
-   - The server checks permission and **reserves quota** (`reserved_bytes += size`). If it doesn't fit, it rejects immediately.
-2. Client → `PATCH` chunks. The upload can resume after network loss or app restart.
-3. **On completion:**
-   - Hash, store the blob, and create the node or version.
-   - Release the reservation and add the size to `used_bytes`.
-   - Enqueue the processing jobs.
-   - Emit a SignalR event and an audit event.
-4. Abandoned uploads expire after 24 h, which releases the reservation and deletes the temp data.
+1. **Client → `POST /api/v1/uploads` (tus create)** with `Upload-Length` and `Upload-Metadata`: `filename`, and optionally `folderId`, `nodeId` (upload a new version of that file), `sha256`, `filetype`, `modifiedAt` (ms since the epoch) and `onConflict` (`fail`, `keepBoth`, `newVersion`).
+   - The server checks permission and **reserves quota** (`reserved_bytes += size`) in one conditional update. If it doesn't fit, it answers 413 immediately. With `onConflict=fail` a taken name is refused (409) before any bytes are sent.
+2. Client → `PATCH` chunks (`application/offset+octet-stream`, `Upload-Offset`). The web client sends 32 MiB chunks, so it stays under common reverse-proxy body limits. The upload can resume after network loss or app restart: `HEAD` reports the offset, and the bytes that arrived before a dropped connection are kept.
+3. **On completion**, before the last `PATCH` answers:
+   - Hash, store the blob, and create the node or version (§7). The response carries the file's id in `Dokument-Node-Id`.
+   - Release the reservation and add the size to `used_bytes`, unless the owner already had that blob.
+   - Enqueue the processing jobs (M2).
+   - Emit a SignalR event (later) and an audit event.
+4. Abandoned uploads expire after 24 h without progress, which releases the reservation and deletes the temp data. The server sweeps them hourly, since it owns `tmp/`.
+
+Implementation notes (built in M1):
+- The server implements tus 1.0 core with the `creation`, `creation-with-upload`, `termination` and `expiration` extensions itself (`TusEndpoints`), rather than through tusdotnet, so the `uploads` row and the quota reservation share a transaction. Any tus client works; the web uses `tus-js-client`.
+- One request writes to an upload at a time (423 otherwise). Uploads are owned by the server process, so an in-memory lock is enough.
+- `GET /api/v1/uploads/{id}` returns the upload's state as JSON and, once complete, the file it produced and any duplicates of it (the fallback in §8.3).
 
 Also:
 - The client sends `client_modified_at` (the file's mtime) for display. The original bytes stay untouched.
@@ -341,6 +352,7 @@ Also:
 - **Restoring an old version** creates a *new* version pointing at the old blob. History is never rewritten.
 - **Retention** (admin setting; defaults follow Google Drive): a non-current version is purged when it is **older than 30 days** or when the file has **more than 100 versions**, whichever comes first.
   - The current version is always kept.
+  - A version's age counts from when the next version replaced it. The versions API reports each version's purge date, so the UI can say "Removed in N days".
   - Users can mark a version **"Keep forever"**, which exempts it from purging. It still counts toward quota.
 - **Quota counts all versions**, deduplicated per blob per owner.
 - Renditions and extracted text exist **per version**. Search indexes **only the current version**.
@@ -350,12 +362,13 @@ Also:
 On disk, identical bytes are always stored once (§6). On top of that, **users are told** when they upload a file they already have.
 
 - **Before transfer:** the client computes SHA-256 locally, streamed so large files don't fill memory (`hash-wasm` in a Web Worker on web; a native streaming hash on mobile).
-  - It then calls `POST /uploads/check` with `[{name, size, sha256}]` for the whole batch.
+  - It then calls `POST /api/v1/uploads/check` with `[{name, size, sha256}]` for the whole batch.
 - **The server answers per file:** `new`, or `duplicate` with the matching locations ("Kvitton/2025/ikea.pdf", and "in trash" if that's where it is).
 - **UX:**
   - **Single file:** "You already have this file in *Kvitton/2025*." Choices: **Skip** / **Upload anyway** / **Open existing**.
   - **Batch:** one summary, "12 of 40 files are already in Dokumentsystem." Choices: **Skip duplicates** (default) / **Upload all** / **Review**.
-  - Selecting "Upload anyway" creates a second node that points at the same blob. This is instant: no bytes are transferred and no extra quota is used.
+  - Selecting "Upload anyway" creates a second node that points at the same blob (`POST /api/v1/uploads/copy`). This is instant: no bytes are transferred and no extra quota is used.
+  - "Open existing" opens the folder that holds the match until the viewer arrives in M2.
 - **Fallback:** if the client couldn't hash in advance (older client, huge file on a weak phone), the server detects the duplicate on completion. The upload tray then shows "Duplicate of …" with a **Remove this copy** action.
 - **Privacy rule:** matches are reported **only against nodes the user can already access**, whether owned or shared with them.
   - A user must never learn that *someone else* has a file.
@@ -688,7 +701,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
   - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged.
   - sharing: share granted/changed/revoked, link created/accessed/revoked
   - admin: settings changed, quota changed, user disabled
-- **Partitioned by month.** An admin setting controls retention (default 1 year).
+- **Partitioned by month** (from M6; M1 ships a plain table with indexes on `at` and `(target_node_id, at)`). An admin setting controls retention (default 1 year).
 - **Views:**
   - users see the activity on their own files ("Activity" tab)
   - admins see everything, with filters and CSV export
@@ -761,7 +774,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 | Milestone | Scope |
 |---|---|
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
-| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser |
+| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, and the web file browser. **Still to come:** trash and the purge job (which also enforces version retention), starred and recent, folder uploads, live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
@@ -789,6 +802,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 | 11 | Monorepo scaffold | 2026-10-21: .NET 10 LTS, Aspire 13, Postgres 17, Node 22 + pnpm + Turborepo, Tailwind v4 on web, AGPL-3.0 `LICENSE` (§3.2, §4.1, §15.1) |
 | 12 | Sessions | 2026-10-22: opaque tokens, stored hashed, expire after 30 days idle (sliding). Cookie + `X-CSRF-Token` on web, bearer on mobile. Sign-out is local, not at the IdP (§5). |
 | 13 | UI components | 2026-10-22: web components live in `packages/ui` (Radix + Tailwind v4, Storybook 10). The mobile app gets its own components on the same tokens (§15.1, §16.5) |
+| 14 | File storage (M1) | 2026-10-22: our own tus 1.0 endpoint; the server hashes the finished temp file once; names are `NodeName` (NFC, case-insensitive, 255 bytes); owner-only access until sharing (M4) behind one `NodeAccess` predicate; no quota until an admin sets one; audit table unpartitioned until M6 (§6–8, §18) |
 
 ## 26. Open questions
 

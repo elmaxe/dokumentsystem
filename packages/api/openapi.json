@@ -211,6 +211,451 @@
           }
         }
       }
+    },
+    "/api/v1/nodes": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "The items in a folder, or at the top of My files when folderId is left out.",
+        "operationId": "ListFolder",
+        "parameters": [
+          {
+            "name": "folderId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderListing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "GetNode",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/folders": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "CreateFolder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/rename": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "RenameNode",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/move": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "MoveNode",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/content": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "The original bytes, as an attachment. Supports ranges. Audited, unlike previews.",
+        "operationId": "DownloadFile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/versions": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "ListVersions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VersionDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/versions/{versionId}/restore": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "RestoreVersion",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/versions/{versionId}/keep-forever": {
+      "put": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "SetKeepForever",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeepForeverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/uploads/check": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Run before uploading: which of these files (by SHA-256) the user already has.",
+        "operationId": "CheckDuplicates",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DuplicateCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DuplicateCheckResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/uploads/copy": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Upload anyway: adds a file with content the user already has, without sending the bytes.",
+        "operationId": "CopyFromContent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyFromContentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "GetStorage",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageUsage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/uploads/{id}": {
+      "get": {
+        "tags": [
+          "Uploads"
+        ],
+        "description": "The state of a tus upload, and once complete, the file it produced and any duplicates of it.",
+        "operationId": "GetUpload",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadStatus"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -230,6 +675,59 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "CopyFromContentRequest": {
+        "required": [
+          "folderId",
+          "name",
+          "sha256",
+          "clientModifiedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "clientModifiedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "onConflict": {
+            "$ref": "#/components/schemas/NameConflictPolicy"
+          }
+        }
+      },
+      "CreateFolderRequest": {
+        "required": [
+          "folderId",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -253,6 +751,301 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "DuplicateCheckItem": {
+        "required": [
+          "name",
+          "size",
+          "sha256"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        }
+      },
+      "DuplicateCheckRequest": {
+        "required": [
+          "files"
+        ],
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DuplicateCheckItem"
+            }
+          }
+        }
+      },
+      "DuplicateCheckResponse": {
+        "required": [
+          "files"
+        ],
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DuplicateCheckResult"
+            }
+          }
+        }
+      },
+      "DuplicateCheckResult": {
+        "required": [
+          "sha256",
+          "duplicates"
+        ],
+        "type": "object",
+        "properties": {
+          "sha256": {
+            "type": "string"
+          },
+          "duplicates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DuplicateMatch"
+            }
+          }
+        }
+      },
+      "DuplicateMatch": {
+        "required": [
+          "nodeId",
+          "name",
+          "path",
+          "inTrash"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          },
+          "inTrash": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FolderListing": {
+        "required": [
+          "folder",
+          "path",
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "folder": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NodeDto"
+              }
+            ]
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeDto"
+            }
+          }
+        }
+      },
+      "KeepForeverRequest": {
+        "required": [
+          "keepForever"
+        ],
+        "type": "object",
+        "properties": {
+          "keepForever": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MoveRequest": {
+        "required": [
+          "folderId"
+        ],
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "NameConflictPolicy": {
+        "enum": [
+          "fail",
+          "keepBoth",
+          "newVersion"
+        ],
+        "default": "fail"
+      },
+      "NodeDetails": {
+        "required": [
+          "node",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeDto"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          }
+        }
+      },
+      "NodeDto": {
+        "required": [
+          "id",
+          "parentId",
+          "kind",
+          "name",
+          "size",
+          "mimeType",
+          "sha256",
+          "ownerId",
+          "ownerName",
+          "createdAt",
+          "modifiedAt",
+          "currentVersionId",
+          "versionNumber"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodeKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ownerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ownerName": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "currentVersionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "versionNumber": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "NodeKind": {
+        "enum": [
+          "folder",
+          "file"
+        ]
+      },
+      "PathEntry": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "RenameRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -314,6 +1107,76 @@
           "bearer"
         ]
       },
+      "StorageUsage": {
+        "required": [
+          "usedBytes",
+          "quotaBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "usedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quotaBytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "UploadStatus": {
+        "required": [
+          "id",
+          "name",
+          "size",
+          "offset",
+          "complete",
+          "nodeId",
+          "expiresAt",
+          "duplicates"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "nodeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duplicates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DuplicateMatch"
+            }
+          }
+        }
+      },
       "UserProfile": {
         "required": [
           "id",
@@ -346,6 +1209,82 @@
           "user",
           "admin"
         ]
+      },
+      "VersionDto": {
+        "required": [
+          "id",
+          "number",
+          "size",
+          "mimeType",
+          "originalName",
+          "uploadedBy",
+          "uploadedByName",
+          "uploadedAt",
+          "clientModifiedAt",
+          "keepForever",
+          "current",
+          "restoredFrom",
+          "purgeAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "originalName": {
+            "type": "string"
+          },
+          "uploadedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uploadedByName": {
+            "type": "string"
+          },
+          "uploadedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "clientModifiedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "keepForever": {
+            "type": "boolean"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "restoredFrom": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "purgeAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
       }
     }
   },
@@ -361,6 +1300,12 @@
     },
     {
       "name": "Admin"
+    },
+    {
+      "name": "Files"
+    },
+    {
+      "name": "Uploads"
     }
   ]
 }

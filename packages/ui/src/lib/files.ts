@@ -70,3 +70,29 @@ export function sortItems<T extends FileItem>(items: T[], sort: Sort, locale: st
     (a, b) => Number(isFolder(b)) - Number(isFolder(a)) || sign * compare(a, b),
   );
 }
+
+const extensions: [RegExp, FileKind][] = [
+  [/\.pdf$/i, "pdf"],
+  [/\.(docx?|odt|rtf|pages)$/i, "doc"],
+  [/\.(xlsx?|ods|csv|numbers)$/i, "sheet"],
+  [/\.(pptx?|odp|key)$/i, "slides"],
+  [/\.(jpe?g|png|gif|webp|heic|avif|dng|svg)$/i, "image"],
+  [/\.(mp4|mov|mkv|webm|avi)$/i, "video"],
+  [/\.(mp3|m4a|flac|wav|ogg|opus)$/i, "audio"],
+  [/\.(zip|7z|rar|tar|gz)$/i, "archive"],
+  [/\.(txt|md|json|xml|log)$/i, "text"],
+];
+
+const mimeKinds: [RegExp, FileKind][] = [
+  [/^application\/pdf$/, "pdf"],
+  [/^image\//, "image"],
+  [/^video\//, "video"],
+  [/^audio\//, "audio"],
+  [/^text\//, "text"],
+];
+
+/** The icon group for a file, from its name, falling back to its MIME type. */
+export const kindOf = (name: string, mimeType?: string | null): FileKind =>
+  extensions.find(([pattern]) => pattern.test(name))?.[1] ??
+  (mimeType ? mimeKinds.find(([pattern]) => pattern.test(mimeType))?.[1] : undefined) ??
+  "other";

@@ -17,6 +17,8 @@ public sealed class DokumentApp(string connectionString, FakeOidcProvider idp, I
 
     public FakeOidcProvider Idp => idp;
 
+    public string OriginalsPath => Path.Combine(dataRoot, "originals");
+
     public static async Task<DokumentApp> StartAsync(PostgresFixture postgres, IReadOnlyDictionary<string, string?>? settings = null)
     {
         var app = new DokumentApp(await postgres.CreateDatabaseAsync(), await FakeOidcProvider.StartAsync(), settings);

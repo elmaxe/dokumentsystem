@@ -13,11 +13,13 @@ COPY packages/api/package.json packages/api/
 COPY packages/core/package.json packages/core/
 COPY packages/i18n/package.json packages/i18n/
 COPY packages/tokens/package.json packages/tokens/
+COPY packages/ui/package.json packages/ui/
 RUN pnpm install --frozen-lockfile
 COPY docs/design-system docs/design-system
 COPY apps/web apps/web
 COPY packages packages
-RUN pnpm turbo run build --filter=@dokument/web
+# Not turbo's ^build: that would also build packages/ui's Storybook, which the image doesn't serve.
+RUN pnpm --filter @dokument/tokens build && pnpm --filter @dokument/web build
 
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS server
 ARG TARGETARCH

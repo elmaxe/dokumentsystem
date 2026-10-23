@@ -1,0 +1,220 @@
+using System.Security.Claims;
+using Dokument.Application.Files;
+using Dokument.Domain.Files;
+using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Persistence;
+using Dokument.Server.Auth;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Net.Http.Headers;
+
+namespace Dokument.Server.Files;
+
+/// <summary>Folders, files, versions, downloads and the duplicate check (docs/design.md §6, §8).</summary>
+public static class FileEndpoints
+{
+    public static RouteGroupBuilder MapFileEndpoints(this RouteGroupBuilder api)
+    {
+        var files = api.MapGroup("").WithTags("Files").RequireAuthorization();
+        files.MapGet("/nodes", ListFolder).WithName("ListFolder")
+            .WithDescription("The items in a folder, or at the top of My files when folderId is left out.");
+        files.MapGet("/nodes/{id:guid}", GetNode).WithName("GetNode");
+        files.MapPost("/folders", CreateFolder).WithName("CreateFolder");
+        files.MapPost("/nodes/{id:guid}/rename", Rename).WithName("RenameNode");
+        files.MapPost("/nodes/{id:guid}/move", Move).WithName("MoveNode");
+        files.MapGet("/nodes/{id:guid}/content", Download).WithName("DownloadFile")
+            .WithDescription("The original bytes, as an attachment. Supports ranges. Audited, unlike previews.");
+        files.MapGet("/nodes/{id:guid}/versions", ListVersions).WithName("ListVersions");
+        files.MapPost("/nodes/{id:guid}/versions/{versionId:guid}/restore", RestoreVersion).WithName("RestoreVersion");
+        files.MapPut("/nodes/{id:guid}/versions/{versionId:guid}/keep-forever", SetKeepForever).WithName("SetKeepForever");
+        files.MapPost("/uploads/check", CheckDuplicates).WithName("CheckDuplicates")
+            .WithDescription("Run before uploading: which of these files (by SHA-256) the user already has.");
+        files.MapPost("/uploads/copy", CopyFromContent).WithName("CopyFromContent")
+            .WithDescription("Upload anyway: adds a file with content the user already has, without sending the bytes.");
+        files.MapGet("/storage", GetStorage).WithName("GetStorage");
+        return api;
+    }
+
+    public static Actor Actor(this HttpContext context) => new(
+        context.User.UserId(),
+        context.Connection.RemoteIpAddress?.ToString(),
+        context.Request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : null);
+
+    private static async Task<Ok<FolderListing>> ListFolder(Guid? folderId, HttpContext context, DriveService drive, DokumentDbContext db, CancellationToken ct)
+    {
+        var actor = context.Actor();
+        var folder = await drive.GetFolderAsync(actor, folderId, ct);
+        var items = await drive.ListChildrenAsync(actor, folderId, ct);
+        var path = folder is null ? [] : await PathOfAsync(drive, folder, includeSelf: true, ct);
+        var owners = await OwnerNamesAsync(db, items.Append(folder), ct);
+        return TypedResults.Ok(new FolderListing(
+            folder is null ? null : NodeDto.From(folder, owners),
+            path,
+            items.Select(n => NodeDto.From(n, owners)).ToList()));
+    }
+
+    private static async Task<Ok<NodeDetails>> GetNode(Guid id, HttpContext context, DriveService drive, DokumentDbContext db, CancellationToken ct)
+    {
+        var node = await drive.GetAsync(context.Actor(), id, ct);
+        var owners = await OwnerNamesAsync(db, [node], ct);
+        return TypedResults.Ok(new NodeDetails(NodeDto.From(node, owners), await PathOfAsync(drive, node, includeSelf: false, ct)));
+    }
+
+    private static async Task<Created<NodeDto>> CreateFolder(CreateFolderRequest request, HttpContext context, DriveService drive, DokumentDbContext db, CancellationToken ct)
+    {
+        var folder = await drive.CreateFolderAsync(context.Actor(), request.FolderId, request.Name, ct);
+        return TypedResults.Created($"/api/v1/nodes/{folder.Id}", NodeDto.From(folder, await OwnerNamesAsync(db, [folder], ct)));
+    }
+
+    private static async Task<Ok<NodeDto>> Rename(Guid id, RenameRequest request, HttpContext context, DriveService drive, DokumentDbContext db, CancellationToken ct)
+    {
+        var node = await drive.RenameAsync(context.Actor(), id, request.Name, ct);
+        return TypedResults.Ok(NodeDto.From(node, await OwnerNamesAsync(db, [node], ct)));
+    }
+
+    private static async Task<Ok<NodeDto>> Move(Guid id, MoveRequest request, HttpContext context, DriveService drive, DokumentDbContext db, CancellationToken ct)
+    {
+        var node = await drive.MoveAsync(context.Actor(), id, request.FolderId, ct);
+        return TypedResults.Ok(NodeDto.From(node, await OwnerNamesAsync(db, [node], ct)));
+    }
+
+    private static async Task<PhysicalFileHttpResult> Download(Guid id, Guid? versionId, HttpContext context, DriveService drive, CancellationToken ct)
+    {
+        // A resumed or seeking download sends a Range; only the request that starts at the first byte is audited.
+        var range = context.Request.Headers.Range.ToString();
+        var audited = range.Length == 0 || range.StartsWith("bytes=0-", StringComparison.Ordinal);
+        var content = await drive.OpenContentAsync(context.Actor(), id, versionId, audited, ct);
+
+        // User content never renders in our origin (§21).
+        context.Response.Headers.XContentTypeOptions = "nosniff";
+        context.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'";
+        return TypedResults.PhysicalFile(
+            content.PhysicalPath,
+            content.Version.MimeType,
+            fileDownloadName: content.Node.Name.Value,
+            lastModified: content.Version.UploadedAt,
+            entityTag: new EntityTagHeaderValue($"\"{content.Version.BlobHash.Hex}\""),
+            enableRangeProcessing: true);
+    }
+
+    private static async Task<Ok<List<VersionDto>>> ListVersions(Guid id, HttpContext context, DriveService drive, DokumentDbContext db, TimeProvider time, CancellationToken ct)
+    {
+        var actor = context.Actor();
+        var node = await drive.GetFileAsync(actor, id, ct);
+        var versions = await drive.ListVersionsAsync(actor, id, ct);
+        return TypedResults.Ok(await VersionDtosAsync(db, node, versions, time, ct));
+    }
+
+    private static async Task<Ok<VersionDto>> RestoreVersion(Guid id, Guid versionId, HttpContext context, DriveService drive, DokumentDbContext db, TimeProvider time, CancellationToken ct)
+    {
+        var actor = context.Actor();
+        var restored = await drive.RestoreVersionAsync(actor, id, versionId, ct);
+        var node = await drive.GetFileAsync(actor, id, ct);
+        var versions = await drive.ListVersionsAsync(actor, id, ct);
+        return TypedResults.Ok((await VersionDtosAsync(db, node, versions, time, ct)).Single(v => v.Id == restored.Id));
+    }
+
+    private static async Task<Ok<VersionDto>> SetKeepForever(
+        Guid id, Guid versionId, KeepForeverRequest request, HttpContext context, DriveService drive, DokumentDbContext db, TimeProvider time, CancellationToken ct)
+    {
+        var actor = context.Actor();
+        await drive.SetKeepForeverAsync(actor, id, versionId, request.KeepForever, ct);
+        var node = await drive.GetFileAsync(actor, id, ct);
+        var versions = await drive.ListVersionsAsync(actor, id, ct);
+        return TypedResults.Ok((await VersionDtosAsync(db, node, versions, time, ct)).Single(v => v.Id == versionId));
+    }
+
+    private static async Task<Results<Ok<DuplicateCheckResponse>, ProblemHttpResult>> CheckDuplicates(
+        DuplicateCheckRequest request, HttpContext context, DriveService drive, CancellationToken ct)
+    {
+        if (request.Files.Count > 10_000)
+        {
+            return TypedResults.Problem("Check at most 10 000 files at a time.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var hashes = new List<ContentHash>();
+        foreach (var file in request.Files)
+        {
+            if (!ContentHash.TryParse(file.Sha256, out var hash))
+            {
+                return TypedResults.Problem($"\"{file.Sha256}\" isn't a SHA-256 in hex.", statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            hashes.Add(hash);
+        }
+
+        var found = await drive.FindByContentAsync(context.Actor(), hashes, ct);
+        var matches = await MatchesAsync(drive, found.Values.SelectMany(n => n).ToList(), ct);
+        return TypedResults.Ok(new DuplicateCheckResponse(
+            hashes.Select(h => new DuplicateCheckResult(h.Hex, found[h].Select(n => matches[n.Id]).ToList())).ToList()));
+    }
+
+    private static async Task<Results<Created<NodeDto>, ProblemHttpResult>> CopyFromContent(
+        CopyFromContentRequest request, HttpContext context, DriveService drive, DokumentDbContext db, CancellationToken ct)
+    {
+        if (!ContentHash.TryParse(request.Sha256, out var hash))
+        {
+            return TypedResults.Problem($"\"{request.Sha256}\" isn't a SHA-256 in hex.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var added = await drive.CopyFromContentAsync(context.Actor(), request.FolderId, request.Name, hash, request.ClientModifiedAt, request.OnConflict, ct);
+        return TypedResults.Created($"/api/v1/nodes/{added.Node.Id}", NodeDto.From(added.Node, await OwnerNamesAsync(db, [added.Node], ct)));
+    }
+
+    private static async Task<Ok<StorageUsage>> GetStorage(ClaimsPrincipal principal, DokumentDbContext db, CancellationToken ct)
+    {
+        var usage = await db.Users.Where(u => u.Id == principal.UserId())
+            .Select(u => new StorageUsage(u.UsedBytes, u.QuotaBytes))
+            .SingleAsync(ct);
+        return TypedResults.Ok(usage);
+    }
+
+    internal static async Task<Dictionary<Guid, DuplicateMatch>> MatchesAsync(DriveService drive, IReadOnlyCollection<Node> nodes, CancellationToken ct)
+    {
+        var ancestors = await drive.AncestorsAsync(nodes, ct);
+        return nodes.DistinctBy(n => n.Id).ToDictionary(
+            n => n.Id,
+            n => new DuplicateMatch(n.Id, n.Name.Value, ancestors[n.Id].Select(a => new PathEntry(a.Id, a.Name.Value)).ToList(), n.IsTrashed));
+    }
+
+    private static async Task<List<PathEntry>> PathOfAsync(DriveService drive, Node node, bool includeSelf, CancellationToken ct)
+    {
+        var path = (await drive.AncestorsAsync([node], ct))[node.Id].Select(a => new PathEntry(a.Id, a.Name.Value)).ToList();
+        if (includeSelf)
+        {
+            path.Add(new PathEntry(node.Id, node.Name.Value));
+        }
+
+        return path;
+    }
+
+    private static async Task<Dictionary<Guid, string>> OwnerNamesAsync(DokumentDbContext db, IEnumerable<Node?> nodes, CancellationToken ct)
+    {
+        var ids = nodes.OfType<Node>().Select(n => n.OwnerId).Distinct().ToList();
+        return await db.Users.Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+    }
+
+    private static async Task<List<VersionDto>> VersionDtosAsync(DokumentDbContext db, Node node, List<FileVersion> versions, TimeProvider time, CancellationToken ct)
+    {
+        var uploaderIds = versions.Select(v => v.UploadedBy).Distinct().ToList();
+        var names = await db.Users.Where(u => uploaderIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var purge = VersionRetention.Default.PurgeDates(versions, node.CurrentVersionId, time.GetUtcNow());
+        return versions.Select(v => new VersionDto(
+            v.Id,
+            v.Number,
+            v.Size,
+            v.MimeType,
+            v.OriginalName.Value,
+            v.UploadedBy,
+            names.GetValueOrDefault(v.UploadedBy, ""),
+            v.UploadedAt,
+            v.ClientModifiedAt,
+            v.KeepForever,
+            v.Id == node.CurrentVersionId,
+            v.RestoredFrom,
+            purge[v.Number])).ToList();
+    }
+}
