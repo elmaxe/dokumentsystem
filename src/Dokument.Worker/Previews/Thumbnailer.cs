@@ -8,11 +8,20 @@ namespace Dokument.Worker.Previews;
 public sealed record RenderedImage(RenditionKind Kind, byte[] Bytes, int Width, int Height);
 
 /// <summary>What the thumbnailer made of a file. <see cref="Images"/> is empty unless <see cref="Status"/> is Ready.</summary>
-public sealed record RenderResult(PreviewStatus Status, int? Width, int? Height, int? PageCount, IReadOnlyList<RenderedImage> Images, string? Reason = null)
+public sealed record RenderResult(
+    PreviewStatus Status,
+    int? Width,
+    int? Height,
+    int? PageCount,
+    IReadOnlyList<RenderedImage> Images,
+    string? Reason = null
+)
 {
-    public static RenderResult Unsupported { get; } = new(PreviewStatus.Unsupported, null, null, null, []);
+    public static RenderResult Unsupported { get; } =
+        new(PreviewStatus.Unsupported, null, null, null, []);
 
-    public static RenderResult Failed(string reason) => new(PreviewStatus.Failed, null, null, null, [], reason);
+    public static RenderResult Failed(string reason) =>
+        new(PreviewStatus.Failed, null, null, null, [], reason);
 }
 
 /// <summary>
@@ -23,10 +32,29 @@ public sealed record RenderResult(PreviewStatus Status, int? Width, int? Height,
 public sealed class Thumbnailer
 {
     /// <summary>libvips loaders we trust with user files. Anything else, such as the CSV or matrix loaders, isn't an image to us.</summary>
-    private static readonly HashSet<string> ImageLoaders = ["jpeg", "png", "spng", "webp", "gif", "nsgif", "heif", "tiff", "svg"];
+    private static readonly HashSet<string> ImageLoaders =
+    [
+        "jpeg",
+        "png",
+        "spng",
+        "webp",
+        "gif",
+        "nsgif",
+        "heif",
+        "tiff",
+        "svg",
+    ];
 
     /// <summary>Formats every browser shows natively; the viewer serves those from the original unless they are huge.</summary>
-    private static readonly HashSet<string> WebLoaders = ["jpeg", "png", "spng", "webp", "gif", "nsgif"];
+    private static readonly HashSet<string> WebLoaders =
+    [
+        "jpeg",
+        "png",
+        "spng",
+        "webp",
+        "gif",
+        "nsgif",
+    ];
 
     /// <summary>Bigger than this on the long edge and the viewer gets a scaled preview instead of the original.</summary>
     private const int LargeImageEdge = 4096;
@@ -36,7 +64,11 @@ public sealed class Thumbnailer
 
     private const int WebpQuality = 80;
 
-    private static readonly RenditionKind[] Thumbnails = [RenditionKind.ThumbSmall, RenditionKind.ThumbMedium];
+    private static readonly RenditionKind[] Thumbnails =
+    [
+        RenditionKind.ThumbSmall,
+        RenditionKind.ThumbMedium,
+    ];
 
     public RenderResult Render(string path, CancellationToken ct)
     {
@@ -46,8 +78,14 @@ public sealed class Thumbnailer
         }
 
         // "VipsForeignLoadJpegFile" → "jpeg".
-        var loader = Image.FindLoad(path)?.Replace("VipsForeignLoad", "", StringComparison.Ordinal).Replace("File", "", StringComparison.Ordinal).ToLowerInvariant();
-        return loader is not null && ImageLoaders.Contains(loader) ? RenderImage(path, loader, ct) : RenderResult.Unsupported;
+        var loader = Image
+            .FindLoad(path)
+            ?.Replace("VipsForeignLoad", "", StringComparison.Ordinal)
+            .Replace("File", "", StringComparison.Ordinal)
+            .ToLowerInvariant();
+        return loader is not null && ImageLoaders.Contains(loader)
+            ? RenderImage(path, loader, ct)
+            : RenderResult.Unsupported;
     }
 
     private static bool IsPdf(string path)
@@ -61,27 +99,36 @@ public sealed class Thumbnailer
 
     private static RenderResult RenderImage(string path, string loader, CancellationToken ct)
     {
-        int width, height;
+        int width,
+            height;
         try
         {
             using var header = Image.NewFromFile(path, access: Enums.Access.Sequential);
-            (width, height) = Orientation(header) is >= 5 and <= 8 ? (header.Height, header.Width) : (header.Width, header.Height);
+            (width, height) = Orientation(header) is >= 5 and <= 8
+                ? (header.Height, header.Width)
+                : (header.Width, header.Height);
         }
         catch (VipsException e)
         {
             return RenderResult.Failed(e.Message);
         }
 
-        var kinds = WebLoaders.Contains(loader) && Math.Max(width, height) <= LargeImageEdge
-            ? Thumbnails
-            : [.. Thumbnails, RenditionKind.Preview];
+        var kinds =
+            WebLoaders.Contains(loader) && Math.Max(width, height) <= LargeImageEdge
+                ? Thumbnails
+                : [.. Thumbnails, RenditionKind.Preview];
         var images = new List<RenderedImage>();
         foreach (var kind in kinds)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                using var thumb = Image.Thumbnail(path, kind.MaxEdge(), height: kind.MaxEdge(), size: Enums.Size.Down);
+                using var thumb = Image.Thumbnail(
+                    path,
+                    kind.MaxEdge(),
+                    height: kind.MaxEdge(),
+                    size: Enums.Size.Down
+                );
                 images.Add(Encode(kind, thumb));
             }
             catch (VipsException e)
@@ -99,8 +146,11 @@ public sealed class Thumbnailer
 
     private static RenderResult RenderPdf(string path, CancellationToken ct)
     {
-        int pageCount, pixelWidth, pixelHeight;
-        float pointWidth, pointHeight;
+        int pageCount,
+            pixelWidth,
+            pixelHeight;
+        float pointWidth,
+            pointHeight;
         byte[] bgrx;
         lock (Pdfium.Gate)
         {
@@ -110,7 +160,9 @@ public sealed class Thumbnailer
             {
                 return Pdfium.FPDF_GetLastError() == Pdfium.ErrorPassword
                     ? RenderResult.Failed("The PDF is password-protected.")
-                    : RenderResult.Failed($"PDFium couldn't open the file (error {Pdfium.FPDF_GetLastError()}).");
+                    : RenderResult.Failed(
+                        $"PDFium couldn't open the file (error {Pdfium.FPDF_GetLastError()})."
+                    );
             }
 
             try
@@ -148,16 +200,34 @@ public sealed class Thumbnailer
         }
 
         ct.ThrowIfCancellationRequested();
-        using var raw = Image.NewFromMemory(bgrx, pixelWidth, pixelHeight, bands: 4, Enums.BandFormat.Uchar);
-        using var rgb = raw[2].Bandjoin(raw[1], raw[0]).Copy(interpretation: Enums.Interpretation.Srgb);
+        using var raw = Image.NewFromMemory(
+            bgrx,
+            pixelWidth,
+            pixelHeight,
+            bands: 4,
+            Enums.BandFormat.Uchar
+        );
+        using var rgb = raw[2]
+            .Bandjoin(raw[1], raw[0])
+            .Copy(interpretation: Enums.Interpretation.Srgb);
         var images = new List<RenderedImage>();
         foreach (var kind in Thumbnails)
         {
-            using var thumb = rgb.ThumbnailImage(kind.MaxEdge(), height: kind.MaxEdge(), size: Enums.Size.Down);
+            using var thumb = rgb.ThumbnailImage(
+                kind.MaxEdge(),
+                height: kind.MaxEdge(),
+                size: Enums.Size.Down
+            );
             images.Add(Encode(kind, thumb));
         }
 
-        return new RenderResult(PreviewStatus.Ready, (int)Math.Round(pointWidth), (int)Math.Round(pointHeight), pageCount, images);
+        return new RenderResult(
+            PreviewStatus.Ready,
+            (int)Math.Round(pointWidth),
+            (int)Math.Round(pointHeight),
+            pageCount,
+            images
+        );
     }
 
     /// <summary>Renders a page onto white, as a reader would, and copies the pixels out. Call while holding the PDFium gate.</summary>
@@ -172,7 +242,16 @@ public sealed class Thumbnailer
         try
         {
             Pdfium.FPDFBitmap_FillRect(bitmap, 0, 0, width, height, 0xFFFFFFFF);
-            Pdfium.FPDF_RenderPageBitmap(bitmap, page, 0, 0, width, height, rotate: 0, Pdfium.RenderAnnotations);
+            Pdfium.FPDF_RenderPageBitmap(
+                bitmap,
+                page,
+                0,
+                0,
+                width,
+                height,
+                rotate: 0,
+                Pdfium.RenderAnnotations
+            );
             var buffer = Pdfium.FPDFBitmap_GetBuffer(bitmap);
             var stride = Pdfium.FPDFBitmap_GetStride(bitmap);
             var row = width * 4;
@@ -193,8 +272,15 @@ public sealed class Thumbnailer
     private static RenderedImage Encode(RenditionKind kind, Image image)
     {
         // CMYK JPEGs, 16-bit PNGs and the like: browsers and WebP want 8-bit sRGB.
-        using var srgb = image.Interpretation is Enums.Interpretation.Srgb or Enums.Interpretation.Bw ? image.Copy() : image.Colourspace(Enums.Interpretation.Srgb);
-        using var eight = srgb.Format == Enums.BandFormat.Uchar ? srgb.Copy() : srgb.Cast(Enums.BandFormat.Uchar, shift: srgb.Format == Enums.BandFormat.Ushort);
+        using var srgb = image.Interpretation
+            is Enums.Interpretation.Srgb
+                or Enums.Interpretation.Bw
+            ? image.Copy()
+            : image.Colourspace(Enums.Interpretation.Srgb);
+        using var eight =
+            srgb.Format == Enums.BandFormat.Uchar
+                ? srgb.Copy()
+                : srgb.Cast(Enums.BandFormat.Uchar, shift: srgb.Format == Enums.BandFormat.Ushort);
         var bytes = eight.WebpsaveBuffer(q: WebpQuality, keep: Enums.ForeignKeep.None);
         return new RenderedImage(kind, bytes, eight.Width, eight.Height);
     }

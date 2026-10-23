@@ -24,19 +24,23 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     key = table.Column<string>(type: "text", nullable: false),
                     value = table.Column<JsonDocument>(type: "jsonb", nullable: false),
                     updated_by = table.Column<Guid>(type: "uuid", nullable: true),
-                    updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                    updated_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: false,
+                        defaultValueSql: "now()"
+                    ),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_settings", x => x.key);
-                });
+                }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "settings");
+            migrationBuilder.DropTable(name: "settings");
         }
     }
 }

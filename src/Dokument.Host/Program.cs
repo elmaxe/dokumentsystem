@@ -14,14 +14,18 @@ if (args is ["healthcheck", ..])
 var roles = HostRoles.Parse(Environment.GetEnvironmentVariable("ROLE"));
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddSerilog((services, logger) => logger
-    .ReadFrom.Configuration(builder.Configuration)
-    .ReadFrom.Services(services)
-    .Enrich.WithProperty("Role", roles.ToString())
-    .WriteTo.Console());
+builder.Services.AddSerilog(
+    (services, logger) =>
+        logger
+            .ReadFrom.Configuration(builder.Configuration)
+            .ReadFrom.Services(services)
+            .Enrich.WithProperty("Role", roles.ToString())
+            .WriteTo.Console()
+);
 
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddHealthChecks()
+builder
+    .Services.AddHealthChecks()
     .AddDbContextCheck<DokumentDbContext>(tags: ["ready"])
     .AddCheck<StorageHealthCheck>("storage", tags: ["ready"]);
 
@@ -49,7 +53,10 @@ if (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name != "GetDocumen
 }
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
-app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+app.MapHealthChecks(
+    "/health/ready",
+    new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }
+);
 
 if (roles.Server)
 {

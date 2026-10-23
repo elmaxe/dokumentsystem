@@ -21,23 +21,32 @@ public sealed record NodeDto(
     DateTimeOffset ModifiedAt,
     Guid? CurrentVersionId,
     int? VersionNumber,
-    ThumbnailState Thumbnail)
+    ThumbnailState Thumbnail
+)
 {
-    public static NodeDto From(Node node, IReadOnlyDictionary<Guid, string> ownerNames, IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails) => new(
-        node.Id,
-        node.ParentId,
-        node.Kind,
-        node.Name.Value,
-        node.CurrentVersion?.Size,
-        node.CurrentVersion?.MimeType,
-        node.CurrentVersion?.BlobHash.Hex,
-        node.OwnerId,
-        ownerNames.GetValueOrDefault(node.OwnerId, ""),
-        node.CreatedAt,
-        node.ModifiedAt,
-        node.CurrentVersionId,
-        node.CurrentVersion?.Number,
-        node.CurrentVersion is { } version ? thumbnails.GetValueOrDefault(version.BlobHash, ThumbnailState.None) : ThumbnailState.None);
+    public static NodeDto From(
+        Node node,
+        IReadOnlyDictionary<Guid, string> ownerNames,
+        IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails
+    ) =>
+        new(
+            node.Id,
+            node.ParentId,
+            node.Kind,
+            node.Name.Value,
+            node.CurrentVersion?.Size,
+            node.CurrentVersion?.MimeType,
+            node.CurrentVersion?.BlobHash.Hex,
+            node.OwnerId,
+            ownerNames.GetValueOrDefault(node.OwnerId, ""),
+            node.CreatedAt,
+            node.ModifiedAt,
+            node.CurrentVersionId,
+            node.CurrentVersion?.Number,
+            node.CurrentVersion is { } version
+                ? thumbnails.GetValueOrDefault(version.BlobHash, ThumbnailState.None)
+                : ThumbnailState.None
+        );
 }
 
 /// <summary>One step of a breadcrumb trail, from the top of "My files" down.</summary>
@@ -71,7 +80,8 @@ public sealed record VersionDto(
     bool KeepForever,
     bool Current,
     int? RestoredFrom,
-    DateTimeOffset? PurgeAt);
+    DateTimeOffset? PurgeAt
+);
 
 public sealed record KeepForeverRequest(bool KeepForever);
 
@@ -89,11 +99,26 @@ public sealed record DuplicateCheckResult(string Sha256, List<DuplicateMatch> Du
 public sealed record DuplicateCheckResponse(List<DuplicateCheckResult> Files);
 
 /// <summary>"Upload anyway" for content the user already has: a new file pointing at the same bytes, with nothing sent.</summary>
-public sealed record CopyFromContentRequest(Guid? FolderId, string Name, string Sha256, DateTimeOffset? ClientModifiedAt, NameConflictPolicy OnConflict = NameConflictPolicy.Fail);
+public sealed record CopyFromContentRequest(
+    Guid? FolderId,
+    string Name,
+    string Sha256,
+    DateTimeOffset? ClientModifiedAt,
+    NameConflictPolicy OnConflict = NameConflictPolicy.Fail
+);
 
 /// <param name="NodeId">The file the upload produced, once complete.</param>
 /// <param name="Duplicates">Once complete: other files with the same content, for clients that couldn't check before uploading (§8.3).</param>
-public sealed record UploadStatus(Guid Id, string Name, long Size, long Offset, bool Complete, Guid? NodeId, DateTimeOffset ExpiresAt, List<DuplicateMatch> Duplicates);
+public sealed record UploadStatus(
+    Guid Id,
+    string Name,
+    long Size,
+    long Offset,
+    bool Complete,
+    Guid? NodeId,
+    DateTimeOffset ExpiresAt,
+    List<DuplicateMatch> Duplicates
+);
 
 /// <param name="QuotaBytes">Null means unlimited.</param>
 public sealed record StorageUsage(long UsedBytes, long? QuotaBytes);

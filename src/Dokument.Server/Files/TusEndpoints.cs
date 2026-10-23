@@ -28,13 +28,26 @@ public static class TusEndpoints
     public static RouteGroupBuilder MapTusEndpoints(this RouteGroupBuilder api)
     {
         var uploads = api.MapGroup("/uploads").WithTags("Uploads").RequireAuthorization();
-        uploads.MapMethods("", [HttpMethods.Options], Options).WithName("TusOptions").ExcludeFromDescription();
+        uploads
+            .MapMethods("", [HttpMethods.Options], Options)
+            .WithName("TusOptions")
+            .ExcludeFromDescription();
         uploads.MapPost("", Create).WithName("CreateUpload").ExcludeFromDescription();
-        uploads.MapMethods("/{id:guid}", [HttpMethods.Head], Head).WithName("TusHead").ExcludeFromDescription();
+        uploads
+            .MapMethods("/{id:guid}", [HttpMethods.Head], Head)
+            .WithName("TusHead")
+            .ExcludeFromDescription();
         uploads.MapPatch("/{id:guid}", Append).WithName("TusPatch").ExcludeFromDescription();
-        uploads.MapDelete("/{id:guid}", Terminate).WithName("TusTerminate").ExcludeFromDescription();
-        uploads.MapGet("/{id:guid}", GetStatus).WithName("GetUpload")
-            .WithDescription("The state of a tus upload, and once complete, the file it produced and any duplicates of it.");
+        uploads
+            .MapDelete("/{id:guid}", Terminate)
+            .WithName("TusTerminate")
+            .ExcludeFromDescription();
+        uploads
+            .MapGet("/{id:guid}", GetStatus)
+            .WithName("GetUpload")
+            .WithDescription(
+                "The state of a tus upload, and once complete, the file it produced and any duplicates of it."
+            );
         return api;
     }
 
@@ -47,20 +60,40 @@ public static class TusEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<IResult> Create(HttpContext context, UploadService uploads, CancellationToken ct)
+    private static async Task<IResult> Create(
+        HttpContext context,
+        UploadService uploads,
+        CancellationToken ct
+    )
     {
         if (CheckVersion(context) is { } wrongVersion)
         {
             return wrongVersion;
         }
 
-        if (!long.TryParse(context.Request.Headers["Upload-Length"], NumberStyles.None, CultureInfo.InvariantCulture, out var length))
+        if (
+            !long.TryParse(
+                context.Request.Headers["Upload-Length"],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var length
+            )
+        )
         {
-            return Problem(context, StatusCodes.Status400BadRequest, "Upload-Length is required. Deferred lengths aren't supported.");
+            return Problem(
+                context,
+                StatusCodes.Status400BadRequest,
+                "Upload-Length is required. Deferred lengths aren't supported."
+            );
         }
 
-        if (!TryParseMetadata(context.Request.Headers["Upload-Metadata"], out var metadata, out var error) ||
-            !TryReadRequest(metadata, length, out var request, out error))
+        if (
+            !TryParseMetadata(
+                context.Request.Headers["Upload-Metadata"],
+                out var metadata,
+                out var error
+            ) || !TryReadRequest(metadata, length, out var request, out error)
+        )
         {
             return Problem(context, StatusCodes.Status400BadRequest, error);
         }
@@ -69,18 +102,28 @@ public static class TusEndpoints
         var upload = await uploads.CreateAsync(actor, request, ct);
 
         // creation-with-upload: the first chunk may come with the create request.
-        if (!upload.IsComplete && context.Request.ContentType == OffsetContentType && context.Request.ContentLength is > 0)
+        if (
+            !upload.IsComplete
+            && context.Request.ContentType == OffsetContentType
+            && context.Request.ContentLength is > 0
+        )
         {
             AllowLargeBody(context);
             upload = await uploads.AppendAsync(actor, upload.Id, 0, context.Request.Body, ct);
         }
 
         SetUploadHeaders(context, upload);
-        context.Response.Headers.Location = $"{context.Request.PathBase}/api/v1/uploads/{upload.Id}";
+        context.Response.Headers.Location =
+            $"{context.Request.PathBase}/api/v1/uploads/{upload.Id}";
         return TypedResults.StatusCode(StatusCodes.Status201Created);
     }
 
-    private static async Task<IResult> Head(Guid id, HttpContext context, UploadService uploads, CancellationToken ct)
+    private static async Task<IResult> Head(
+        Guid id,
+        HttpContext context,
+        UploadService uploads,
+        CancellationToken ct
+    )
     {
         if (CheckVersion(context) is { } wrongVersion)
         {
@@ -89,12 +132,19 @@ public static class TusEndpoints
 
         var upload = await uploads.GetAsync(context.Actor(), id, ct);
         SetUploadHeaders(context, upload);
-        context.Response.Headers["Upload-Length"] = upload.Size.ToString(CultureInfo.InvariantCulture);
+        context.Response.Headers["Upload-Length"] = upload.Size.ToString(
+            CultureInfo.InvariantCulture
+        );
         context.Response.Headers.CacheControl = "no-store";
         return TypedResults.Ok();
     }
 
-    private static async Task<IResult> Append(Guid id, HttpContext context, UploadService uploads, CancellationToken ct)
+    private static async Task<IResult> Append(
+        Guid id,
+        HttpContext context,
+        UploadService uploads,
+        CancellationToken ct
+    )
     {
         if (CheckVersion(context) is { } wrongVersion)
         {
@@ -103,21 +153,43 @@ public static class TusEndpoints
 
         if (context.Request.ContentType != OffsetContentType)
         {
-            return Problem(context, StatusCodes.Status415UnsupportedMediaType, $"Send chunks as {OffsetContentType}.");
+            return Problem(
+                context,
+                StatusCodes.Status415UnsupportedMediaType,
+                $"Send chunks as {OffsetContentType}."
+            );
         }
 
-        if (!long.TryParse(context.Request.Headers["Upload-Offset"], NumberStyles.None, CultureInfo.InvariantCulture, out var offset))
+        if (
+            !long.TryParse(
+                context.Request.Headers["Upload-Offset"],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var offset
+            )
+        )
         {
             return Problem(context, StatusCodes.Status400BadRequest, "Upload-Offset is required.");
         }
 
         AllowLargeBody(context);
-        var upload = await uploads.AppendAsync(context.Actor(), id, offset, context.Request.Body, ct);
+        var upload = await uploads.AppendAsync(
+            context.Actor(),
+            id,
+            offset,
+            context.Request.Body,
+            ct
+        );
         SetUploadHeaders(context, upload);
         return TypedResults.NoContent();
     }
 
-    private static async Task<IResult> Terminate(Guid id, HttpContext context, UploadService uploads, CancellationToken ct)
+    private static async Task<IResult> Terminate(
+        Guid id,
+        HttpContext context,
+        UploadService uploads,
+        CancellationToken ct
+    )
     {
         if (CheckVersion(context) is { } wrongVersion)
         {
@@ -129,7 +201,13 @@ public static class TusEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Ok<UploadStatus>> GetStatus(Guid id, HttpContext context, UploadService uploads, DriveService drive, CancellationToken ct)
+    private static async Task<Ok<UploadStatus>> GetStatus(
+        Guid id,
+        HttpContext context,
+        UploadService uploads,
+        DriveService drive,
+        CancellationToken ct
+    )
     {
         var actor = context.Actor();
         var upload = await uploads.GetAsync(actor, id, ct);
@@ -139,13 +217,28 @@ public static class TusEndpoints
             var node = await drive.GetAsync(actor, nodeId, ct);
             if (node.CurrentVersion is { } version)
             {
-                var others = (await drive.FindByContentAsync(actor, [version.BlobHash], ct))[version.BlobHash].Where(n => n.Id != nodeId).ToList();
+                var others = (await drive.FindByContentAsync(actor, [version.BlobHash], ct))[
+                    version.BlobHash
+                ]
+                    .Where(n => n.Id != nodeId)
+                    .ToList();
                 var matches = await FileEndpoints.MatchesAsync(drive, others, ct);
                 duplicates = others.Select(n => matches[n.Id]).ToList();
             }
         }
 
-        return TypedResults.Ok(new UploadStatus(upload.Id, upload.Name.Value, upload.Size, upload.Offset, upload.IsComplete, upload.ResultNodeId, upload.ExpiresAt, duplicates));
+        return TypedResults.Ok(
+            new UploadStatus(
+                upload.Id,
+                upload.Name.Value,
+                upload.Size,
+                upload.Offset,
+                upload.IsComplete,
+                upload.ResultNodeId,
+                upload.ExpiresAt,
+                duplicates
+            )
+        );
     }
 
     private static void SetUploadHeaders(HttpContext context, Upload upload)
@@ -177,7 +270,11 @@ public static class TusEndpoints
         }
 
         context.Response.Headers["Tus-Version"] = Version;
-        return Problem(context, StatusCodes.Status412PreconditionFailed, $"Send Tus-Resumable: {Version}.");
+        return Problem(
+            context,
+            StatusCodes.Status412PreconditionFailed,
+            $"Send Tus-Resumable: {Version}."
+        );
     }
 
     private static ProblemHttpResult Problem(HttpContext context, int status, string detail)
@@ -187,7 +284,11 @@ public static class TusEndpoints
     }
 
     /// <summary>Parses <c>key base64value,key2 base64value2</c>. Keys without a value are allowed and read as empty.</summary>
-    public static bool TryParseMetadata(string? header, out Dictionary<string, string> metadata, out string error)
+    public static bool TryParseMetadata(
+        string? header,
+        out Dictionary<string, string> metadata,
+        out string error
+    )
     {
         metadata = new Dictionary<string, string>(StringComparer.Ordinal);
         error = "";
@@ -196,12 +297,20 @@ public static class TusEndpoints
             return true;
         }
 
-        foreach (var pair in header.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        foreach (
+            var pair in header.Split(
+                ',',
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries
+            )
+        )
         {
             var parts = pair.Split(' ', 2, StringSplitOptions.TrimEntries);
             try
             {
-                metadata[parts[0]] = parts.Length > 1 ? Encoding.UTF8.GetString(Convert.FromBase64String(parts[1])) : "";
+                metadata[parts[0]] =
+                    parts.Length > 1
+                        ? Encoding.UTF8.GetString(Convert.FromBase64String(parts[1]))
+                        : "";
             }
             catch (FormatException)
             {
@@ -213,11 +322,17 @@ public static class TusEndpoints
         return true;
     }
 
-    public static bool TryReadRequest(Dictionary<string, string> metadata, long length, out NewUpload request, out string error)
+    public static bool TryReadRequest(
+        Dictionary<string, string> metadata,
+        long length,
+        out NewUpload request,
+        out string error
+    )
     {
         request = null!;
         error = "";
-        Guid? folderId = null, nodeId = null;
+        Guid? folderId = null,
+            nodeId = null;
         ContentHash? sha256 = null;
         DateTimeOffset? modifiedAt = null;
         var onConflict = NameConflictPolicy.Fail;
@@ -255,7 +370,14 @@ public static class TusEndpoints
 
         if (metadata.GetValueOrDefault("modifiedAt") is { Length: > 0 } modified)
         {
-            if (!long.TryParse(modified, NumberStyles.None, CultureInfo.InvariantCulture, out var ms))
+            if (
+                !long.TryParse(
+                    modified,
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out var ms
+                )
+            )
             {
                 error = "modifiedAt must be milliseconds since the epoch.";
                 return false;
@@ -264,8 +386,10 @@ public static class TusEndpoints
             modifiedAt = DateTimeOffset.FromUnixTimeMilliseconds(ms);
         }
 
-        if (metadata.GetValueOrDefault("onConflict") is { Length: > 0 } conflict &&
-            !Enum.TryParse(conflict, ignoreCase: true, out onConflict))
+        if (
+            metadata.GetValueOrDefault("onConflict") is { Length: > 0 } conflict
+            && !Enum.TryParse(conflict, ignoreCase: true, out onConflict)
+        )
         {
             error = "onConflict must be fail, keepBoth or newVersion.";
             return false;
@@ -279,7 +403,8 @@ public static class TusEndpoints
             sha256,
             metadata.GetValueOrDefault("filetype"),
             modifiedAt,
-            onConflict);
+            onConflict
+        );
         return true;
     }
 }

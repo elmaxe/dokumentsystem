@@ -19,9 +19,16 @@ namespace Dokument.IntegrationTests;
 
 public sealed class PreviewTests(PostgresFixture postgres)
 {
-    private static readonly FakeUser Alice = new("alice-sub", "Alice Andersson", "alice@example.com");
+    private static readonly FakeUser Alice = new(
+        "alice-sub",
+        "Alice Andersson",
+        "alice@example.com"
+    );
 
-    private static readonly Dictionary<string, string?> FastWorker = new() { ["Worker:PollInterval"] = "00:00:00.100" };
+    private static readonly Dictionary<string, string?> FastWorker = new()
+    {
+        ["Worker:PollInterval"] = "00:00:00.100",
+    };
 
     [Fact]
     public async Task The_worker_makes_thumbnails_for_images_and_PDFs()
@@ -30,7 +37,12 @@ public sealed class PreviewTests(PostgresFixture postgres)
         using var alice = await SignInAsync(app, Alice);
         var photo = await UploadAsync(alice, "kvitto.png", TestFiles.Png(1200, 900), null);
         var pdf = await UploadAsync(alice, "avtal.pdf", TestFiles.Pdf(pages: 2), null);
-        var zip = await UploadAsync(alice, "backup.zip", [0x50, 0x4B, 0x05, 0x06, .. new byte[18]], null);
+        var zip = await UploadAsync(
+            alice,
+            "backup.zip",
+            [0x50, 0x4B, 0x05, 0x06, .. new byte[18]],
+            null
+        );
 
         var listing = await WaitUntilSettledAsync(alice);
         Assert.Equal(ThumbnailState.Ready, listing[photo].Thumbnail);
@@ -51,14 +63,20 @@ public sealed class PreviewTests(PostgresFixture postgres)
             Assert.Equal(256, image.Height);
         }
 
-        Assert.Equal(HttpStatusCode.NotFound, (await alice.GetAsync($"/api/v1/nodes/{zip}/thumbnail")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await alice.GetAsync($"/api/v1/nodes/{zip}/thumbnail")).StatusCode
+        );
 
         await using var scope = app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<DokumentDbContext>();
         var previews = await db.BlobPreviews.ToListAsync(TestContext.Current.CancellationToken);
         Assert.Contains(previews, p => p.PageCount == 2 && p.Status == PreviewStatus.Ready);
         Assert.Contains(previews, p => p.Status == PreviewStatus.Unsupported);
-        Assert.All(await db.Jobs.ToListAsync(TestContext.Current.CancellationToken), j => Assert.Equal(JobStatus.Done, j.Status));
+        Assert.All(
+            await db.Jobs.ToListAsync(TestContext.Current.CancellationToken),
+            j => Assert.Equal(JobStatus.Done, j.Status)
+        );
     }
 
     [Fact]
@@ -70,7 +88,12 @@ public sealed class PreviewTests(PostgresFixture postgres)
         var photo = await UploadAsync(alice, "kvitto.png", png, null);
         using var tiffImage = TestFiles.Gradient(300, 200);
         var tiff = await UploadAsync(alice, "skanning.tiff", tiffImage.TiffsaveBuffer(), null);
-        var page = await UploadAsync(alice, "sida.html", "<script>alert(1)</script>"u8.ToArray(), null);
+        var page = await UploadAsync(
+            alice,
+            "sida.html",
+            "<script>alert(1)</script>"u8.ToArray(),
+            null
+        );
         await WaitUntilSettledAsync(alice);
 
         // A PNG is shown as it is: the original bytes, inline, with range support for big files.
@@ -93,7 +116,10 @@ public sealed class PreviewTests(PostgresFixture postgres)
 
         await using var scope = app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<DokumentDbContext>();
-        var downloads = await db.AuditEvents.CountAsync(e => e.Action == AuditActions.FileDownload, TestContext.Current.CancellationToken);
+        var downloads = await db.AuditEvents.CountAsync(
+            e => e.Action == AuditActions.FileDownload,
+            TestContext.Current.CancellationToken
+        );
         Assert.Equal(0, downloads);
     }
 
@@ -106,7 +132,10 @@ public sealed class PreviewTests(PostgresFixture postgres)
         var first = await UploadAsync(alice, "a.png", png, null);
         await WaitUntilSettledAsync(alice);
 
-        var copy = await alice.PostAsJsonAsync("/api/v1/uploads/copy", new CopyFromContentRequest(null, "b.png", Sha256(png), null));
+        var copy = await alice.PostAsJsonAsync(
+            "/api/v1/uploads/copy",
+            new CopyFromContentRequest(null, "b.png", Sha256(png), null)
+        );
         var copied = (await copy.Content.ReadFromJsonAsync<NodeDto>(Json.Options))!;
         Assert.Equal(ThumbnailState.Ready, copied.Thumbnail);
 
@@ -132,8 +161,20 @@ public sealed class PreviewTests(PostgresFixture postgres)
         await db.Jobs.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
 
         var previews = scope.ServiceProvider.GetRequiredService<PreviewService>();
-        Assert.Equal(1, await previews.EnqueueMissingAsync(DateTimeOffset.UtcNow, TestContext.Current.CancellationToken));
-        Assert.Equal(0, await previews.EnqueueMissingAsync(DateTimeOffset.UtcNow, TestContext.Current.CancellationToken));
+        Assert.Equal(
+            1,
+            await previews.EnqueueMissingAsync(
+                DateTimeOffset.UtcNow,
+                TestContext.Current.CancellationToken
+            )
+        );
+        Assert.Equal(
+            0,
+            await previews.EnqueueMissingAsync(
+                DateTimeOffset.UtcNow,
+                TestContext.Current.CancellationToken
+            )
+        );
         var job = await db.Jobs.SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(JobPriority.Background, job.Priority);
 

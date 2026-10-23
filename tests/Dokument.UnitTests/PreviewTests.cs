@@ -30,7 +30,10 @@ public sealed class ThumbnailerTests : IDisposable
 
         Assert.Equal(PreviewStatus.Ready, result.Status);
         Assert.Equal((1600, 1200), (result.Width, result.Height));
-        Assert.Equal([RenditionKind.ThumbSmall, RenditionKind.ThumbMedium], result.Images.Select(i => i.Kind));
+        Assert.Equal(
+            [RenditionKind.ThumbSmall, RenditionKind.ThumbMedium],
+            result.Images.Select(i => i.Kind)
+        );
         Assert.Equal((256, 192), (result.Images[0].Width, result.Images[0].Height));
         Assert.Equal((640, 480), (result.Images[1].Width, result.Images[1].Height));
         using var decoded = Decode(result.Images[1]);
@@ -78,14 +81,22 @@ public sealed class ThumbnailerTests : IDisposable
 
         // The black box is in the top left; the rest of the page is white.
         Assert.True(decoded.Getpoint(decoded.Width / 5, decoded.Height / 10).All(v => v < 30));
-        Assert.True(decoded.Getpoint(decoded.Width * 4 / 5, decoded.Height * 4 / 5).All(v => v > 225));
+        Assert.True(
+            decoded.Getpoint(decoded.Width * 4 / 5, decoded.Height * 4 / 5).All(v => v > 225)
+        );
     }
 
     [Fact]
     public void Leaves_other_files_to_the_type_icon()
     {
-        Assert.Equal(PreviewStatus.Unsupported, Render("name,amount\nrent,9000\n"u8.ToArray()).Status);
-        Assert.Equal(PreviewStatus.Unsupported, Render([0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0]).Status);
+        Assert.Equal(
+            PreviewStatus.Unsupported,
+            Render("name,amount\nrent,9000\n"u8.ToArray()).Status
+        );
+        Assert.Equal(
+            PreviewStatus.Unsupported,
+            Render([0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0]).Status
+        );
         Assert.Equal(PreviewStatus.Unsupported, Render([]).Status);
     }
 
@@ -120,14 +131,22 @@ public class JobTests
     public void A_failed_job_is_queued_again_until_its_attempts_run_out()
     {
         var job = Job.Create(JobType.Thumbnail, "abc", JobPriority.Interactive, Now);
-        job.Fail(new string('x', 5000), new RetryPolicy(1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)), Now);
+        job.Fail(
+            new string('x', 5000),
+            new RetryPolicy(1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)),
+            Now
+        );
 
         // Attempts is counted by the claim; with none recorded, one attempt is still allowed.
         Assert.Equal(JobStatus.Queued, job.Status);
         Assert.Equal(Job.MaxErrorLength, job.LastError!.Length);
 
         var spent = Job.Create(JobType.Thumbnail, "abc", JobPriority.Interactive, Now);
-        spent.Fail("boom", new RetryPolicy(0, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)), Now);
+        spent.Fail(
+            "boom",
+            new RetryPolicy(0, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)),
+            Now
+        );
         Assert.Equal(JobStatus.Failed, spent.Status);
         Assert.Equal(Now, spent.FinishedAt);
 
@@ -140,7 +159,8 @@ public class JobTests
     [InlineData("")]
     [InlineData("Thumbnail")]
     [InlineData("thumb nail")]
-    public void Job_type_names_are_lowercase_slugs(string name) => Assert.Throws<ArgumentException>(() => JobType.From(name));
+    public void Job_type_names_are_lowercase_slugs(string name) =>
+        Assert.Throws<ArgumentException>(() => JobType.From(name));
 
     [Fact]
     public void Renditions_live_under_their_blob_hash()
@@ -150,6 +170,9 @@ public class JobTests
         Assert.Equal($"thumbs/aa/{hash.Hex}/thumb_m.webp", key.Value);
         Assert.Equal(key, DerivedKey.From(key.Value));
         Assert.Throws<ArgumentException>(() => DerivedKey.From("thumbs/../../originals/blobs/x"));
-        Assert.All(Enum.GetValues<RenditionKind>(), k => Assert.Equal(k, RenditionKinds.FromKey(k.Key())));
+        Assert.All(
+            Enum.GetValues<RenditionKind>(),
+            k => Assert.Equal(k, RenditionKinds.FromKey(k.Key()))
+        );
     }
 }

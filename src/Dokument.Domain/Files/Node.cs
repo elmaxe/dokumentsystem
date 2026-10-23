@@ -51,7 +51,8 @@ public sealed class Node
     }
 
     /// <summary>True if <paramref name="other"/> is this node or one of its descendants.</summary>
-    public bool Contains(Node other) => other.Path == Path || other.Path.StartsWith(Path + ".", StringComparison.Ordinal);
+    public bool Contains(Node other) =>
+        other.Path == Path || other.Path.StartsWith(Path + ".", StringComparison.Ordinal);
 }
 
 public enum NodeKind

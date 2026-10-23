@@ -12,10 +12,22 @@ namespace Dokument.Infrastructure.Jobs;
 public sealed class JobQueue(DokumentDbContext db, TimeProvider time)
 {
     /// <summary>Queues the work unless the same job is already waiting or running. Adds to the unit of work; the caller saves.</summary>
-    public async Task EnqueueAsync(JobType type, string subject, JobPriority priority, CancellationToken ct = default)
+    public async Task EnqueueAsync(
+        JobType type,
+        string subject,
+        JobPriority priority,
+        CancellationToken ct = default
+    )
     {
-        var active = db.Jobs.Local.Any(j => j.Type == type && j.Subject == subject && j.IsActive)
-            || await db.Jobs.AnyAsync(j => j.Type == type && j.Subject == subject && (j.Status == JobStatus.Queued || j.Status == JobStatus.Running), ct);
+        var active =
+            db.Jobs.Local.Any(j => j.Type == type && j.Subject == subject && j.IsActive)
+            || await db.Jobs.AnyAsync(
+                j =>
+                    j.Type == type
+                    && j.Subject == subject
+                    && (j.Status == JobStatus.Queued || j.Status == JobStatus.Running),
+                ct
+            );
         if (!active)
         {
             db.Jobs.Add(Job.Create(type, subject, priority, time.GetUtcNow()));
@@ -23,21 +35,30 @@ public sealed class JobQueue(DokumentDbContext db, TimeProvider time)
     }
 
     /// <summary>Takes the most urgent due job of <paramref name="type"/>, or returns null when there is none.</summary>
-    public async Task<Job?> ClaimAsync(JobType type, string workerId, TimeSpan lease, CancellationToken ct = default)
+    public async Task<Job?> ClaimAsync(
+        JobType type,
+        string workerId,
+        TimeSpan lease,
+        CancellationToken ct = default
+    )
     {
         var now = time.GetUtcNow();
         var lockedUntil = now + lease;
-        var jobs = await db.Jobs.FromSql($"""
-            UPDATE jobs SET status = 'running', attempts = attempts + 1, locked_by = {workerId}, locked_until = {lockedUntil}
-            WHERE id = (
-                SELECT id FROM jobs
-                WHERE type = {type.Name}
-                  AND ((status = 'queued' AND run_after <= {now}) OR (status = 'running' AND locked_until < {now}))
-                ORDER BY priority DESC, run_after
-                LIMIT 1
-                FOR UPDATE SKIP LOCKED)
-            RETURNING *
-            """).ToListAsync(ct);
+        var jobs = await db
+            .Jobs.FromSql(
+                $"""
+                UPDATE jobs SET status = 'running', attempts = attempts + 1, locked_by = {workerId}, locked_until = {lockedUntil}
+                WHERE id = (
+                    SELECT id FROM jobs
+                    WHERE type = {type.Name}
+                      AND ((status = 'queued' AND run_after <= {now}) OR (status = 'running' AND locked_until < {now}))
+                    ORDER BY priority DESC, run_after
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED)
+                RETURNING *
+                """
+            )
+            .ToListAsync(ct);
         return jobs.SingleOrDefault();
     }
 
@@ -47,7 +68,12 @@ public sealed class JobQueue(DokumentDbContext db, TimeProvider time)
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task FailAsync(Job job, string error, RetryPolicy retry, CancellationToken ct = default)
+    public async Task FailAsync(
+        Job job,
+        string error,
+        RetryPolicy retry,
+        CancellationToken ct = default
+    )
     {
         job.Fail(error, retry, time.GetUtcNow());
         await db.SaveChangesAsync(ct);
@@ -63,6 +89,8 @@ public sealed class JobQueue(DokumentDbContext db, TimeProvider time)
     public Task<int> PruneAsync(TimeSpan age, CancellationToken ct = default)
     {
         var before = time.GetUtcNow() - age;
-        return db.Jobs.Where(j => j.Status == JobStatus.Done && j.FinishedAt < before).ExecuteDeleteAsync(ct);
+        return db
+            .Jobs.Where(j => j.Status == JobStatus.Done && j.FinishedAt < before)
+            .ExecuteDeleteAsync(ct);
     }
 }

@@ -10,7 +10,11 @@ public sealed record LoginPolicy(string? UserGroup, string AdminGroup)
     public LoginDecision Evaluate(IReadOnlyCollection<string> groups)
     {
         var isAdmin = groups.Contains(AdminGroup, StringComparer.Ordinal);
-        if (!isAdmin && UserGroup is not null && !groups.Contains(UserGroup, StringComparer.Ordinal))
+        if (
+            !isAdmin
+            && UserGroup is not null
+            && !groups.Contains(UserGroup, StringComparer.Ordinal)
+        )
         {
             return LoginDecision.Denied;
         }

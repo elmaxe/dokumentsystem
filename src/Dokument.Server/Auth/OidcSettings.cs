@@ -14,13 +14,16 @@ public sealed record OidcSettings(
     string Scope,
     string GroupsClaim,
     string? ProviderName,
-    LoginPolicy Policy)
+    LoginPolicy Policy
+)
 {
-    public bool Enabled => !string.IsNullOrWhiteSpace(Issuer) && !string.IsNullOrWhiteSpace(ClientId);
+    public bool Enabled =>
+        !string.IsNullOrWhiteSpace(Issuer) && !string.IsNullOrWhiteSpace(ClientId);
 
     public static OidcSettings FromConfiguration(IConfiguration configuration)
     {
-        string? Get(string key) => string.IsNullOrWhiteSpace(configuration[key]) ? null : configuration[key]!.Trim();
+        string? Get(string key) =>
+            string.IsNullOrWhiteSpace(configuration[key]) ? null : configuration[key]!.Trim();
 
         return new OidcSettings(
             Issuer: Get("OIDC_ISSUER"),
@@ -31,6 +34,8 @@ public sealed record OidcSettings(
             ProviderName: Get("OIDC_PROVIDER_NAME"),
             Policy: new LoginPolicy(
                 UserGroup: Get("OIDC_USER_GROUP"),
-                AdminGroup: Get("OIDC_ADMIN_GROUP") ?? LoginPolicy.DefaultAdminGroup));
+                AdminGroup: Get("OIDC_ADMIN_GROUP") ?? LoginPolicy.DefaultAdminGroup
+            )
+        );
     }
 }

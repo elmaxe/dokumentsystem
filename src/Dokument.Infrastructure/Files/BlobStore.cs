@@ -29,9 +29,22 @@ public sealed class BlobStore(IOptions<StorageOptions> options)
     /// arrived before the client went away are kept, so the upload resumes from there. <c>Overflow</c> says the client sent
     /// more than it declared; those bytes are not written.
     /// </summary>
-    public async Task<(long Written, bool Overflow)> AppendAsync(Guid uploadId, long offset, Stream body, long maxBytes, CancellationToken ct)
+    public async Task<(long Written, bool Overflow)> AppendAsync(
+        Guid uploadId,
+        long offset,
+        Stream body,
+        long maxBytes,
+        CancellationToken ct
+    )
     {
-        await using var file = new FileStream(TempPathOf(uploadId), FileMode.Open, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
+        await using var file = new FileStream(
+            TempPathOf(uploadId),
+            FileMode.Open,
+            FileAccess.Write,
+            FileShare.None,
+            BufferSize,
+            useAsync: true
+        );
         file.SetLength(offset);
         file.Position = offset;
         var buffer = new byte[BufferSize];
@@ -64,7 +77,14 @@ public sealed class BlobStore(IOptions<StorageOptions> options)
 
     public async Task<ContentHash> HashTempAsync(Guid uploadId, CancellationToken ct)
     {
-        await using var file = new FileStream(TempPathOf(uploadId), FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, useAsync: true);
+        await using var file = new FileStream(
+            TempPathOf(uploadId),
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            BufferSize,
+            useAsync: true
+        );
         return await ContentHash.ComputeAsync(file, ct);
     }
 

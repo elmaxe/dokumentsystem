@@ -25,14 +25,24 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     used_bytes = table.Column<long>(type: "bigint", nullable: false),
                     reserved_bytes = table.Column<long>(type: "bigint", nullable: false),
                     locale = table.Column<string>(type: "text", nullable: true),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    last_login_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    disabled_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    created_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
+                    last_login_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
+                    disabled_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_users", x => x.id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "sessions",
@@ -43,10 +53,22 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     kind = table.Column<string>(type: "text", nullable: false),
                     token_hash = table.Column<byte[]>(type: "bytea", nullable: false),
                     device_name = table.Column<string>(type: "text", nullable: true),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    last_seen_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    expires_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    revoked_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    created_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
+                    last_seen_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
+                    expires_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
+                    revoked_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
                 },
                 constraints: table =>
                 {
@@ -56,35 +78,38 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         column: x => x.user_id,
                         principalTable: "users",
                         principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_sessions_token_hash",
                 table: "sessions",
                 column: "token_hash",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_sessions_user_id",
                 table: "sessions",
-                column: "user_id");
+                column: "user_id"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_users_oidc_issuer_oidc_subject",
                 table: "users",
                 columns: new[] { "oidc_issuer", "oidc_subject" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "sessions");
+            migrationBuilder.DropTable(name: "sessions");
 
-            migrationBuilder.DropTable(
-                name: "users");
+            migrationBuilder.DropTable(name: "users");
         }
     }
 }

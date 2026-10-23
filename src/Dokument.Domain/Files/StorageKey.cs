@@ -18,7 +18,8 @@ public sealed record StorageKey
 
     /// <summary>For values read back from the database.</summary>
     public static StorageKey From(string value) =>
-        value.StartsWith("blobs/", StringComparison.Ordinal) && !value.Contains("..", StringComparison.Ordinal)
+        value.StartsWith("blobs/", StringComparison.Ordinal)
+        && !value.Contains("..", StringComparison.Ordinal)
             ? new StorageKey(value)
             : throw new ArgumentException("Not a blob storage key.", nameof(value));
 

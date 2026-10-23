@@ -10,8 +10,11 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Dokument.IntegrationTests;
 
 /// <summary>The real app, with its own database, signing in against <see cref="FakeOidcProvider"/>.</summary>
-public sealed class DokumentApp(string connectionString, FakeOidcProvider idp, IReadOnlyDictionary<string, string?>? settings = null)
-    : WebApplicationFactory<Program>
+public sealed class DokumentApp(
+    string connectionString,
+    FakeOidcProvider idp,
+    IReadOnlyDictionary<string, string?>? settings = null
+) : WebApplicationFactory<Program>
 {
     private readonly string dataRoot = Directory.CreateTempSubdirectory("dokument-test-").FullName;
 
@@ -19,9 +22,16 @@ public sealed class DokumentApp(string connectionString, FakeOidcProvider idp, I
 
     public string OriginalsPath => Path.Combine(dataRoot, "originals");
 
-    public static async Task<DokumentApp> StartAsync(PostgresFixture postgres, IReadOnlyDictionary<string, string?>? settings = null)
+    public static async Task<DokumentApp> StartAsync(
+        PostgresFixture postgres,
+        IReadOnlyDictionary<string, string?>? settings = null
+    )
     {
-        var app = new DokumentApp(await postgres.CreateDatabaseAsync(), await FakeOidcProvider.StartAsync(), settings);
+        var app = new DokumentApp(
+            await postgres.CreateDatabaseAsync(),
+            await FakeOidcProvider.StartAsync(),
+            settings
+        );
         app.StartServer();
         return app;
     }
@@ -42,19 +52,39 @@ public sealed class DokumentApp(string connectionString, FakeOidcProvider idp, I
         }
 
         builder.ConfigureTestServices(services =>
-            services.Configure<OpenIdConnectOptions>(AuthSetup.OidcScheme, options => options.BackchannelHttpHandler = idp.Handler));
+            services.Configure<OpenIdConnectOptions>(
+                AuthSetup.OidcScheme,
+                options => options.BackchannelHttpHandler = idp.Handler
+            )
+        );
     }
 
     /// <summary>A browser: keeps cookies and doesn't follow redirects, so each hop can be checked.</summary>
-    public HttpClient CreateBrowser() => CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+    public HttpClient CreateBrowser() =>
+        CreateClient(
+            new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false,
+                HandleCookies = true,
+            }
+        );
 
     /// <summary>Runs the whole login: app → IdP → callback. Returns the callback's response.</summary>
-    public async Task<HttpResponseMessage> LoginAsync(HttpClient browser, FakeUser user, string returnTo = "/")
+    public async Task<HttpResponseMessage> LoginAsync(
+        HttpClient browser,
+        FakeUser user,
+        string returnTo = "/"
+    )
     {
         idp.NextUser = user;
-        var start = await browser.GetAsync($"/api/v1/auth/login?returnTo={Uri.EscapeDataString(returnTo)}");
+        var start = await browser.GetAsync(
+            $"/api/v1/auth/login?returnTo={Uri.EscapeDataString(returnTo)}"
+        );
         Assert.Equal(HttpStatusCode.Redirect, start.StatusCode);
-        Assert.StartsWith($"{FakeOidcProvider.Issuer}/authorize", start.Headers.Location!.ToString());
+        Assert.StartsWith(
+            $"{FakeOidcProvider.Issuer}/authorize",
+            start.Headers.Location!.ToString()
+        );
 
         using var idpBrowser = idp.CreateBrowser();
         var authorize = await idpBrowser.GetAsync(start.Headers.Location);
@@ -80,8 +110,15 @@ public sealed class DokumentApp(string connectionString, FakeOidcProvider idp, I
 
 internal static class Json
 {
-    public static readonly System.Text.Json.JsonSerializerOptions Options = new(System.Text.Json.JsonSerializerDefaults.Web)
+    public static readonly System.Text.Json.JsonSerializerOptions Options = new(
+        System.Text.Json.JsonSerializerDefaults.Web
+    )
     {
-        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase) },
+        Converters =
+        {
+            new System.Text.Json.Serialization.JsonStringEnumConverter(
+                System.Text.Json.JsonNamingPolicy.CamelCase
+            ),
+        },
     };
 }

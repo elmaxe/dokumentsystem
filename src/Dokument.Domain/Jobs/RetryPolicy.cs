@@ -6,7 +6,11 @@ namespace Dokument.Domain.Jobs;
 /// </summary>
 public sealed record RetryPolicy(int MaxAttempts, TimeSpan FirstDelay, TimeSpan MaxDelay)
 {
-    public static readonly RetryPolicy Default = new(MaxAttempts: 5, FirstDelay: TimeSpan.FromSeconds(30), MaxDelay: TimeSpan.FromHours(1));
+    public static readonly RetryPolicy Default = new(
+        MaxAttempts: 5,
+        FirstDelay: TimeSpan.FromSeconds(30),
+        MaxDelay: TimeSpan.FromHours(1)
+    );
 
     /// <summary>When to try again after attempt number <paramref name="attempts"/> failed, or null to give up.</summary>
     public DateTimeOffset? NextAttempt(int attempts, DateTimeOffset now)
