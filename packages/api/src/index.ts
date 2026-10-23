@@ -17,6 +17,7 @@ export type DuplicateMatch = components["schemas"]["DuplicateMatch"];
 export type DuplicateCheckResult = components["schemas"]["DuplicateCheckResult"];
 export type NameConflictPolicy = components["schemas"]["NameConflictPolicy"];
 export type StorageUsage = components["schemas"]["StorageUsage"];
+export type ThumbnailState = components["schemas"]["ThumbnailState"];
 
 /** The tus endpoint for resumable uploads (docs/design.md §8.1). */
 export const uploadsPath = "/api/v1/uploads";
@@ -27,6 +28,20 @@ export const uploadNodeIdHeader = "Dokument-Node-Id";
 /** Where a file's original bytes are downloaded from: the current version unless one is given. Downloads are audited. */
 export function contentUrl(nodeId: string, versionId?: string, baseUrl = ""): string {
   return `${baseUrl}/api/v1/nodes/${nodeId}/content${versionId ? `?versionId=${versionId}` : ""}`;
+}
+
+/**
+ * A file's thumbnail: small (256 px) for lists or medium (640 px) for the grid. Pass the current version id so the
+ * browser's cache follows new versions. Only ready once the node's `thumbnail` is "ready".
+ */
+export function thumbnailUrl(nodeId: string, versionId?: string | null, size: "small" | "medium" = "medium", baseUrl = ""): string {
+  const query = new URLSearchParams({ ...(versionId ? { versionId } : {}), ...(size === "small" ? { size } : {}) }).toString();
+  return `${baseUrl}/api/v1/nodes/${nodeId}/thumbnail${query ? `?${query}` : ""}`;
+}
+
+/** What the viewer loads: a rendition for images browsers can't show, otherwise the original, inline. Not audited. */
+export function previewUrl(nodeId: string, versionId?: string | null, baseUrl = ""): string {
+  return `${baseUrl}/api/v1/nodes/${nodeId}/preview${versionId ? `?versionId=${versionId}` : ""}`;
 }
 
 /** The RFC 9457 problem body the server sends for refused requests. File operations add a machine-readable code. */

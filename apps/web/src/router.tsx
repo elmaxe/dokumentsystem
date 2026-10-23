@@ -3,6 +3,7 @@ import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect
 import { sessionQuery } from "./api";
 import { AppShell } from "./AppShell";
 import { FilesPage } from "./files/FilesPage";
+import { ViewerPage } from "./files/ViewerPage";
 import { PlacePage } from "./PlacePage";
 import { SignInPage } from "./SignInPage";
 
@@ -39,6 +40,16 @@ const folderRoute = createRoute({
   },
 });
 
+/** The viewer sits inside the app shell, so uploads keep running and the tray stays put while a file is open. */
+const fileRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/files/$fileId",
+  component: function FileRoute() {
+    const { fileId } = fileRoute.useParams();
+    return <ViewerPage fileId={fileId} />;
+  },
+});
+
 const placeRoutes = (["shared", "recent", "starred", "trash"] as const).map((place) =>
   createRoute({
     getParentRoute: () => authenticatedRoute,
@@ -63,7 +74,7 @@ const signInRoute = createRoute({
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, ...placeRoutes]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, ...placeRoutes]), signInRoute]),
     context: { queryClient },
   });
 }

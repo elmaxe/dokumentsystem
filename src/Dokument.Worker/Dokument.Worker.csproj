@@ -11,7 +11,9 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="NetVips" />
-    <PackageReference Include="NetVips.Native" />
+    <!-- The Docker image sets UseSystemLibvips and installs Ubuntu's libvips with the HEVC plugin instead: the bundled
+         build can't decode iPhone HEIC photos. -->
+    <PackageReference Include="NetVips.Native" Condition="'$(UseSystemLibvips)' != 'true'" />
     <PackageReference Include="bblanchon.PDFium" />
   </ItemGroup>
   <ItemGroup>

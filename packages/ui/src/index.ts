@@ -13,6 +13,7 @@ export * from "./components/EmptyState";
 export * from "./components/FileGrid";
 export * from "./components/FileList";
 export * from "./components/FileTypeIcon";
+export * from "./components/FileViewer";
 export * from "./components/Icon";
 export * from "./components/Menu";
 export * from "./components/NavRail";

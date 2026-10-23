@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.6** · Last updated: 2026-10-22
+> Status: **Draft v0.7** · Last updated: 2026-10-23
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -192,7 +192,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   - backup schedule
   - ML URLs
   - Gotenberg URL
-  - job concurrency
+  - job concurrency (until the admin queue page exists: `Worker__ThumbnailConcurrency`, default 2)
   - OCR languages
 
 ---
@@ -265,8 +265,10 @@ uploads(id, user_id, owner_id, parent_id NULL, target_node_id NULL, name, size, 
         claimed_hash NULL, mime_type, client_modified_at, on_conflict {fail|keepBoth|newVersion},
         created_at, expires_at, result_node_id NULL, completed_at NULL)   -- tus uploads in flight
 
-renditions(id, version_id, kind {thumb_s|thumb_m|preview_pdf|preview_jpg|video_web|poster|…},
-           storage_key, mime_type, width, height, pipeline_version, created_at)
+blob_previews(blob_hash PK, status {ready|unsupported|failed}, pipeline_version, width NULL, height NULL,
+              page_count NULL, updated_at)       -- what the thumbnail stage made of a blob
+renditions(blob_hash, kind {thumb_s|thumb_m|preview|preview_pdf|video_web|poster|…},
+           storage_key, mime_type, width, height, created_at, PRIMARY KEY (blob_hash, kind))
 
 metadata(version_id, kind {exif|xmp|id3|pdf_info|ffprobe…}, data jsonb)
 
@@ -278,8 +280,8 @@ shares(id, node_id, grantee_user_id, role {viewer|editor}, created_by, created_a
 links(id, node_id, token_hash, role {viewer}, allow_download, password_hash NULL,
       expires_at NULL, created_by, created_at, revoked_at NULL)
 
-jobs(id, type, payload jsonb, status, priority, attempts, run_after, locked_by, locked_until,
-     last_error, created_at)                      -- or the library's tables
+jobs(id, type, subject, status {queued|running|done|failed}, priority, attempts, run_after,
+     locked_by, locked_until, last_error, created_at, finished_at)   -- subject: e.g. a blob hash
 audit_events(id, at, actor_user_id NULL, actor_kind {user|link|system|api_key}, ip, user_agent,
              action, target_node_id NULL, target_version_id NULL, details jsonb)  -- partitioned monthly
 notifications(id, user_id, type, data jsonb, created_at, read_at)
@@ -296,6 +298,7 @@ Notes:
   - Re-uploading identical content to the same file does **not** create a new version.
 - **Name uniqueness within a folder:** NFC-normalized and case-insensitive (`name_key`). The top of each user's "My files" (parent NULL) counts as one folder, hence `NULLS NOT DISTINCT`. Conflicts are resolved like Drive: either "file (1).pdf" or "upload as new version", chosen by the user.
 - **Names** (`NodeName` in the domain) are trimmed, NFC, at most 255 UTF-8 bytes, never "." or "..", and contain no slashes or control characters, so `dokument export` can write any of them to disk.
+- **Renditions belong to blobs, not versions** (decision 15): identical bytes are rendered once, and a copy or a restored version has its thumbnail at once.
 - **`path ltree`** makes subtree operations cheap: permission inheritance, "trash folder", "folder size", "search in folder".
 
 ---
@@ -307,8 +310,8 @@ Notes:
   blobs/ab/cd/abcdef…sha256 # content-addressed, write-once, never modified
   tmp/{upload_id}           # in-flight uploads (tus), same filesystem for atomic rename
 /data/derived/              # REGENERABLE — backup optional
-  thumbs/{version_id}/{kind}.webp
-  previews/{version_id}/…   # PDF renditions, web-playable video, posters
+  thumbs/ab/{sha256}/{kind}.webp   # thumb_s, thumb_m, preview; keyed by blob like the originals
+  previews/ab/{sha256}/…           # later: PDF renditions of Office files, web-playable video, posters
 /data/backups/              # DB dumps (see §13)
 ```
 
@@ -400,12 +403,15 @@ On disk, identical bytes are always stored once (§6). On top of that, **users a
 
 ### 10.1 Job model
 
-- A job is enqueued **per version per stage**.
+- **Our own `jobs` table** (built in M2): workers claim the most urgent due job with `FOR UPDATE SKIP LOCKED`, so several workers can share it. A claim is a lease of twice the job timeout; a job whose worker died is claimed again once its lease runs out.
+- A job is enqueued **per blob per stage** (`subject` is the hash), so identical content is processed once. It isn't queued again while one for the same subject is waiting or running.
 - Jobs are **idempotent**: re-running one overwrites its outputs.
-- **Retries** with exponential backoff. After N attempts → `failed`, visible in the admin UI.
+- **Retries** with exponential backoff: 30 s, doubling, at most 1 h apart. After 5 attempts → `failed`, visible in the admin UI. A job running longer than 5 minutes is cancelled and counts as a failed attempt. Finished jobs are deleted after 7 days; failed ones stay until retried.
+- A file the stage can't read (corrupt, password-protected) isn't a failed job: the stage records that and moves on. Only unexpected errors (disk, database) retry.
 - **`pipeline_version` per stage:** bumping it (e.g. a better thumbnailer) lets an admin choose "re-run stage X for all".
 - **Concurrency per job type**, configurable in the UI. Defaults are NAS-friendly, e.g. thumbnails 2, video 1, OCR 1.
 - **Priorities:** interactive work (a user just uploaded) before bulk imports and rescans.
+- **Backfill:** when the worker starts, it queues the thumbnail stage at background priority for every blob without results from the current `pipeline_version`. That covers files from before a stage existed and pipeline upgrades.
 - **Admin UI:** queue sizes, running and failed jobs with errors, "retry failed", "regenerate missing", pause/resume per queue.
 
 ### 10.2 Stages
@@ -426,13 +432,20 @@ upload complete
 
 | Format | Metadata | Thumbnail / preview | Text |
 |---|---|---|---|
-| JPEG/PNG/WebP/GIF/HEIC/AVIF/RAW | exiftool | **NetVips** (libvips + libheif + libraw) → WebP thumbs and a JPEG/WebP preview | OCR (ML) |
-| PDF | PdfPig / exiftool | **PDFium** renders page 1 (thumb) and pages on demand | PdfPig text layer → OCR when there is none |
+| JPEG/PNG/WebP/GIF/HEIC/AVIF/TIFF/SVG (RAW later) | exiftool | **NetVips** (libvips + libheif) → WebP thumbs, plus a WebP preview when the browser can't show the original | OCR (ML) |
+| PDF | PdfPig / exiftool | **PDFium** renders page 1 for the thumbs; the viewer renders pages with pdf.js | PdfPig text layer → OCR when there is none |
 | DOCX/XLSX/PPTX/ODF/RTF | OpenXML SDK / exiftool | **Gotenberg** (LibreOffice) → PDF rendition → PDFium | OpenXML/ODF text extraction; fall back to text from the PDF rendition |
 | Video | ffprobe | ffmpeg poster frame; **web-playable rendition only if needed** (H.264/AAC MP4, or HLS for large files). Hardware acceleration: VAAPI/QSV/NVENC. | Transcript (ML, optional) |
 | Audio | ffprobe / ID3 | Embedded cover art, or a generic icon | Transcript (ML, optional) |
 | Text/Markdown/code/CSV/JSON | — | Rendered first lines as thumb (optional) | Raw text (size-capped) |
 | Archives (zip) | entry list | icon | entry names only |
+
+**Thumbnail stage, as built (M2):**
+- The format comes from the bytes: `%PDF-` in the first KiB, otherwise libvips' loader, limited to an allowlist (JPEG, PNG, WebP, GIF, HEIF/AVIF, TIFF, SVG) so text files never reach the CSV or matrix loaders. Anything else is `unsupported` and keeps its type icon.
+- Two WebP thumbnails at quality 80, never upscaled: `thumb_s` at most 256 px on the long edge (lists) and `thumb_m` at most 640 px (grid tiles). EXIF rotation is applied, colour is converted to 8-bit sRGB, and metadata is stripped. Originals are only read.
+- A `preview` WebP of at most 2048 px is added for images browsers can't show (HEIC, TIFF, SVG) and for anything over 4096 px. Other images are viewed from the original.
+- A PDF's page 1 is rendered on white at 1280 px on the long edge and scaled down for the thumbs. Its page count and page size are stored.
+- The Docker image uses Ubuntu's libvips with the libde265 plugin, because the libvips bundled in NetVips.Native can't decode HEVC, the codec in iPhone HEIC photos. Development builds use the bundled one, so HEIC thumbnails only work in the image (or with `-p:UseSystemLibvips=true` and a system libvips).
 
 Licensing note: NetVips/libvips (LGPL), PDFium (BSD/Apache), PdfPig (Apache) and ffmpeg (LGPL build) are all fine. We avoid ImageSharp (split license) and MuPDF, which is AGPL; MuPDF would be acceptable since we are AGPL, but it isn't needed.
 
@@ -528,7 +541,7 @@ Modeled on Immich's `immich-machine-learning`.
 
 | Type | Web | Mobile |
 |---|---|---|
-| Images | Preview rendition (HEIC/RAW → WebP), zoom/pan, EXIF info panel | Same; `expo-image` |
+| Images | The original, or the WebP preview for HEIC/TIFF/SVG and huge images; zoom/pan; EXIF info panel later | Same; `expo-image` |
 | PDF | **pdf.js** with page thumbnails, search-in-document, OCR text-layer overlay for scans | `react-native-pdf` (or pdf.js in a WebView) |
 | Office | The server's **PDF rendition** in the PDF viewer | Same |
 | Video | `<video>` with HTTP Range; web rendition if the original isn't playable | `expo-video` |
@@ -536,6 +549,8 @@ Modeled on Immich's `immich-machine-learning`.
 | Text / code / Markdown | CodeMirror (read-only) / rendered Markdown | Rendered text |
 | Other | Metadata + download | Download / "open in…" |
 
+- **Built in M2 (web):** a full-screen viewer at `/files/{id}` for images (zoom steps from 50 % to 400 %, double-click, drag to pan), PDFs (pdf.js with range requests, one page at a time fitted to the width, Page Up/Down), text (the first 1 MB, as plain text; rendered Markdown later), and audio and video the browser can play. Everything else shows "No preview" with Download. Arrow keys or a swipe move between the files in the folder; Esc closes. PDF page thumbnails, search in the document and the OCR overlay come later.
+- **`GET /nodes/{id}/preview` serves what the viewer shows** and is **not audited** (§18): the WebP preview if there is one, otherwise the original bytes inline, with range support. Markup (HTML, XML, SVG) is served as `text/plain`, with `nosniff` and a `sandbox` CSP, so a preview can never run in our origin. `GET /nodes/{id}/content` stays the audited download. Anyone who can view a file can read its bytes through the preview, so the audit log records downloads, not every way the bytes could leave.
 - **"Download original" is always available** to anyone with viewer rights (except via no-download links), and returns exact bytes.
 - Folders can be downloaded as a **streamed zip** (built on the fly, never staged on disk).
 
@@ -661,7 +676,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **Button** (filled / tonal / outlined / text / danger) and **IconButton**. At most one filled button per view.
 - **Chip:** search filters that mirror the operators ("Type: PDF" for `type:pdf`).
 - **FileTypeIcon:** a Material Symbol in the `file-*` colour per MIME group. Also the thumbnail fallback. Folders stay neutral.
-- **FileGrid:** folders first, then file tiles with 4:3 thumbnails. A shimmer shows while a thumbnail is pending; the thumbnail is swapped in over SignalR. Video tiles show a duration badge.
+- **FileGrid:** folders first, then file tiles with 4:3 thumbnails. Documents (PDF, Office, text) show the top of page 1; photos are cropped to fill. A shimmer shows while a thumbnail is pending, and the thumbnail is swapped in when it is ready: for now the listing is polled (every 2 s, then every 10 s) while anything is pending, and SignalR replaces that with live updates. Video tiles show a duration badge.
 - **FileList:** a sortable name / owner / modified / size table. Under 600 px of container width, the columns fold into a second line.
 - **ActionBar:** the selection count plus Share, Download, Move, Trash and More.
 - **UploadTray:** one row per tus upload, in one of the states hashing, uploading, paused, done, duplicate ("Remove this copy") or failed (Retry), each with an icon and words.
@@ -669,6 +684,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **ShareDialog:** add people, then people with access (inherited grants are labelled and cannot be lowered), then the public link with expiry, password and download chips. A bottom sheet on phones.
 - **VersionHistory:** the Versions tab of the details panel. It marks the current and "Keep forever" versions and warns "Removed in N days" per the retention policy.
 - **StorageMeter:** a warning at 80 % and a critical state at 95 %, in words as well as colour.
+- **FileViewer:** the §14 viewer: a header with the file's name, Share, Download, details and More; the preview; a floating toolbar for pages and zoom; previous/next arrows on wide screens and swipes on phones. States: loading, preparing (the worker is still making the preview), no preview, and failed, each with Download.
 - **NavRail**, **BottomNav**, **EmptyState** (also the drag-and-drop target that names the destination folder).
 
 ### 16.5 Content and accessibility
@@ -775,7 +791,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 |---|---|
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
 | **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, and the web file browser. **Still to come:** trash and the purge job (which also enforces version retention), starred and recent, folder uploads, live updates. |
-| **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews |
+| **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media. **Still to come:** metadata, video posters and transcoding, Gotenberg, the admin queue page, rendered Markdown. |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
@@ -803,6 +819,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 | 12 | Sessions | 2026-10-22: opaque tokens, stored hashed, expire after 30 days idle (sliding). Cookie + `X-CSRF-Token` on web, bearer on mobile. Sign-out is local, not at the IdP (§5). |
 | 13 | UI components | 2026-10-22: web components live in `packages/ui` (Radix + Tailwind v4, Storybook 10). The mobile app gets its own components on the same tokens (§15.1, §16.5) |
 | 14 | File storage (M1) | 2026-10-22: our own tus 1.0 endpoint; the server hashes the finished temp file once; names are `NodeName` (NFC, case-insensitive, 255 bytes); owner-only access until sharing (M4) behind one `NodeAccess` predicate; no quota until an admin sets one; audit table unpartitioned until M6 (§6–8, §18) |
+| 15 | Thumbnails and previews (M2) | 2026-10-23: our own Postgres job table; renditions keyed by blob hash; WebP thumbs at 256 and 640 px plus a 2048 px preview only when the browser can't show the original; HEIC via the image's system libvips; the grid polls until SignalR; the viewer reads an unaudited `/preview` endpoint (§6, §7, §10, §14) |
 
 ## 26. Open questions
 

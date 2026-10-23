@@ -6,6 +6,7 @@ using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Worker.Jobs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Dokument.Worker.Previews;
 
@@ -14,7 +15,8 @@ namespace Dokument.Worker.Previews;
 /// records them. A file that isn't an image or a PDF, or can't be decoded, is recorded as such and not retried; only
 /// unexpected errors (I/O, the database) make the job fail and retry.
 /// </summary>
-internal sealed class ThumbnailHandler(DokumentDbContext db, BlobStore blobs, DerivedStore derived, Thumbnailer thumbnailer, TimeProvider time) : IJobHandler
+internal sealed partial class ThumbnailHandler(
+    DokumentDbContext db, BlobStore blobs, DerivedStore derived, Thumbnailer thumbnailer, TimeProvider time, ILogger<ThumbnailHandler> logger) : IJobHandler
 {
     public async Task RunAsync(Job job, CancellationToken ct)
     {
@@ -31,6 +33,11 @@ internal sealed class ThumbnailHandler(DokumentDbContext db, BlobStore blobs, De
         }
 
         var result = await Task.Run(() => thumbnailer.Render(blobs.PathOf(blob.StorageKey), ct), ct);
+        if (result.Status == PreviewStatus.Failed)
+        {
+            LogUnreadable(logger, job.Subject, result.Reason);
+        }
+
         var now = time.GetUtcNow();
         var renditions = new List<Rendition>();
         foreach (var image in result.Images)
@@ -65,4 +72,7 @@ internal sealed class ThumbnailHandler(DokumentDbContext db, BlobStore blobs, De
             derived.Delete(gone.StorageKey);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "No thumbnail for blob {Hash}: {Reason}")]
+    private static partial void LogUnreadable(ILogger logger, string hash, string? reason);
 }

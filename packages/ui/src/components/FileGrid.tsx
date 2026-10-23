@@ -2,7 +2,7 @@ import { formatFileDate } from "@dokument/core";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
-import { isFolder, type FileItem } from "../lib/files";
+import { isFolder, isPaged, type FileItem } from "../lib/files";
 import { useFileSelection } from "../lib/useFileSelection";
 import { useCoarsePointer } from "../lib/usePointer";
 import { IconButton } from "./Button";
@@ -101,6 +101,7 @@ function Tile({ item, selected, itemProps, menuActions, onAction, meta }: TilePr
                   onLoad={() => setLoaded(true)}
                   className={cn(
                     "size-full object-cover transition-opacity duration-(--duration-medium)",
+                    isPaged(item) && "object-top",
                     loaded ? "opacity-100" : "opacity-0",
                   )}
                 />
