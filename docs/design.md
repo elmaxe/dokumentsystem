@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.7** · Last updated: 2026-10-23
+> Status: **Draft v0.8** · Last updated: 2026-10-23
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -184,7 +184,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 
 ### 4.3 Configuration
 
-- **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`.
+- **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`, and the standard `OTEL_*` variables (§22.1).
 - **Everything else is admin settings stored in the DB** and edited in the UI:
   - quota defaults
   - trash and version retention
@@ -772,9 +772,42 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 ## 22. Observability and operations
 
 - Structured logging (Serilog → console/JSON). Log level can be changed from the admin UI.
-- OpenTelemetry traces and metrics: optional OTLP export, plus a Prometheus `/metrics` endpoint.
+- OpenTelemetry traces, metrics and logs, exported over OTLP when configured (§22.1).
 - **Admin "System" page:** versions, extension versions, disk usage, queue stats, ML endpoint status, last backup, integrity report.
 - **CLI inside the container (`dokument …`):** `admin`, `export`, `integrity-check`, `reindex`, `regenerate`, `migrate`.
+
+### 22.1 OpenTelemetry
+
+Telemetry is **off by default** and costs nothing until it is turned on. A household install doesn't need a collector, and nothing leaves the box unless the admin points it somewhere.
+
+- **Turning it on uses the standard SDK variables, not our own:** setting `OTEL_EXPORTER_OTLP_ENDPOINT` enables export of all three signals. `OTEL_EXPORTER_OTLP_PROTOCOL` (default `grpc`, or `http/protobuf`), `OTEL_EXPORTER_OTLP_HEADERS`, the per-signal `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_TRACES_SAMPLER`/`_ARG` behave as the spec says. These are bootstrap settings (§4.3), not admin settings, because they must be known before the database is.
+- **Any OTLP backend works:** an OpenTelemetry Collector, Grafana Alloy/LGTM, SigNoz, Jaeger, Uptrace, or the standalone Aspire dashboard. We ship no collector in Compose; the docs show one optional example.
+- **Local development:** Aspire already injects `OTEL_EXPORTER_OTLP_ENDPOINT` into the server and worker, so traces, metrics and logs show up in the Aspire dashboard with no extra setup.
+- **One image, one wiring:** `Dokument.Host` registers OpenTelemetry once for both roles. Resource attributes:
+  - `service.name` = `dokumentsystem-server` or `dokumentsystem-worker` (`dokumentsystem` when one process runs both), unless `OTEL_SERVICE_NAME` overrides it
+  - `service.version` = the image version, `service.instance.id` = the host name
+  - `deployment.environment.name` only if the admin sets it in `OTEL_RESOURCE_ATTRIBUTES`
+- **Traces:**
+  - Instrumentation: ASP.NET Core (with route templates, so ids and share tokens stay out of span names), HttpClient (OIDC, Gotenberg, ML), and Npgsql for SQL.
+  - Our own `ActivitySource("Dokument")` spans around uploads (tus create/patch/finish, hashing), the job runner (one span per job run, `job.type`, `job.attempt`, outcome), thumbnail/preview generation, and later text extraction, OCR and indexing.
+  - **Jobs carry the trace across the queue.** Enqueueing stores the current `traceparent` on the `jobs` row (one nullable column), and the job's span links to it. An upload's trace then leads to its thumbnail job, even though the worker runs it later.
+  - Calls to the ML service and Gotenberg propagate W3C `traceparent`. The ML service uses the Python OpenTelemetry SDK with the same `OTEL_*` variables.
+  - `/health/*` and `/metrics` are not traced. Sampling is parent-based, default always-on, and can be lowered with `OTEL_TRACES_SAMPLER=parentbased_traceidratio`.
+- **Metrics:**
+  - ASP.NET Core and Kestrel, HttpClient, Npgsql, .NET runtime and process metrics.
+  - Our own `Meter("Dokument")`, named `dokument.*`:
+    - `dokument.jobs.queued` / `dokument.jobs.running` (gauges by `job.type`), `dokument.jobs.duration` (histogram by type and outcome), `dokument.jobs.failed` (counter), `dokument.jobs.lag` (age of the oldest due job)
+    - `dokument.uploads.bytes` (counter), `dokument.uploads.active` (gauge), `dokument.downloads` (counter)
+    - `dokument.renditions.generated` (counter by kind), `dokument.storage.bytes` (originals and derived, sampled by the worker)
+    - later: search query duration, OCR pages, ML endpoint up/down
+  - **Prometheus scraping** is optional for people who run Prometheus without a collector: `METRICS_PORT` turns on a `/metrics` endpoint on its own port, so it is never reachable through the public port or reverse proxy.
+- **Logs:** Serilog stays the logging API. When OTLP is on, an OpenTelemetry sink exports the same structured events with their trace and span ids, next to the console output. The admin UI's log level applies to both.
+- **Privacy rules for every signal:**
+  - No file or folder names, paths, file contents, search queries, email addresses, display names, IP addresses, tokens, cookies or `Authorization` headers.
+  - URLs are recorded as route templates without query strings.
+  - Users and nodes appear only as their opaque ids (`dokument.user.id`, `dokument.node.id`), and only on spans, never as metric labels, which stay low-cardinality.
+  - The OTLP endpoint is the admin's choice; we never send telemetry anywhere by default.
+- **Web app:** no browser telemetry in v1. The server's spans start at the API request. Browser tracing (OTLP over HTTP, relayed by the server) can come later if it proves useful.
 
 ---
 
@@ -795,7 +828,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
-| **M6: Ops** | DB dump schedule, integrity job, admin system page, export CLI, docs, multi-arch release |
+| **M6: Ops** | DB dump schedule, integrity job, admin system page, export CLI, docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search), remote ML URLs with fallback, transcription |
 | **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders) |
 
@@ -820,6 +853,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 | 13 | UI components | 2026-10-22: web components live in `packages/ui` (Radix + Tailwind v4, Storybook 10). The mobile app gets its own components on the same tokens (§15.1, §16.5) |
 | 14 | File storage (M1) | 2026-10-22: our own tus 1.0 endpoint; the server hashes the finished temp file once; names are `NodeName` (NFC, case-insensitive, 255 bytes); owner-only access until sharing (M4) behind one `NodeAccess` predicate; no quota until an admin sets one; audit table unpartitioned until M6 (§6–8, §18) |
 | 15 | Thumbnails and previews (M2) | 2026-10-23: our own Postgres job table; renditions keyed by blob hash; WebP thumbs at 256 and 640 px plus a 2048 px preview only when the browser can't show the original; HEIC via the image's system libvips; the grid polls until SignalR; the viewer reads an unaudited `/preview` endpoint (§6, §7, §10, §14) |
+| 16 | Observability | 2026-10-23: OpenTelemetry for traces, metrics and logs, off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set; standard `OTEL_*` variables only; trace context stored on jobs; strict no-PII attribute rules; optional Prometheus endpoint on a separate port (§22.1) |
 
 ## 26. Open questions
 
