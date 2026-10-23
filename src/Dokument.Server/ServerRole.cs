@@ -1,12 +1,16 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Storage;
+using Dokument.Server.Admin;
 using Dokument.Server.Auth;
 using Dokument.Server.Files;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -42,6 +46,18 @@ public static class ServerRole
             options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
         });
         builder.AddDokumentAuth();
+
+        // Keys live on the originals volume, so they're backed up with it and survive restarts (§21).
+        var storage =
+            builder.Configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>()
+            ?? new StorageOptions();
+        builder
+            .Services.AddDataProtection()
+            .SetApplicationName("Dokumentsystem")
+            .PersistKeysToFileSystem(
+                new DirectoryInfo(Path.Combine(storage.OriginalsPath, "keys"))
+            );
+        builder.Services.AddSingleton<SecretProtector>();
         return builder;
     }
 
@@ -75,6 +91,7 @@ public static class ServerRole
         api.MapAuthEndpoints();
         api.MapFileEndpoints();
         api.MapTusEndpoints();
+        api.MapAdminEndpoints();
         app.MapFallback("/api/{**path}", () => TypedResults.NotFound());
         app.MapFallbackToFile("index.html");
         return app;

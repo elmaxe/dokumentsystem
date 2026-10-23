@@ -25,6 +25,47 @@
         }
       }
     },
+    "/api/v1/me/language": {
+      "put": {
+        "tags": [
+          "Auth"
+        ],
+        "description": "Null follows the browser's language.",
+        "operationId": "SetMyLanguage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetLanguageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/config": {
       "get": {
         "tags": [
@@ -729,10 +770,474 @@
           }
         }
       }
+    },
+    "/api/v1/admin/settings": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminGetSettings",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSettingsDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/settings/storage": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutStorageSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/settings/versions": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutVersionSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/settings/ml": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutMlSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMlSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MlSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/settings/scanner": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutScannerSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScannerSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScannerSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/ml/status": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Checks every saved ML service now.",
+        "operationId": "AdminGetMlStatus",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MlEndpointStatus"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/ml/test": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminTestMl",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestMlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/scanner/test": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminTestScanner",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestScannerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/storage": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminGetStorage",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminListUsers",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUser"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{id}/quota": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutUserQuota",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuotaDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdminSettingsDto": {
+        "required": [
+          "storage",
+          "versions",
+          "ml",
+          "scanner",
+          "signIn"
+        ],
+        "type": "object",
+        "properties": {
+          "storage": {
+            "$ref": "#/components/schemas/StorageSettingsDto"
+          },
+          "versions": {
+            "$ref": "#/components/schemas/VersionSettingsDto"
+          },
+          "ml": {
+            "$ref": "#/components/schemas/MlSettingsDto"
+          },
+          "scanner": {
+            "$ref": "#/components/schemas/ScannerSettingsDto"
+          },
+          "signIn": {
+            "$ref": "#/components/schemas/SignInInfo"
+          }
+        }
+      },
+      "AdminUser": {
+        "required": [
+          "id",
+          "displayName",
+          "email",
+          "role",
+          "usedBytes",
+          "quota",
+          "effectiveQuotaBytes",
+          "lastLoginAt",
+          "disabled"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "usedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quota": {
+            "$ref": "#/components/schemas/QuotaDto"
+          },
+          "effectiveQuotaBytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "lastLoginAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "disabled": {
+            "type": "boolean"
+          }
+        }
+      },
       "AuthConfig": {
         "required": [
           "enabled",
@@ -952,6 +1457,51 @@
           }
         }
       },
+      "HttpValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
       "KeepForeverRequest": {
         "required": [
           "keepForever"
@@ -960,6 +1510,72 @@
         "properties": {
           "keepForever": {
             "type": "boolean"
+          }
+        }
+      },
+      "MlEndpointDto": {
+        "required": [
+          "url",
+          "hasApiKey"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "hasApiKey": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MlEndpointStatus": {
+        "required": [
+          "url",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProbeResult"
+          }
+        }
+      },
+      "MlEndpointUpdate": {
+        "required": [
+          "url",
+          "apiKey",
+          "keepApiKey"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "apiKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "keepApiKey": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MlSettingsDto": {
+        "required": [
+          "endpoints"
+        ],
+        "type": "object",
+        "properties": {
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MlEndpointDto"
+            }
           }
         }
       },
@@ -1115,6 +1731,50 @@
           }
         }
       },
+      "ProbeResult": {
+        "required": [
+          "reachable",
+          "version",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "reachable": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "QuotaDto": {
+        "required": [
+          "kind",
+          "bytes"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/UserQuotaKind"
+          },
+          "bytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "RenameRequest": {
         "required": [
           "name"
@@ -1123,6 +1783,20 @@
         "properties": {
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "ScannerSettingsDto": {
+        "required": [
+          "address"
+        ],
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1184,6 +1858,90 @@
           "bearer"
         ]
       },
+      "SetLanguageRequest": {
+        "required": [
+          "language"
+        ],
+        "type": "object",
+        "properties": {
+          "language": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SignInInfo": {
+        "required": [
+          "enabled",
+          "providerName",
+          "issuer",
+          "userGroup",
+          "adminGroup"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "providerName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "issuer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "userGroup": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "adminGroup": {
+            "type": "string"
+          }
+        }
+      },
+      "StorageReport": {
+        "required": [
+          "filesBytes",
+          "volumes"
+        ],
+        "type": "object",
+        "properties": {
+          "filesBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolumeUsage"
+            }
+          }
+        }
+      },
+      "StorageSettingsDto": {
+        "required": [
+          "defaultQuotaBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "defaultQuotaBytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "StorageUsage": {
         "required": [
           "usedBytes",
@@ -1204,12 +1962,55 @@
           }
         }
       },
+      "TestMlRequest": {
+        "required": [
+          "url",
+          "apiKey"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "apiKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "TestScannerRequest": {
+        "required": [
+          "address"
+        ],
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          }
+        }
+      },
       "ThumbnailState": {
         "enum": [
           "none",
           "pending",
           "ready"
         ]
+      },
+      "UpdateMlSettingsRequest": {
+        "required": [
+          "endpoints"
+        ],
+        "type": "object",
+        "properties": {
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MlEndpointUpdate"
+            }
+          }
+        }
       },
       "UploadStatus": {
         "required": [
@@ -1266,7 +2067,8 @@
           "id",
           "displayName",
           "email",
-          "role"
+          "role",
+          "language"
         ],
         "type": "object",
         "properties": {
@@ -1285,8 +2087,21 @@
           },
           "role": {
             "$ref": "#/components/schemas/UserRole"
+          },
+          "language": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
+      },
+      "UserQuotaKind": {
+        "enum": [
+          "default",
+          "limit",
+          "unlimited"
+        ]
       },
       "UserRole": {
         "enum": [
@@ -1367,6 +2182,47 @@
               "string"
             ],
             "format": "date-time"
+          }
+        }
+      },
+      "VersionSettingsDto": {
+        "required": [
+          "keepDays",
+          "maxVersions"
+        ],
+        "type": "object",
+        "properties": {
+          "keepDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxVersions": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "VolumeUsage": {
+        "required": [
+          "holds",
+          "totalBytes",
+          "freeBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "holds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "totalBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "freeBytes": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       }

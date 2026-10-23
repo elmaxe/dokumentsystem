@@ -423,6 +423,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("quota_bytes");
 
+                    b.Property<bool>("QuotaUnlimited")
+                        .HasColumnType("boolean")
+                        .HasColumnName("quota_unlimited");
+
                     b.Property<long>("ReservedBytes")
                         .HasColumnType("bigint")
                         .HasColumnName("reserved_bytes");

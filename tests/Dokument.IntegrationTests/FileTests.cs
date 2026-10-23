@@ -401,7 +401,7 @@ public sealed class FileTests(PostgresFixture postgres)
         return request;
     }
 
-    private static Task<HttpResponseMessage> CreateUploadAsync(
+    internal static Task<HttpResponseMessage> CreateUploadAsync(
         HttpClient client,
         string name,
         long length,
