@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Dokument.Domain.Jobs;
 using Dokument.Infrastructure.Jobs;
+using Dokument.Infrastructure.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -97,6 +99,17 @@ internal sealed partial class JobRunner(
             scope.ServiceProvider.GetRequiredService(registration.HandlerType);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         deadline.CancelAfter(timeout);
+
+        // One span per run (docs/design.md §22.1). The subject is left out: it can identify the file's content.
+        using var activity = DokumentTelemetry.ActivitySource.StartActivity(
+            $"job {job.Type.Name}",
+            ActivityKind.Consumer
+        );
+        activity?.SetTag("job.type", job.Type.Name);
+        activity?.SetTag("job.id", job.Id);
+        activity?.SetTag("job.attempt", job.Attempts);
+        var started = Stopwatch.GetTimestamp();
+        var outcome = "succeeded";
         try
         {
             await handler.RunAsync(job, deadline.Token);
@@ -105,16 +118,33 @@ internal sealed partial class JobRunner(
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
+            outcome = "released";
             await queue.ReleaseAsync(job, CancellationToken.None);
             throw;
         }
         catch (Exception e)
         {
+            outcome = deadline.IsCancellationRequested ? "timed_out" : "failed";
             var error = deadline.IsCancellationRequested
                 ? $"Timed out after {timeout}."
                 : $"{e.GetType().Name}: {e.Message}";
+            activity?.SetStatus(ActivityStatusCode.Error, e.GetType().Name);
+            activity?.SetTag("error.type", e.GetType().FullName);
+            DokumentTelemetry.JobsFailed.Add(
+                1,
+                new KeyValuePair<string, object?>("job.type", job.Type.Name)
+            );
             LogFailed(logger, e, job.Type.Name, job.Subject, job.Attempts);
             await queue.FailAsync(job, error, RetryPolicy.Default, CancellationToken.None);
+        }
+        finally
+        {
+            activity?.SetTag("job.outcome", outcome);
+            DokumentTelemetry.JobDuration.Record(
+                Stopwatch.GetElapsedTime(started).TotalSeconds,
+                new KeyValuePair<string, object?>("job.type", job.Type.Name),
+                new KeyValuePair<string, object?>("job.outcome", outcome)
+            );
         }
 
         return true;

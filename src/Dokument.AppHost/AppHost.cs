@@ -4,6 +4,10 @@
 // Sign in at http://localhost:5173 as alice/alice (admin), bob/bob (user) or carol/carol (no groups).
 // pgAdmin runs at http://localhost:5050, already connected to Postgres. The API reference (Scalar) is linked on the
 // server resource in the dashboard.
+//
+// Telemetry is on in development: Aspire gives every project OTEL_EXPORTER_OTLP_ENDPOINT and friends, so the server's
+// and worker's traces, metrics and logs show up in the dashboard. Outside Aspire it stays off until that variable is
+// set (docs/design.md §22.1).
 
 var builder = DistributedApplication.CreateBuilder(args);
 
