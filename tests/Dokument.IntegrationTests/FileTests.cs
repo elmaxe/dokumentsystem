@@ -15,7 +15,11 @@ namespace Dokument.IntegrationTests;
 
 public sealed class FileTests(PostgresFixture postgres)
 {
-    private static readonly FakeUser Alice = new("alice-sub", "Alice Andersson", "alice@example.com");
+    private static readonly FakeUser Alice = new(
+        "alice-sub",
+        "Alice Andersson",
+        "alice@example.com"
+    );
     private static readonly FakeUser Bob = new("bob-sub", "Bob Berg", "bob@example.com");
 
     [Fact]
@@ -28,23 +32,43 @@ public sealed class FileTests(PostgresFixture postgres)
         var year = await CreateFolderAsync(alice, kvitton.Id, "2025");
         var archive = await CreateFolderAsync(alice, null, "Arkiv");
 
-        var clash = await alice.PostAsJsonAsync("/api/v1/folders", new CreateFolderRequest(null, "kvitton"));
+        var clash = await alice.PostAsJsonAsync(
+            "/api/v1/folders",
+            new CreateFolderRequest(null, "kvitton")
+        );
         Assert.Equal(HttpStatusCode.Conflict, clash.StatusCode);
         Assert.Contains("nameTaken", await clash.Content.ReadAsStringAsync());
 
-        var renamed = await alice.PostAsJsonAsync($"/api/v1/nodes/{year.Id}/rename", new RenameRequest("År 2025"));
-        Assert.Equal("År 2025", (await renamed.Content.ReadFromJsonAsync<NodeDto>(Json.Options))!.Name);
+        var renamed = await alice.PostAsJsonAsync(
+            $"/api/v1/nodes/{year.Id}/rename",
+            new RenameRequest("År 2025")
+        );
+        Assert.Equal(
+            "År 2025",
+            (await renamed.Content.ReadFromJsonAsync<NodeDto>(Json.Options))!.Name
+        );
 
-        var intoItself = await alice.PostAsJsonAsync($"/api/v1/nodes/{kvitton.Id}/move", new MoveRequest(year.Id));
+        var intoItself = await alice.PostAsJsonAsync(
+            $"/api/v1/nodes/{kvitton.Id}/move",
+            new MoveRequest(year.Id)
+        );
         Assert.Equal(HttpStatusCode.BadRequest, intoItself.StatusCode);
 
-        (await alice.PostAsJsonAsync($"/api/v1/nodes/{kvitton.Id}/move", new MoveRequest(archive.Id))).EnsureSuccessStatusCode();
+        (
+            await alice.PostAsJsonAsync(
+                $"/api/v1/nodes/{kvitton.Id}/move",
+                new MoveRequest(archive.Id)
+            )
+        ).EnsureSuccessStatusCode();
         var listing = await ListAsync(alice, kvitton.Id);
         Assert.Equal(["Arkiv", "Kvitton"], listing.Path.Select(p => p.Name));
         Assert.Equal("År 2025", Assert.Single(listing.Items).Name);
 
         // The grandchild's path followed the move, so its breadcrumbs are right.
-        var details = await alice.GetFromJsonAsync<NodeDetails>($"/api/v1/nodes/{year.Id}", Json.Options);
+        var details = await alice.GetFromJsonAsync<NodeDetails>(
+            $"/api/v1/nodes/{year.Id}",
+            Json.Options
+        );
         Assert.Equal(["Arkiv", "Kvitton"], details!.Path.Select(p => p.Name));
         Assert.Equal(["Arkiv"], (await ListAsync(alice, null)).Items.Select(i => i.Name));
     }
@@ -57,7 +81,13 @@ public sealed class FileTests(PostgresFixture postgres)
         var folder = await CreateFolderAsync(alice, null, "Kvitton");
         var bytes = RandomNumberGenerator.GetBytes(300_000);
 
-        var create = await CreateUploadAsync(alice, "ikea.pdf", bytes.Length, folder.Id, Sha256(bytes));
+        var create = await CreateUploadAsync(
+            alice,
+            "ikea.pdf",
+            bytes.Length,
+            folder.Id,
+            Sha256(bytes)
+        );
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
         var location = create.Headers.Location!.ToString();
 
@@ -94,8 +124,14 @@ public sealed class FileTests(PostgresFixture postgres)
 
         await using var scope = app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<DokumentDbContext>();
-        var actions = await db.AuditEvents.Where(e => e.TargetNodeId == nodeId).Select(e => e.Action).ToListAsync();
-        Assert.Equal([AuditActions.FileDownload, AuditActions.FileUpload], actions.Order(StringComparer.Ordinal));
+        var actions = await db
+            .AuditEvents.Where(e => e.TargetNodeId == nodeId)
+            .Select(e => e.Action)
+            .ToListAsync();
+        Assert.Equal(
+            [AuditActions.FileDownload, AuditActions.FileUpload],
+            actions.Order(StringComparer.Ordinal)
+        );
         var user = await db.Users.SingleAsync();
         Assert.Equal(bytes.Length, user.UsedBytes);
         Assert.Equal(0, user.ReservedBytes);
@@ -112,21 +148,43 @@ public sealed class FileTests(PostgresFixture postgres)
         var folder = await CreateFolderAsync(alice, null, "Kvitton");
         await UploadAsync(alice, "ikea.txt", bytes, folder.Id);
 
-        var check = await alice.PostAsJsonAsync("/api/v1/uploads/check", new DuplicateCheckRequest(
-            [new DuplicateCheckItem("copy.txt", bytes.Length, Sha256(bytes)), new DuplicateCheckItem("new.txt", 3, Sha256([1, 2, 3]))]));
-        var results = (await check.Content.ReadFromJsonAsync<DuplicateCheckResponse>(Json.Options))!.Files;
+        var check = await alice.PostAsJsonAsync(
+            "/api/v1/uploads/check",
+            new DuplicateCheckRequest([
+                new DuplicateCheckItem("copy.txt", bytes.Length, Sha256(bytes)),
+                new DuplicateCheckItem("new.txt", 3, Sha256([1, 2, 3])),
+            ])
+        );
+        var results = (
+            await check.Content.ReadFromJsonAsync<DuplicateCheckResponse>(Json.Options)
+        )!.Files;
         var match = Assert.Single(results[0].Duplicates);
         Assert.Equal("ikea.txt", match.Name);
         Assert.Equal(["Kvitton"], match.Path.Select(p => p.Name));
         Assert.Empty(results[1].Duplicates);
 
         // Bob never learns that Alice has the file, and can't copy it by hash.
-        var bobCheck = await bob.PostAsJsonAsync("/api/v1/uploads/check", new DuplicateCheckRequest([new DuplicateCheckItem("x.txt", bytes.Length, Sha256(bytes))]));
-        Assert.Empty((await bobCheck.Content.ReadFromJsonAsync<DuplicateCheckResponse>(Json.Options))!.Files[0].Duplicates);
-        var bobCopy = await bob.PostAsJsonAsync("/api/v1/uploads/copy", new CopyFromContentRequest(null, "x.txt", Sha256(bytes), null));
+        var bobCheck = await bob.PostAsJsonAsync(
+            "/api/v1/uploads/check",
+            new DuplicateCheckRequest([
+                new DuplicateCheckItem("x.txt", bytes.Length, Sha256(bytes)),
+            ])
+        );
+        Assert.Empty(
+            (await bobCheck.Content.ReadFromJsonAsync<DuplicateCheckResponse>(Json.Options))!
+                .Files[0]
+                .Duplicates
+        );
+        var bobCopy = await bob.PostAsJsonAsync(
+            "/api/v1/uploads/copy",
+            new CopyFromContentRequest(null, "x.txt", Sha256(bytes), null)
+        );
         Assert.Equal(HttpStatusCode.NotFound, bobCopy.StatusCode);
 
-        var copy = await alice.PostAsJsonAsync("/api/v1/uploads/copy", new CopyFromContentRequest(null, "copy.txt", Sha256(bytes), null));
+        var copy = await alice.PostAsJsonAsync(
+            "/api/v1/uploads/copy",
+            new CopyFromContentRequest(null, "copy.txt", Sha256(bytes), null)
+        );
         Assert.Equal(HttpStatusCode.Created, copy.StatusCode);
         var copied = (await copy.Content.ReadFromJsonAsync<NodeDto>(Json.Options))!;
         Assert.Equal(bytes, await alice.GetByteArrayAsync($"/api/v1/nodes/{copied.Id}/content"));
@@ -152,10 +210,17 @@ public sealed class FileTests(PostgresFixture postgres)
 
         Assert.Equal(HttpStatusCode.Conflict, patch.StatusCode);
         Assert.Contains("SHA-256", await patch.Content.ReadAsStringAsync());
-        Assert.Equal(HttpStatusCode.NotFound, (await alice.SendAsync(Tus(HttpMethod.Head, create.Headers.Location!.ToString()))).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (
+                await alice.SendAsync(Tus(HttpMethod.Head, create.Headers.Location!.ToString()))
+            ).StatusCode
+        );
         Assert.Empty((await ListAsync(alice, null)).Items);
         await using var scope = app.Services.CreateAsyncScope();
-        var user = await scope.ServiceProvider.GetRequiredService<DokumentDbContext>().Users.SingleAsync();
+        var user = await scope
+            .ServiceProvider.GetRequiredService<DokumentDbContext>()
+            .Users.SingleAsync();
         Assert.Equal(0, user.ReservedBytes);
         Assert.Equal(0, user.UsedBytes);
     }
@@ -175,7 +240,9 @@ public sealed class FileTests(PostgresFixture postgres)
         var version = await UploadAsync(alice, "Rapport.pdf", [3], null, onConflict: "newVersion");
         Assert.Equal(original, version);
 
-        var names = (await ListAsync(alice, null)).Items.Select(i => i.Name).Order(StringComparer.Ordinal);
+        var names = (await ListAsync(alice, null))
+            .Items.Select(i => i.Name)
+            .Order(StringComparer.Ordinal);
         Assert.Equal(["Rapport.pdf", "rapport (1).pdf"], names);
         Assert.NotEqual(original, kept);
     }
@@ -196,18 +263,30 @@ public sealed class FileTests(PostgresFixture postgres)
         Assert.Null(versions[0].PurgeAt);
         Assert.NotNull(versions[1].PurgeAt);
 
-        var keep = await alice.PutAsJsonAsync($"/api/v1/nodes/{id}/versions/{versions[1].Id}/keep-forever", new KeepForeverRequest(true));
+        var keep = await alice.PutAsJsonAsync(
+            $"/api/v1/nodes/{id}/versions/{versions[1].Id}/keep-forever",
+            new KeepForeverRequest(true)
+        );
         var kept = (await keep.Content.ReadFromJsonAsync<VersionDto>(Json.Options))!;
         Assert.True(kept.KeepForever);
         Assert.Null(kept.PurgeAt);
 
-        var restore = await alice.PostAsync($"/api/v1/nodes/{id}/versions/{versions[1].Id}/restore", null);
+        var restore = await alice.PostAsync(
+            $"/api/v1/nodes/{id}/versions/{versions[1].Id}/restore",
+            null
+        );
         var restored = (await restore.Content.ReadFromJsonAsync<VersionDto>(Json.Options))!;
         Assert.Equal(3, restored.Number);
         Assert.Equal(1, restored.RestoredFrom);
         Assert.True(restored.Current);
-        Assert.Equal("v1"u8.ToArray(), await alice.GetByteArrayAsync($"/api/v1/nodes/{id}/content"));
-        Assert.Equal("v2"u8.ToArray(), await alice.GetByteArrayAsync($"/api/v1/nodes/{id}/content?versionId={versions[0].Id}"));
+        Assert.Equal(
+            "v1"u8.ToArray(),
+            await alice.GetByteArrayAsync($"/api/v1/nodes/{id}/content")
+        );
+        Assert.Equal(
+            "v2"u8.ToArray(),
+            await alice.GetByteArrayAsync($"/api/v1/nodes/{id}/content?versionId={versions[0].Id}")
+        );
     }
 
     [Fact]
@@ -227,8 +306,16 @@ public sealed class FileTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, second.StatusCode);
 
         // Cancelling the first gives the space back.
-        Assert.Equal(HttpStatusCode.NoContent, (await alice.SendAsync(Tus(HttpMethod.Delete, first.Headers.Location!.ToString()))).StatusCode);
-        Assert.Equal(HttpStatusCode.Created, (await CreateUploadAsync(alice, "b.bin", 600, null, null)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            (
+                await alice.SendAsync(Tus(HttpMethod.Delete, first.Headers.Location!.ToString()))
+            ).StatusCode
+        );
+        Assert.Equal(
+            HttpStatusCode.Created,
+            (await CreateUploadAsync(alice, "b.bin", 600, null, null)).StatusCode
+        );
         var storage = await alice.GetFromJsonAsync<StorageUsage>("/api/v1/storage", Json.Options);
         Assert.Equal(new StorageUsage(0, 1000), storage);
     }
@@ -243,13 +330,30 @@ public sealed class FileTests(PostgresFixture postgres)
         var file = await UploadAsync(alice, "secret.txt", [42], folder.Id);
 
         Assert.Empty((await ListAsync(bob, null)).Items);
-        Assert.Equal(HttpStatusCode.NotFound, (await bob.GetAsync($"/api/v1/nodes?folderId={folder.Id}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await bob.GetAsync($"/api/v1/nodes/{file}/content")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await bob.PostAsJsonAsync($"/api/v1/nodes/{file}/rename", new RenameRequest("mine.txt"))).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await CreateUploadAsync(bob, "x.txt", 1, folder.Id, null)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await bob.GetAsync($"/api/v1/nodes?folderId={folder.Id}")).StatusCode
+        );
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await bob.GetAsync($"/api/v1/nodes/{file}/content")).StatusCode
+        );
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (
+                await bob.PostAsJsonAsync(
+                    $"/api/v1/nodes/{file}/rename",
+                    new RenameRequest("mine.txt")
+                )
+            ).StatusCode
+        );
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await CreateUploadAsync(bob, "x.txt", 1, folder.Id, null)).StatusCode
+        );
     }
 
-    private static async Task<HttpClient> SignInAsync(DokumentApp app, FakeUser user)
+    internal static async Task<HttpClient> SignInAsync(DokumentApp app, FakeUser user)
     {
         var browser = app.CreateBrowser();
         await app.LoginAsync(browser, user);
@@ -258,20 +362,37 @@ public sealed class FileTests(PostgresFixture postgres)
         return browser;
     }
 
-    private static async Task<NodeDto> CreateFolderAsync(HttpClient client, Guid? parent, string name)
+    internal static async Task<NodeDto> CreateFolderAsync(
+        HttpClient client,
+        Guid? parent,
+        string name
+    )
     {
-        var response = await client.PostAsJsonAsync("/api/v1/folders", new CreateFolderRequest(parent, name));
+        var response = await client.PostAsJsonAsync(
+            "/api/v1/folders",
+            new CreateFolderRequest(parent, name)
+        );
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<NodeDto>(Json.Options))!;
     }
 
-    private static async Task<FolderListing> ListAsync(HttpClient client, Guid? folder) =>
-        (await client.GetFromJsonAsync<FolderListing>(folder is null ? "/api/v1/nodes" : $"/api/v1/nodes?folderId={folder}", Json.Options))!;
+    internal static async Task<FolderListing> ListAsync(HttpClient client, Guid? folder) =>
+        (
+            await client.GetFromJsonAsync<FolderListing>(
+                folder is null ? "/api/v1/nodes" : $"/api/v1/nodes?folderId={folder}",
+                Json.Options
+            )
+        )!;
 
     private static async Task<List<VersionDto>> VersionsAsync(HttpClient client, Guid id) =>
-        (await client.GetFromJsonAsync<List<VersionDto>>($"/api/v1/nodes/{id}/versions", Json.Options))!;
+        (
+            await client.GetFromJsonAsync<List<VersionDto>>(
+                $"/api/v1/nodes/{id}/versions",
+                Json.Options
+            )
+        )!;
 
-    private static string Sha256(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
+    internal static string Sha256(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
     private static HttpRequestMessage Tus(HttpMethod method, string url)
     {
@@ -281,7 +402,14 @@ public sealed class FileTests(PostgresFixture postgres)
     }
 
     private static Task<HttpResponseMessage> CreateUploadAsync(
-        HttpClient client, string name, long length, Guid? folder, string? sha256, Guid? nodeId = null, string? onConflict = null)
+        HttpClient client,
+        string name,
+        long length,
+        Guid? folder,
+        string? sha256,
+        Guid? nodeId = null,
+        string? onConflict = null
+    )
     {
         var metadata = new Dictionary<string, string?>
         {
@@ -292,26 +420,62 @@ public sealed class FileTests(PostgresFixture postgres)
             ["onConflict"] = onConflict,
         };
         var request = Tus(HttpMethod.Post, "/api/v1/uploads");
-        request.Headers.Add("Upload-Length", length.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        request.Headers.Add("Upload-Metadata", string.Join(',', metadata
-            .Where(m => m.Value is not null)
-            .Select(m => $"{m.Key} {Convert.ToBase64String(Encoding.UTF8.GetBytes(m.Value!))}")));
+        request.Headers.Add(
+            "Upload-Length",
+            length.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        );
+        request.Headers.Add(
+            "Upload-Metadata",
+            string.Join(
+                ',',
+                metadata
+                    .Where(m => m.Value is not null)
+                    .Select(m =>
+                        $"{m.Key} {Convert.ToBase64String(Encoding.UTF8.GetBytes(m.Value!))}"
+                    )
+            )
+        );
         return client.SendAsync(request);
     }
 
-    private static Task<HttpResponseMessage> PatchAsync(HttpClient client, string location, long offset, byte[] chunk)
+    private static Task<HttpResponseMessage> PatchAsync(
+        HttpClient client,
+        string location,
+        long offset,
+        byte[] chunk
+    )
     {
         var request = Tus(HttpMethod.Patch, location);
-        request.Headers.Add("Upload-Offset", offset.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        request.Headers.Add(
+            "Upload-Offset",
+            offset.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        );
         request.Content = new ByteArrayContent(chunk);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue(TusEndpoints.OffsetContentType);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue(
+            TusEndpoints.OffsetContentType
+        );
         return client.SendAsync(request);
     }
 
     /// <summary>Uploads in one chunk and returns the file's id.</summary>
-    private static async Task<Guid> UploadAsync(HttpClient client, string name, byte[] bytes, Guid? folder, Guid? nodeId = null, string? onConflict = null)
+    internal static async Task<Guid> UploadAsync(
+        HttpClient client,
+        string name,
+        byte[] bytes,
+        Guid? folder,
+        Guid? nodeId = null,
+        string? onConflict = null
+    )
     {
-        var create = await CreateUploadAsync(client, name, bytes.Length, folder, Sha256(bytes), nodeId, onConflict);
+        var create = await CreateUploadAsync(
+            client,
+            name,
+            bytes.Length,
+            folder,
+            Sha256(bytes),
+            nodeId,
+            onConflict
+        );
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
         var patch = await PatchAsync(client, create.Headers.Location!.ToString(), 0, bytes);
         Assert.Equal(HttpStatusCode.NoContent, patch.StatusCode);

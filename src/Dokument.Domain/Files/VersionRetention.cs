@@ -13,7 +13,11 @@ public sealed record VersionRetention(TimeSpan MaxAge, int MaxVersions)
     /// When each version becomes due for purging, keyed by version number; null means it is kept. A version's age
     /// counts from when the next one replaced it.
     /// </summary>
-    public IReadOnlyDictionary<int, DateTimeOffset?> PurgeDates(IReadOnlyCollection<FileVersion> versions, Guid? currentVersionId, DateTimeOffset now)
+    public IReadOnlyDictionary<int, DateTimeOffset?> PurgeDates(
+        IReadOnlyCollection<FileVersion> versions,
+        Guid? currentVersionId,
+        DateTimeOffset now
+    )
     {
         var newestFirst = versions.OrderByDescending(v => v.Number).ToList();
         var dates = new Dictionary<int, DateTimeOffset?>();

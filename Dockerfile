@@ -32,12 +32,16 @@ COPY src/Dokument.Infrastructure/*.csproj src/Dokument.Infrastructure/
 COPY src/Dokument.Server/*.csproj src/Dokument.Server/
 COPY src/Dokument.Worker/*.csproj src/Dokument.Worker/
 COPY src/Dokument.Host/*.csproj src/Dokument.Host/
-RUN dotnet restore src/Dokument.Host -a $TARGETARCH
+RUN dotnet restore src/Dokument.Host -a $TARGETARCH -p:UseSystemLibvips=true
 COPY src src
 RUN dotnet publish src/Dokument.Host -c Release -a $TARGETARCH --no-restore -o /app \
-      -p:Version=$VERSION -p:OpenApiGenerateDocuments=false
+      -p:Version=$VERSION -p:OpenApiGenerateDocuments=false -p:UseSystemLibvips=true
 
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION}
+# libvips for thumbnails (docs/design.md §10.3), with libde265 so HEIC photos decode. PDFium ships with the app.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libvips42t64 libheif-plugin-libde265 \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=server /app ./
 COPY --from=web /repo/apps/web/dist ./wwwroot/

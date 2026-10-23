@@ -36,6 +36,7 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet tool restore
+      - run: dotnet csharpier check .
       - run: dotnet build --configuration Release
       # Integration tests run against our Postgres image (Testcontainers), so build it first.
       - uses: docker/setup-buildx-action@v3

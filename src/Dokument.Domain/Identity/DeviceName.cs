@@ -13,7 +13,9 @@ public sealed record DeviceName
     public static DeviceName? From(string? value)
     {
         var trimmed = value?.Trim();
-        return string.IsNullOrEmpty(trimmed) ? null : new DeviceName(trimmed.Length <= MaxLength ? trimmed : trimmed[..MaxLength]);
+        return string.IsNullOrEmpty(trimmed)
+            ? null
+            : new DeviceName(trimmed.Length <= MaxLength ? trimmed : trimmed[..MaxLength]);
     }
 
     /// <summary>Names the browser and OS from a User-Agent, falling back to the raw string.</summary>
@@ -42,13 +44,15 @@ public sealed record DeviceName
             : Has("Linux") ? "Linux"
             : null;
 
-        return From((browser, os) switch
-        {
-            (not null, not null) => $"{browser} on {os}",
-            (not null, null) => browser,
-            (null, not null) => os,
-            _ => userAgent,
-        });
+        return From(
+            (browser, os) switch
+            {
+                (not null, not null) => $"{browser} on {os}",
+                (not null, null) => browser,
+                (null, not null) => os,
+                _ => userAgent,
+            }
+        );
     }
 
     public override string ToString() => Value;

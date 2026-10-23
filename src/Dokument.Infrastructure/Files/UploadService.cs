@@ -12,9 +12,19 @@ namespace Dokument.Infrastructure.Files;
 /// file is hashed, checked against the hash the client claimed, moved into the blob store and recorded as a file or
 /// version, all before the final response.
 /// </summary>
-public sealed class UploadService(DokumentDbContext db, DriveService drive, BlobStore blobs, UploadLocks locks, TimeProvider time)
+public sealed class UploadService(
+    DokumentDbContext db,
+    DriveService drive,
+    BlobStore blobs,
+    UploadLocks locks,
+    TimeProvider time
+)
 {
-    public async Task<Upload> CreateAsync(Actor actor, NewUpload request, CancellationToken ct = default)
+    public async Task<Upload> CreateAsync(
+        Actor actor,
+        NewUpload request,
+        CancellationToken ct = default
+    )
     {
         var name = DriveService.ParseName(request.Name);
         if (request.Size < 0)
@@ -75,16 +85,30 @@ public sealed class UploadService(DokumentDbContext db, DriveService drive, Blob
     /// <summary>The caller's own upload. Expired, unfinished uploads are gone even before the cleanup removes them.</summary>
     public async Task<Upload> GetAsync(Actor actor, Guid id, CancellationToken ct = default)
     {
-        var upload = await db.Uploads.SingleOrDefaultAsync(u => u.Id == id && u.UserId == actor.UserId, ct);
+        var upload = await db.Uploads.SingleOrDefaultAsync(
+            u => u.Id == id && u.UserId == actor.UserId,
+            ct
+        );
         return upload is null || (!upload.IsComplete && upload.ExpiresAt <= time.GetUtcNow())
             ? throw DriveException.NotFound("upload")
             : upload;
     }
 
     /// <summary>Appends a chunk at <paramref name="offset"/>, which must be where the upload left off.</summary>
-    public async Task<Upload> AppendAsync(Actor actor, Guid id, long offset, Stream body, CancellationToken ct = default)
+    public async Task<Upload> AppendAsync(
+        Actor actor,
+        Guid id,
+        long offset,
+        Stream body,
+        CancellationToken ct = default
+    )
     {
-        using var held = locks.TryEnter(id) ?? throw new DriveException(DriveError.UploadBusy, "Another request is already writing to this upload.");
+        using var held =
+            locks.TryEnter(id)
+            ?? throw new DriveException(
+                DriveError.UploadBusy,
+                "Another request is already writing to this upload."
+            );
         var upload = await GetAsync(actor, id, ct);
         if (upload.IsComplete)
         {
@@ -93,10 +117,19 @@ public sealed class UploadService(DokumentDbContext db, DriveService drive, Blob
 
         if (offset != upload.Offset)
         {
-            throw new DriveException(DriveError.UploadMismatch, $"The upload is at offset {upload.Offset}, not {offset}.");
+            throw new DriveException(
+                DriveError.UploadMismatch,
+                $"The upload is at offset {upload.Offset}, not {offset}."
+            );
         }
 
-        var (written, overflow) = await blobs.AppendAsync(upload.Id, offset, body, upload.Size - offset, ct);
+        var (written, overflow) = await blobs.AppendAsync(
+            upload.Id,
+            offset,
+            body,
+            upload.Size - offset,
+            ct
+        );
         upload.Offset += written;
         upload.ExpiresAt = time.GetUtcNow() + Upload.Lifetime;
 
@@ -104,7 +137,10 @@ public sealed class UploadService(DokumentDbContext db, DriveService drive, Blob
         await db.SaveChangesAsync(CancellationToken.None);
         if (overflow)
         {
-            throw new DriveException(DriveError.InvalidRequest, "The upload sent more bytes than its declared length.");
+            throw new DriveException(
+                DriveError.InvalidRequest,
+                "The upload sent more bytes than its declared length."
+            );
         }
 
         if (upload.AllBytesReceived)
@@ -118,7 +154,12 @@ public sealed class UploadService(DokumentDbContext db, DriveService drive, Blob
 
     public async Task TerminateAsync(Actor actor, Guid id, CancellationToken ct = default)
     {
-        using var held = locks.TryEnter(id) ?? throw new DriveException(DriveError.UploadBusy, "Another request is already writing to this upload.");
+        using var held =
+            locks.TryEnter(id)
+            ?? throw new DriveException(
+                DriveError.UploadBusy,
+                "Another request is already writing to this upload."
+            );
         var upload = await GetAsync(actor, id, ct);
         if (upload.IsComplete)
         {
@@ -164,7 +205,10 @@ public sealed class UploadService(DokumentDbContext db, DriveService drive, Blob
         if (upload.ClaimedHash is not null && upload.ClaimedHash != hash)
         {
             await DiscardAsync(upload, ct);
-            throw new DriveException(DriveError.UploadMismatch, "The file changed while it was being uploaded: its SHA-256 doesn't match. Upload it again.");
+            throw new DriveException(
+                DriveError.UploadMismatch,
+                "The file changed while it was being uploaded: its SHA-256 doesn't match. Upload it again."
+            );
         }
 
         blobs.Commit(upload.Id, hash);
@@ -173,10 +217,20 @@ public sealed class UploadService(DokumentDbContext db, DriveService drive, Blob
         {
             added = await drive.AddFileAsync(
                 actor,
-                new NewFile(upload.ParentId, upload.TargetNodeId, upload.Name, hash, upload.Size, upload.MimeType ?? MimeTypes.Default, upload.ClientModifiedAt, upload.OnConflict),
+                new NewFile(
+                    upload.ParentId,
+                    upload.TargetNodeId,
+                    upload.Name,
+                    hash,
+                    upload.Size,
+                    upload.MimeType ?? MimeTypes.Default,
+                    upload.ClientModifiedAt,
+                    upload.OnConflict
+                ),
                 reservedBytes: upload.Size,
                 AuditActions.FileUpload,
-                ct);
+                ct
+            );
         }
         catch (DriveException)
         {
@@ -216,7 +270,8 @@ public sealed record NewUpload(
     ContentHash? Sha256 = null,
     string? MimeType = null,
     DateTimeOffset? ClientModifiedAt = null,
-    NameConflictPolicy OnConflict = NameConflictPolicy.Fail);
+    NameConflictPolicy OnConflict = NameConflictPolicy.Fail
+);
 
 /// <summary>One writer per upload at a time. A single server process owns the uploads, so an in-memory lock is enough.</summary>
 public sealed class UploadLocks

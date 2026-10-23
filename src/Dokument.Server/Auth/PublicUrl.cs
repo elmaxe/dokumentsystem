@@ -18,9 +18,14 @@ public static class PublicUrl
             return null;
         }
 
-        if (!Uri.TryCreate(value.Trim().TrimEnd('/'), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+        if (
+            !Uri.TryCreate(value.Trim().TrimEnd('/'), UriKind.Absolute, out var uri)
+            || uri.Scheme is not ("http" or "https")
+        )
         {
-            throw new InvalidOperationException($"PUBLIC_URL must be an absolute http(s) URL, e.g. https://docs.example.com. Got '{value}'.");
+            throw new InvalidOperationException(
+                $"PUBLIC_URL must be an absolute http(s) URL, e.g. https://docs.example.com. Got '{value}'."
+            );
         }
 
         return uri;
@@ -34,12 +39,14 @@ public static class PublicUrl
         }
 
         var host = HostString.FromUriComponent(publicUrl);
-        app.Use((context, next) =>
-        {
-            context.Request.Scheme = publicUrl.Scheme;
-            context.Request.Host = host;
-            return next(context);
-        });
+        app.Use(
+            (context, next) =>
+            {
+                context.Request.Scheme = publicUrl.Scheme;
+                context.Request.Host = host;
+                return next(context);
+            }
+        );
 
         var pathBase = publicUrl.AbsolutePath.TrimEnd('/');
         return pathBase.Length > 0 ? app.UsePathBase(pathBase) : app;

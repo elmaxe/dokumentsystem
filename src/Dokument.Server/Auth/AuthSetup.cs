@@ -26,30 +26,53 @@ public static class AuthSetup
         var oidc = OidcSettings.FromConfiguration(builder.Configuration);
         builder.Services.AddSingleton(oidc);
 
-        var auth = builder.Services
-            .AddAuthentication(SessionAuthentication.Scheme)
-            .AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(SessionAuthentication.Scheme, null);
+        var auth = builder
+            .Services.AddAuthentication(SessionAuthentication.Scheme)
+            .AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(
+                SessionAuthentication.Scheme,
+                null
+            );
 
         if (oidc.Enabled)
         {
-            auth.AddOpenIdConnect(OidcScheme, options => ConfigureOidc(options, oidc, builder.Environment));
+            auth.AddOpenIdConnect(
+                OidcScheme,
+                options => ConfigureOidc(options, oidc, builder.Environment)
+            );
         }
 
-        builder.Services.AddAuthorizationBuilder()
-            .AddPolicy(SessionAuthentication.AdminPolicy, policy => policy.RequireAuthenticatedUser().RequireRole("admin"));
+        builder
+            .Services.AddAuthorizationBuilder()
+            .AddPolicy(
+                SessionAuthentication.AdminPolicy,
+                policy => policy.RequireAuthenticatedUser().RequireRole("admin")
+            );
 
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            options.AddPolicy(AuthRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(1) }));
+            options.AddPolicy(
+                AuthRateLimitPolicy,
+                context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 20,
+                            Window = TimeSpan.FromMinutes(1),
+                        }
+                    )
+            );
         });
 
         return builder;
     }
 
-    private static void ConfigureOidc(OpenIdConnectOptions options, OidcSettings oidc, IHostEnvironment environment)
+    private static void ConfigureOidc(
+        OpenIdConnectOptions options,
+        OidcSettings oidc,
+        IHostEnvironment environment
+    )
     {
         options.Authority = oidc.Issuer;
         options.ClientId = oidc.ClientId;
@@ -84,8 +107,10 @@ public static class AuthSetup
         options.Events.OnTicketReceived = context => CompleteLoginAsync(context, oidc);
         options.Events.OnRemoteFailure = context =>
         {
-            context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
-                .CreateLogger(typeof(AuthSetup)).LogWarning(context.Failure, "OIDC login failed");
+            context
+                .HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                .CreateLogger(typeof(AuthSetup))
+                .LogWarning(context.Failure, "OIDC login failed");
             context.Response.Redirect(SignInPage(context.Request, "failed"));
             context.HandleResponse();
             return Task.CompletedTask;
@@ -97,28 +122,54 @@ public static class AuthSetup
     {
         var principal = context.Principal!;
         var http = context.HttpContext;
-        var subject = principal.FindFirstValue("sub")
+        var subject =
+            principal.FindFirstValue("sub")
             ?? throw new InvalidOperationException("The IdP's ID token has no sub claim.");
         var identity = new OidcIdentity(
             Issuer: principal.FindFirstValue("iss") ?? principal.FindFirst("sub")!.Issuer,
             Subject: subject,
             Email: principal.FindFirstValue("email"),
-            DisplayName: principal.FindFirstValue("name") ?? principal.FindFirstValue("preferred_username"),
-            Groups: principal.FindAll(oidc.GroupsClaim).Select(c => c.Value).Distinct(StringComparer.Ordinal).ToList());
+            DisplayName: principal.FindFirstValue("name")
+                ?? principal.FindFirstValue("preferred_username"),
+            Groups: principal
+                .FindAll(oidc.GroupsClaim)
+                .Select(c => c.Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToList()
+        );
 
-        var logger = http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AuthSetup));
-        var result = await http.RequestServices.GetRequiredService<UserProvisioner>()
+        var logger = http
+            .RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger(typeof(AuthSetup));
+        var result = await http
+            .RequestServices.GetRequiredService<UserProvisioner>()
             .ProvisionAsync(identity, oidc.Policy, http.RequestAborted);
         if (result.User is not { } user)
         {
-            logger.LogWarning("Login refused for {Subject} from {Issuer}: {Reason}", identity.Subject, identity.Issuer, result.Failure);
-            context.Response.Redirect(SignInPage(context.Request, result.Failure == LoginFailure.Disabled ? "disabled" : "not_allowed"));
+            logger.LogWarning(
+                "Login refused for {Subject} from {Issuer}: {Reason}",
+                identity.Subject,
+                identity.Issuer,
+                result.Failure
+            );
+            context.Response.Redirect(
+                SignInPage(
+                    context.Request,
+                    result.Failure == LoginFailure.Disabled ? "disabled" : "not_allowed"
+                )
+            );
             context.HandleResponse();
             return;
         }
 
-        var (session, token) = await http.RequestServices.GetRequiredService<SessionStore>().CreateAsync(
-            user.Id, SessionKind.Cookie, DeviceName.FromUserAgent(context.Request.Headers.UserAgent), http.RequestAborted);
+        var (session, token) = await http
+            .RequestServices.GetRequiredService<SessionStore>()
+            .CreateAsync(
+                user.Id,
+                SessionKind.Cookie,
+                DeviceName.FromUserAgent(context.Request.Headers.UserAgent),
+                http.RequestAborted
+            );
         SessionAuthentication.SetCookie(http, token, session.ExpiresAt);
         logger.LogInformation("User {UserId} signed in as {Role}", user.Id, user.Role);
 
@@ -126,5 +177,6 @@ public static class AuthSetup
         context.HandleResponse();
     }
 
-    private static string SignInPage(HttpRequest request, string error) => $"{request.PathBase}/signin?error={error}";
+    private static string SignInPage(HttpRequest request, string error) =>
+        $"{request.PathBase}/signin?error={error}";
 }
