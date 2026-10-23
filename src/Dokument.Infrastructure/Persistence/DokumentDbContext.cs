@@ -1,6 +1,8 @@
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
 using Dokument.Domain.Identity;
+using Dokument.Domain.Jobs;
+using Dokument.Domain.Previews;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
@@ -16,6 +18,9 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<Blob> Blobs => Set<Blob>();
     public DbSet<Upload> Uploads => Set<Upload>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<BlobPreview> BlobPreviews => Set<BlobPreview>();
+    public DbSet<Rendition> Renditions => Set<Rendition>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -70,12 +75,72 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
         });
 
         ConfigureFiles(modelBuilder);
+        ConfigureJobs(modelBuilder);
+        ConfigurePreviews(modelBuilder);
+    }
+
+    private static readonly ValueConverter<ContentHash, byte[]> ContentHashConverter = new(h => h.ToArray(), v => ContentHash.FromBytes(v));
+
+    private static void ConfigureJobs(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Job>(e =>
+        {
+            e.ToTable("jobs");
+            e.HasKey(j => j.Id);
+            e.Property(j => j.Id).HasColumnName("id");
+            e.Property(j => j.Type).HasColumnName("type").HasConversion(t => t.Name, v => JobType.From(v));
+            e.Property(j => j.Subject).HasColumnName("subject");
+            e.Property(j => j.Status).HasColumnName("status").HasConversion(LowercaseEnum<JobStatus>());
+            e.Property(j => j.Priority).HasColumnName("priority").HasConversion<int>();
+            e.Property(j => j.Attempts).HasColumnName("attempts");
+            e.Property(j => j.RunAfter).HasColumnName("run_after");
+            e.Property(j => j.LockedBy).HasColumnName("locked_by");
+            e.Property(j => j.LockedUntil).HasColumnName("locked_until");
+            e.Property(j => j.LastError).HasColumnName("last_error");
+            e.Property(j => j.CreatedAt).HasColumnName("created_at");
+            e.Property(j => j.FinishedAt).HasColumnName("finished_at");
+
+            // The claim query's index: what is due, best first. Finished jobs stay out of it.
+            e.HasIndex(j => new { j.Type, j.Priority, j.RunAfter }).HasFilter("status IN ('queued', 'running')").HasDatabaseName("ix_jobs_due");
+            e.HasIndex(j => new { j.Type, j.Subject });
+        });
+    }
+
+    private static void ConfigurePreviews(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BlobPreview>(e =>
+        {
+            e.ToTable("blob_previews");
+            e.HasKey(p => p.BlobHash);
+            e.Property(p => p.BlobHash).HasColumnName("blob_hash").HasConversion(ContentHashConverter);
+            e.Property(p => p.Status).HasColumnName("status").HasConversion(LowercaseEnum<PreviewStatus>());
+            e.Property(p => p.PipelineVersion).HasColumnName("pipeline_version");
+            e.Property(p => p.Width).HasColumnName("width");
+            e.Property(p => p.Height).HasColumnName("height");
+            e.Property(p => p.PageCount).HasColumnName("page_count");
+            e.Property(p => p.UpdatedAt).HasColumnName("updated_at");
+            e.HasOne<Blob>().WithOne().HasForeignKey<BlobPreview>(p => p.BlobHash).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Rendition>(e =>
+        {
+            e.ToTable("renditions");
+            e.HasKey(r => new { r.BlobHash, r.Kind });
+            e.Property(r => r.BlobHash).HasColumnName("blob_hash").HasConversion(ContentHashConverter);
+            e.Property(r => r.Kind).HasColumnName("kind").HasConversion(k => k.Key(), v => RenditionKinds.FromKey(v));
+            e.Property(r => r.StorageKey).HasColumnName("storage_key").HasConversion(k => k.Value, v => DerivedKey.From(v));
+            e.Property(r => r.MimeType).HasColumnName("mime_type");
+            e.Property(r => r.Width).HasColumnName("width");
+            e.Property(r => r.Height).HasColumnName("height");
+            e.Property(r => r.CreatedAt).HasColumnName("created_at");
+            e.HasOne<Blob>().WithMany().HasForeignKey(r => r.BlobHash).OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     private static void ConfigureFiles(ModelBuilder modelBuilder)
     {
         var nodeName = new ValueConverter<NodeName, string>(n => n.Value, v => NodeName.From(v));
-        var contentHash = new ValueConverter<ContentHash, byte[]>(h => h.ToArray(), v => ContentHash.FromBytes(v));
+        var contentHash = ContentHashConverter;
 
         modelBuilder.Entity<Node>(e =>
         {

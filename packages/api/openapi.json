@@ -419,6 +419,79 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/thumbnail": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "A WebP thumbnail of the file: small (256 px) for lists, medium (640 px) for the grid. 404 until the worker has made one; see NodeDto.thumbnail.",
+        "operationId": "GetThumbnail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/preview": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "What the viewer shows: a WebP for images browsers can't display or that are huge, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18).",
+        "operationId": "GetPreview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/versions": {
       "get": {
         "tags": [
@@ -945,7 +1018,8 @@
           "createdAt",
           "modifiedAt",
           "currentVersionId",
-          "versionNumber"
+          "versionNumber",
+          "thumbnail"
         ],
         "type": "object",
         "properties": {
@@ -1013,6 +1087,9 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "thumbnail": {
+            "$ref": "#/components/schemas/ThumbnailState"
           }
         }
       },
@@ -1126,6 +1203,13 @@
             "format": "int64"
           }
         }
+      },
+      "ThumbnailState": {
+        "enum": [
+          "none",
+          "pending",
+          "ready"
+        ]
       },
       "UploadStatus": {
         "required": [

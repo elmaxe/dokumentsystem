@@ -32,7 +32,7 @@ if (roles.Server)
 
 if (roles.Worker)
 {
-    builder.Services.AddWorkerRole();
+    builder.Services.AddWorkerRole(builder.Configuration);
 }
 
 var app = builder.Build();
