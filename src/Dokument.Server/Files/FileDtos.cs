@@ -1,10 +1,12 @@
 using Dokument.Domain.Files;
+using Dokument.Domain.Previews;
 
 namespace Dokument.Server.Files;
 
 /// <param name="Size">Bytes of the current version. Null for folders.</param>
 /// <param name="MimeType">Of the current version. Null for folders.</param>
 /// <param name="Sha256">The current version's content hash, in hex. Null for folders.</param>
+/// <param name="Thumbnail">Whether <c>/nodes/{id}/thumbnail</c> has an image yet. Pending means the worker is on it; poll or wait.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -18,9 +20,10 @@ public sealed record NodeDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset ModifiedAt,
     Guid? CurrentVersionId,
-    int? VersionNumber)
+    int? VersionNumber,
+    ThumbnailState Thumbnail)
 {
-    public static NodeDto From(Node node, IReadOnlyDictionary<Guid, string> ownerNames) => new(
+    public static NodeDto From(Node node, IReadOnlyDictionary<Guid, string> ownerNames, IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails) => new(
         node.Id,
         node.ParentId,
         node.Kind,
@@ -33,7 +36,8 @@ public sealed record NodeDto(
         node.CreatedAt,
         node.ModifiedAt,
         node.CurrentVersionId,
-        node.CurrentVersion?.Number);
+        node.CurrentVersion?.Number,
+        node.CurrentVersion is { } version ? thumbnails.GetValueOrDefault(version.BlobHash, ThumbnailState.None) : ThumbnailState.None);
 }
 
 /// <summary>One step of a breadcrumb trail, from the top of "My files" down.</summary>

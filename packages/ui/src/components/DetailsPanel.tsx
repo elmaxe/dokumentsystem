@@ -3,7 +3,7 @@ import { Tabs } from "radix-ui";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
-import { isFolder, type FileItem } from "../lib/files";
+import { isFolder, isPaged, type FileItem } from "../lib/files";
 import { Avatar, type AvatarTone } from "./Avatar";
 import { Button, IconButton } from "./Button";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -98,7 +98,11 @@ export function DetailsPanel({
             {!folder && (
               <div className="my-4 flex aspect-4/3 items-center justify-center overflow-hidden rounded-sm bg-surface-container-high">
                 {item.thumbnail ? (
-                  <img src={item.thumbnail} alt="" className="size-full object-cover" />
+                  <img
+                    src={item.thumbnail}
+                    alt=""
+                    className={cn("size-full", isPaged(item) ? "object-contain p-2 drop-shadow-sm" : "object-cover")}
+                  />
                 ) : (
                   <FileTypeIcon kind={item.kind} size={56} />
                 )}

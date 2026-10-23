@@ -247,6 +247,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A WebP thumbnail of the file: small (256 px) for lists, medium (640 px) for the grid. 404 until the worker has made one; see NodeDto.thumbnail. */
+        get: operations["GetThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What the viewer shows: a WebP for images browsers can't display or that are huge, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18). */
+        get: operations["GetPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/versions": {
         parameters: {
             query?: never;
@@ -456,6 +490,7 @@ export interface components {
             currentVersionId: null | string;
             /** Format: int32 */
             versionNumber: null | number;
+            thumbnail: components["schemas"]["ThumbnailState"];
         };
         /** @enum {unknown} */
         NodeKind: "folder" | "file";
@@ -490,6 +525,8 @@ export interface components {
             /** Format: int64 */
             quotaBytes: null | number;
         };
+        /** @enum {unknown} */
+        ThumbnailState: "none" | "pending" | "ready";
         UploadStatus: {
             /** Format: uuid */
             id: string;
@@ -861,6 +898,51 @@ export interface operations {
         };
     };
     DownloadFile: {
+        parameters: {
+            query?: {
+                versionId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetThumbnail: {
+        parameters: {
+            query?: {
+                versionId?: string;
+                size?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetPreview: {
         parameters: {
             query?: {
                 versionId?: string;

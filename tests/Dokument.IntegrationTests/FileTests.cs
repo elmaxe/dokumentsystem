@@ -249,7 +249,7 @@ public sealed class FileTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.NotFound, (await CreateUploadAsync(bob, "x.txt", 1, folder.Id, null)).StatusCode);
     }
 
-    private static async Task<HttpClient> SignInAsync(DokumentApp app, FakeUser user)
+    internal static async Task<HttpClient> SignInAsync(DokumentApp app, FakeUser user)
     {
         var browser = app.CreateBrowser();
         await app.LoginAsync(browser, user);
@@ -258,20 +258,20 @@ public sealed class FileTests(PostgresFixture postgres)
         return browser;
     }
 
-    private static async Task<NodeDto> CreateFolderAsync(HttpClient client, Guid? parent, string name)
+    internal static async Task<NodeDto> CreateFolderAsync(HttpClient client, Guid? parent, string name)
     {
         var response = await client.PostAsJsonAsync("/api/v1/folders", new CreateFolderRequest(parent, name));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<NodeDto>(Json.Options))!;
     }
 
-    private static async Task<FolderListing> ListAsync(HttpClient client, Guid? folder) =>
+    internal static async Task<FolderListing> ListAsync(HttpClient client, Guid? folder) =>
         (await client.GetFromJsonAsync<FolderListing>(folder is null ? "/api/v1/nodes" : $"/api/v1/nodes?folderId={folder}", Json.Options))!;
 
     private static async Task<List<VersionDto>> VersionsAsync(HttpClient client, Guid id) =>
         (await client.GetFromJsonAsync<List<VersionDto>>($"/api/v1/nodes/{id}/versions", Json.Options))!;
 
-    private static string Sha256(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
+    internal static string Sha256(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
     private static HttpRequestMessage Tus(HttpMethod method, string url)
     {
@@ -309,7 +309,7 @@ public sealed class FileTests(PostgresFixture postgres)
     }
 
     /// <summary>Uploads in one chunk and returns the file's id.</summary>
-    private static async Task<Guid> UploadAsync(HttpClient client, string name, byte[] bytes, Guid? folder, Guid? nodeId = null, string? onConflict = null)
+    internal static async Task<Guid> UploadAsync(HttpClient client, string name, byte[] bytes, Guid? folder, Guid? nodeId = null, string? onConflict = null)
     {
         var create = await CreateUploadAsync(client, name, bytes.Length, folder, Sha256(bytes), nodeId, onConflict);
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
