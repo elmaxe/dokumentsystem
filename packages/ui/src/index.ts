@@ -1,3 +1,4 @@
+export * from "./components/AccountMenu";
 export * from "./components/ActionBar";
 export * from "./components/Avatar";
 export * from "./components/Banner";

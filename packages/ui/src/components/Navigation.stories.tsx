@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
+import { AccountMenu, type LanguageChoice } from "./AccountMenu";
+import { Avatar } from "./Avatar";
 import { BottomNav, type BottomPlace } from "./BottomNav";
 import { Breadcrumbs } from "./Breadcrumbs";
 import type { Place } from "../lib/places";
@@ -59,4 +61,30 @@ export const Crumbs: Story = {
       />
     </div>
   ),
+};
+
+/** The avatar menu: language for this person, admin settings for admins, and sign-out. */
+export const Account: Story = {
+  name: "Account menu",
+  render: function Render() {
+    const [language, setLanguage] = useState<LanguageChoice>("browser");
+    return (
+      <div className="flex justify-end p-6">
+        <AccountMenu
+          name="Axel"
+          email="axel@hemma.se"
+          language={language}
+          currentLanguage="en"
+          onLanguageChange={setLanguage}
+          onAdmin={() => {}}
+          onSignOut={() => {}}
+          trigger={
+            <button type="button" aria-label="Account" className="cursor-pointer rounded-full">
+              <Avatar name="Axel" tone={1} />
+            </button>
+          }
+        />
+      </div>
+    );
+  },
 };
