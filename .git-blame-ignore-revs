@@ -1,0 +1,5 @@
+# Commits that only reformat code. git blame skips them on GitHub, and locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Format the C# code with CSharpier
+b6ed603ff16d41ed975fa45d20d553e2641e2e95
