@@ -8,6 +8,7 @@ import type {
   StorageUsage,
   VersionDto,
 } from "@dokument/api";
+import { thumbnailUrl } from "@dokument/api";
 import { kindOf, type FileItem } from "@dokument/ui";
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import type { useTranslation } from "react-i18next";
@@ -60,20 +61,32 @@ export const toItem = (node: NodeDto): Item => ({
   size: node.size ?? undefined,
   modified: node.modifiedAt,
   owner: node.ownerName,
+  thumbnail: node.thumbnail === "ready" ? thumbnailUrl(node.id, node.currentVersionId) : undefined,
+  thumbnailPending: node.thumbnail === "pending",
   node,
 });
+
+/**
+ * While the worker is still making thumbnails, the listing is polled so they appear on their own (§16.4): every 2 s
+ * at first, then every 10 s for slow ones. SignalR replaces this with the live updates work.
+ */
+const pollWhilePending = (listing: FolderListing | undefined, updates: number) =>
+  listing?.items.some((item) => item.thumbnail === "pending") ? (updates < 30 ? 2_000 : 10_000) : false;
 
 export const folderQuery = (folderId: string | null) =>
   queryOptions({
     queryKey: ["folder", folderId ?? "root"],
     queryFn: (): Promise<FolderListing> =>
       unwrap(api.GET("/api/v1/nodes", { params: { query: folderId ? { folderId } : {} } })),
+    refetchInterval: (query) => pollWhilePending(query.state.data, query.state.dataUpdateCount),
   });
 
 export const nodeQuery = (id: string) =>
   queryOptions({
     queryKey: ["node", id],
     queryFn: (): Promise<NodeDetails> => unwrap(api.GET("/api/v1/nodes/{id}", { params: { path: { id } } })),
+    refetchInterval: (query) =>
+      query.state.data?.node.thumbnail === "pending" ? (query.state.dataUpdateCount < 30 ? 2_000 : 10_000) : false,
   });
 
 export const versionsQuery = (id: string) =>

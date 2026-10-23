@@ -7,7 +7,18 @@ public static class MimeTypes
 {
     public const string Default = "application/octet-stream";
 
-    private static readonly FileExtensionContentTypeProvider Provider = new();
+    private static readonly FileExtensionContentTypeProvider Provider = CreateProvider();
+
+    private static FileExtensionContentTypeProvider CreateProvider()
+    {
+        var provider = new FileExtensionContentTypeProvider();
+
+        // Phone photos and notes, which the built-in table doesn't know.
+        provider.Mappings[".heic"] = "image/heic";
+        provider.Mappings[".heif"] = "image/heif";
+        provider.Mappings[".md"] = "text/markdown";
+        return provider;
+    }
 
     /// <summary>Types a browser would run as a page are previewed as plain text: the viewer shows their source, never the page.</summary>
     private static readonly HashSet<string> Markup = ["text/html", "application/xhtml+xml", "image/svg+xml", "text/xml", "application/xml"];

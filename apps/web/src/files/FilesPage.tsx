@@ -3,7 +3,6 @@ import { formatFileDate } from "@dokument/core";
 import {
   ActionBar,
   Breadcrumbs,
-  DetailsPanel,
   EmptyState,
   FileGrid,
   FileList,
@@ -13,7 +12,6 @@ import {
   sortItems,
   useSnackbar,
   type DetailsTab,
-  type FileVersion,
   type MenuAction,
   type Sort,
   type SortKey,
@@ -23,15 +21,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MoveDialog, NameDialog } from "./dialogs";
+import { FileDetailsPanel } from "./FileDetailsPanel";
 import {
   download,
   drive,
   errorMessage,
   folderQuery,
   invalidateFolders,
-  pathLabel,
   toItem,
-  versionsQuery,
   type Item,
 } from "./drive";
 import { useUploads } from "./uploadsContext";
@@ -75,23 +72,6 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
   const byId = new Map(items.map((item) => [item.id, item]));
   const chosen = selected.map((id) => byId.get(id)).filter((item): item is Item => !!item);
   const single = chosen.length === 1 ? chosen[0] : undefined;
-  const versions = useQuery({
-    ...versionsQuery(single?.id ?? ""),
-    enabled: !!single && !isFolder(single) && details.open && details.tab === "versions",
-    select: (list) =>
-      list.map(
-        (v): FileVersion & { id: string } => ({
-          id: v.id,
-          number: v.number,
-          current: v.current,
-          keep: v.keepForever,
-          by: v.uploadedByName,
-          at: v.uploadedAt,
-          size: v.size,
-          removedInDays: v.purgeAt ? Math.max(0, Math.ceil((Date.parse(v.purgeAt) - Date.now()) / 86_400_000)) : undefined,
-        }),
-      ),
-  });
 
   const folderPath = listing.data?.path ?? [];
   const path = [{ id: "root", name: t("nav.myFiles") }, ...folderPath];
@@ -110,7 +90,7 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
     switch (action) {
       case "open":
         if (isFolder(first)) open(first.id);
-        else downloadFiles([first]);
+        else void navigate({ to: "/files/$fileId", params: { fileId: first.id } });
         break;
       case "download":
         downloadFiles(targets);
@@ -137,28 +117,6 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
     { id: "move", icon: "drive_file_move", label: t("actions.move") },
     { id: "details", icon: "info", label: t("actions.details") },
   ];
-
-  const onVersion = async (action: string, version: FileVersion & { id: string }) => {
-    if (!single) return;
-    try {
-      if (action === "download") {
-        download(contentUrl(single.id, version.id));
-        toast(t("toasts.downloading", { count: 1 }));
-      } else if (action === "restore") {
-        await drive.restoreVersion(single.id, version.id);
-        toast(t("toasts.versionRestored", { number: version.number }));
-      } else if (action === "keep" || action === "unkeep") {
-        await drive.keepForever(single.id, version.id, action === "keep");
-        toast(t(action === "keep" ? "toasts.versionKept" : "toasts.versionUnkept", { number: version.number }));
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["versions", single.id] }),
-        invalidateFolders(queryClient, [folderId]),
-      ]);
-    } catch (error) {
-      toast(errorMessage(t, error));
-    }
-  };
 
   const meta = (item: Item) =>
     t("files.modifiedOn", { date: formatFileDate(item.modified, i18n.language, { inSentence: true }) });
@@ -251,25 +209,13 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
       </main>
 
       {showDetails && (
-        <DetailsPanel
+        <FileDetailsPanel
           item={single}
-          details={{
-            location: pathLabel(t("nav.myFiles"), folderPath),
-            created: single.node.createdAt,
-            checksum: single.node.sha256 ?? undefined,
-            people: [{ name: single.owner, email: single.node.ownerId, role: "owner", you: true }],
-            activity: [],
-          }}
+          folderPath={folderPath}
           tab={details.tab}
           onTabChange={(tab) => setDetails({ open: true, tab })}
           onClose={() => setDetails({ ...details, open: false })}
-          onManageAccess={() => toast(t("common.notYet"))}
-          versions={{
-            canDelete: false,
-            versions: versions.data ?? [],
-            onUploadVersion: () => versionInput.current?.click(),
-            onAction: (action, version) => void onVersion(action, version as FileVersion & { id: string }),
-          }}
+          onUploadVersion={() => versionInput.current?.click()}
           className="lg:mr-4 lg:mb-4 lg:rounded-lg max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-elevation-3 max-sm:w-full"
         />
       )}
