@@ -33,13 +33,20 @@ public sealed class Job
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? FinishedAt { get; private set; }
 
+    /// <summary>
+    /// The W3C <c>traceparent</c> of whatever queued the job, so its run links back to e.g. the upload that caused it
+    /// (docs/design.md §22.1). Null when nothing was being traced.
+    /// </summary>
+    public string? TraceParent { get; init; }
+
     public bool IsActive => Status is JobStatus.Queued or JobStatus.Running;
 
     public static Job Create(
         JobType type,
         string subject,
         JobPriority priority,
-        DateTimeOffset now
+        DateTimeOffset now,
+        string? traceParent = null
     ) =>
         new()
         {
@@ -48,6 +55,7 @@ public sealed class Job
             Priority = priority,
             CreatedAt = now,
             RunAfter = now,
+            TraceParent = traceParent,
         };
 
     public void Succeed(DateTimeOffset now)

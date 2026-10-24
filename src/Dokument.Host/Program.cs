@@ -14,14 +14,19 @@ if (args is ["healthcheck", ..])
 var roles = HostRoles.Parse(Environment.GetEnvironmentVariable("ROLE"));
 
 var builder = WebApplication.CreateBuilder(args);
+var telemetry = new Telemetry(builder.Configuration, roles);
 builder.Services.AddSerilog(
     (services, logger) =>
+    {
         logger
             .ReadFrom.Configuration(builder.Configuration)
             .ReadFrom.Services(services)
             .Enrich.WithProperty("Role", roles.ToString())
-            .WriteTo.Console()
+            .WriteTo.Console();
+        telemetry.WriteToOpenTelemetry(logger);
+    }
 );
+telemetry.AddOpenTelemetry(builder.Services);
 
 builder.Services.AddInfrastructure(builder.Configuration);
 builder

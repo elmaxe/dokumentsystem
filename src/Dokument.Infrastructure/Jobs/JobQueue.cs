@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Dokument.Domain.Jobs;
 using Dokument.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -30,7 +31,11 @@ public sealed class JobQueue(DokumentDbContext db, TimeProvider time)
             );
         if (!active)
         {
-            db.Jobs.Add(Job.Create(type, subject, priority, time.GetUtcNow()));
+            // The current trace, if any, so the job's run can link back to it.
+            var traceParent = Activity.Current is { IdFormat: ActivityIdFormat.W3C } activity
+                ? activity.Id
+                : null;
+            db.Jobs.Add(Job.Create(type, subject, priority, time.GetUtcNow(), traceParent));
         }
     }
 

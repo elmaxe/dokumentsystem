@@ -6,6 +6,7 @@ using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Settings;
+using Dokument.Infrastructure.Telemetry;
 using Dokument.Server.Auth;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -173,6 +174,10 @@ public static class FileEndpoints
         var range = context.Request.Headers.Range.ToString();
         var audited = range.Length == 0 || range.StartsWith("bytes=0-", StringComparison.Ordinal);
         var content = await drive.OpenContentAsync(context.Actor(), id, versionId, audited, ct);
+        if (audited)
+        {
+            DokumentTelemetry.Downloads.Add(1);
+        }
 
         // User content never renders in our origin (§21).
         context.Response.Headers.XContentTypeOptions = "nosniff";

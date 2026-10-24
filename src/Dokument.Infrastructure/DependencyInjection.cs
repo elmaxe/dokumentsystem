@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Jobs;
@@ -20,7 +21,18 @@ public static class DependencyInjection
     {
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
         services.AddDbContext<DokumentDbContext>(options =>
-            options.UseNpgsql(DatabaseOptions.GetConnectionString(configuration))
+            options.UseNpgsql(
+                DatabaseOptions.GetConnectionString(configuration),
+                npgsql =>
+                    npgsql.ConfigureDataSource(dataSource =>
+                        // Only trace SQL inside a trace. Otherwise every poll of the job queue would be its own trace.
+                        dataSource.ConfigureTracing(tracing =>
+                            tracing
+                                .ConfigureCommandFilter(_ => Activity.Current is not null)
+                                .EnablePhysicalOpenTracing(false)
+                        )
+                    )
+            )
         );
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<UserProvisioner>();

@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.9** · Last updated: 2026-10-24
+> Status: **Draft v0.10** · Last updated: 2026-10-24
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -184,7 +184,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 
 ### 4.3 Configuration
 
-- **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`, and the standard `OTEL_*` variables (§22.1).
+- **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
 - **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decision 17): the default quota, version retention, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
   - quota defaults
   - trash and version retention
@@ -799,15 +799,22 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 
 - **Turning it on uses the standard SDK variables, not our own:** setting `OTEL_EXPORTER_OTLP_ENDPOINT` enables export of all three signals. `OTEL_EXPORTER_OTLP_PROTOCOL` (default `grpc`, or `http/protobuf`), `OTEL_EXPORTER_OTLP_HEADERS`, the per-signal `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_TRACES_SAMPLER`/`_ARG` behave as the spec says. These are bootstrap settings (§4.3), not admin settings, because they must be known before the database is.
 - **Any OTLP backend works:** an OpenTelemetry Collector, Grafana Alloy/LGTM, SigNoz, Jaeger, Uptrace, or the standalone Aspire dashboard. We ship no collector in Compose; the docs show one optional example.
-- **Local development:** Aspire already injects `OTEL_EXPORTER_OTLP_ENDPOINT` into the server and worker, so traces, metrics and logs show up in the Aspire dashboard with no extra setup.
+- **On in development, off in production:** the Aspire AppHost injects `OTEL_EXPORTER_OTLP_ENDPOINT` (plus its protocol, API-key header, `OTEL_SERVICE_NAME` and instance id) into the server and worker, so traces, metrics and logs show up in the Aspire dashboard with no extra setup. Compose and the image set none of these, so a NAS install exports nothing until the admin sets the endpoint.
+- **Each signal is gated separately:** traces and metrics turn on when the base endpoint or their own `OTEL_EXPORTER_OTLP_{TRACES,METRICS}_ENDPOINT` is set, and metrics also when `METRICS_PORT` is; with none set, no exporter is registered at all.
 - **One image, one wiring:** `Dokument.Host` registers OpenTelemetry once for both roles. Resource attributes:
-  - `service.name` = `dokumentsystem-server` or `dokumentsystem-worker` (`dokumentsystem` when one process runs both), unless `OTEL_SERVICE_NAME` overrides it
-  - `service.version` = the image version, `service.instance.id` = the host name
+  - `service.name` = `dokumentsystem-server` or `dokumentsystem-worker` (`dokumentsystem` when one process runs both), unless `OTEL_SERVICE_NAME` overrides it (Aspire sets it to the resource name, `server` or `worker`)
+  - `service.version` = the image version, `service.instance.id` = the host name; both yield to `OTEL_RESOURCE_ATTRIBUTES`, which Aspire uses to match telemetry to its resources
   - `deployment.environment.name` only if the admin sets it in `OTEL_RESOURCE_ATTRIBUTES`
 - **Traces:**
-  - Instrumentation: ASP.NET Core (with route templates, so ids and share tokens stay out of span names), HttpClient (OIDC, Gotenberg, ML), and Npgsql for SQL.
-  - Our own `ActivitySource("Dokument")` spans around uploads (tus create/patch/finish, hashing), the job runner (one span per job run, `job.type`, `job.attempt`, outcome), thumbnail/preview generation, and later text extraction, OCR and indexing.
-  - **Jobs carry the trace across the queue.** Enqueueing stores the current `traceparent` on the `jobs` row (one nullable column), and the job's span links to it. An upload's trace then leads to its thumbnail job, even though the worker runs it later.
+  - Instrumentation: ASP.NET Core (with route templates, so ids and share tokens stay out of span names; `url.path` and `url.query` are dropped from server spans), HttpClient (OIDC, Gotenberg, ML), and Npgsql for SQL.
+  - SQL is traced only inside an existing trace, and connection opens are not traced, so the worker's queue polling and other background loops don't each start a trace of their own.
+  - Our own `ActivitySource("Dokument")` spans:
+    - uploads: `upload create`, `upload append`, `upload finish` and `upload hash`, with `dokument.upload.id`, the size and, once done, `dokument.node.id`
+    - the job runner: one `job <type>` span per run with `job.type`, `job.id`, `job.attempt` and `job.outcome` (`succeeded`, `failed`, `timed_out`, `released`)
+    - rendering: `thumbnail render` with the blob size and preview status
+    - later: text extraction, OCR and indexing
+  - Server spans carry `dokument.user.id` for signed-in requests.
+  - **Jobs carry the trace across the queue.** Enqueueing stores the current `traceparent` on the `jobs` row (`trace_parent`, nullable), and the job's span links to it. An upload's `upload finish` span then leads to its thumbnail job, even though the worker runs it later. The job is its own trace, not a child, so a slow queue doesn't stretch the upload's trace.
   - Calls to the ML service and Gotenberg propagate W3C `traceparent`. The ML service uses the Python OpenTelemetry SDK with the same `OTEL_*` variables.
   - `/health/*` and `/metrics` are not traced. Sampling is parent-based, default always-on, and can be lowered with `OTEL_TRACES_SAMPLER=parentbased_traceidratio`.
 - **Metrics:**
@@ -815,15 +822,17 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
   - Our own `Meter("Dokument")`, named `dokument.*`:
     - `dokument.jobs.queued` / `dokument.jobs.running` (gauges by `job.type`), `dokument.jobs.duration` (histogram by type and outcome), `dokument.jobs.failed` (counter), `dokument.jobs.lag` (age of the oldest due job)
     - `dokument.uploads.bytes` (counter), `dokument.uploads.active` (gauge), `dokument.downloads` (counter)
-    - `dokument.renditions.generated` (counter by kind), `dokument.storage.bytes` (originals and derived, sampled by the worker)
+    - `dokument.renditions.generated` (counter by `dokument.rendition.kind`), `dokument.storage.bytes` (by `dokument.storage.kind`: originals and derived)
+    - The gauges (job counts and lag, active uploads, storage) describe the whole install, so the worker samples them from Postgres every 30 s and walks the derived volume every 10 minutes, only while metrics are exported. With several workers each reports the same values under its own `service.instance.id`, so dashboards should take the max.
     - later: search query duration, OCR pages, ML endpoint up/down
-  - **Prometheus scraping** is optional for people who run Prometheus without a collector: `METRICS_PORT` turns on a `/metrics` endpoint on its own port, so it is never reachable through the public port or reverse proxy.
-- **Logs:** Serilog stays the logging API. When OTLP is on, an OpenTelemetry sink exports the same structured events with their trace and span ids, next to the console output. The admin UI's log level applies to both.
+  - **Prometheus scraping** is optional for people who run Prometheus without a collector: `METRICS_PORT` turns on a `/metrics` endpoint on its own port, on every interface, so it is never reachable through the public port or reverse proxy. It is the OpenTelemetry Prometheus exporter, which is still a beta package. Don't publish that port to the internet.
+- **Logs:** Serilog stays the logging API. When OTLP is on, the Serilog OpenTelemetry sink exports the same structured events with their trace and span ids, next to the console output. We resolve its endpoint, protocol and headers from the same `OTEL_*` variables as the SDK (including `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`) and give it the same resource, so logs line up with traces and metrics. The admin UI's log level applies to both.
 - **Privacy rules for every signal:**
   - No file or folder names, paths, file contents, search queries, email addresses, display names, IP addresses, tokens, cookies or `Authorization` headers.
   - URLs are recorded as route templates without query strings.
   - Users and nodes appear only as their opaque ids (`dokument.user.id`, `dokument.node.id`), and only on spans, never as metric labels, which stay low-cardinality.
   - The OTLP endpoint is the admin's choice; we never send telemetry anywhere by default.
+- **Built (v0.10):** everything in this section that has something to instrument. Propagation to the ML service and Gotenberg comes for free with the HttpClient instrumentation when those clients exist; the ML service's own Python SDK setup, search and OCR metrics, and the ML up/down gauge come with those features.
 - **Web app:** no browser telemetry in v1. The server's spans start at the API request. Browser tracing (OTLP over HTTP, relayed by the server) can come later if it proves useful.
 
 ---
@@ -871,7 +880,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 13 | UI components | 2026-10-22: web components live in `packages/ui` (Radix + Tailwind v4, Storybook 10). The mobile app gets its own components on the same tokens (§15.1, §16.5) |
 | 14 | File storage (M1) | 2026-10-22: our own tus 1.0 endpoint; the server hashes the finished temp file once; names are `NodeName` (NFC, case-insensitive, 255 bytes); owner-only access until sharing (M4) behind one `NodeAccess` predicate; no quota until an admin sets one; audit table unpartitioned until M6 (§6–8, §18) |
 | 15 | Thumbnails and previews (M2) | 2026-10-23: our own Postgres job table; renditions keyed by blob hash; WebP thumbs at 256 and 640 px plus a 2048 px preview only when the browser can't show the original; HEIC via the image's system libvips; the grid polls until SignalR; the viewer reads an unaudited `/preview` endpoint (§6, §7, §10, §14) |
-| 16 | Observability | 2026-10-23: OpenTelemetry for traces, metrics and logs, off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set; standard `OTEL_*` variables only; trace context stored on jobs; strict no-PII attribute rules; optional Prometheus endpoint on a separate port (§22.1) |
+| 16 | Observability | 2026-10-23: OpenTelemetry for traces, metrics and logs, off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set; standard `OTEL_*` variables only; trace context stored on jobs; strict no-PII attribute rules; optional Prometheus endpoint on a separate port. On by default under the Aspire AppHost in development. Prometheus on `METRICS_PORT` uses the beta OpenTelemetry exporter (§22.1) |
 | 17 | Admin settings page | 2026-10-23: admin pages with sections that save separately (2026-10-24: split into People, Storage and Settings, with an admin rail that replaces the normal nav on those pages, as in Immich, §15.2); default quota off until set, per-person default / own limit / no limit; ML URLs in priority order with encrypted API keys and live health checks; ClamAV address stored and tested but not yet used; sign-in shown read-only; language is a per-person choice in the account menu (§4.3, §11, §17, §21, §23) |
 
 ## 26. Open questions

@@ -32,4 +32,8 @@ public static class WorkerRole
         services.AddHostedService<ThumbnailBackfill>();
         return services;
     }
+
+    /// <summary>The queue, upload and storage gauges (docs/design.md §22.1). Only worth their queries when metrics are exported.</summary>
+    public static IServiceCollection AddMetricsSampler(this IServiceCollection services) =>
+        services.AddHostedService<MetricsSampler>();
 }
