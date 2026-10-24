@@ -25,7 +25,7 @@ public enum AuditActorKind
     ApiKey,
 }
 
-/// <summary>The audited file actions. Preview opens are deliberately absent (§18, decision 3).</summary>
+/// <summary>The audited actions. Preview opens are deliberately absent (§18, decision 3).</summary>
 public static class AuditActions
 {
     public const string FolderCreate = "folder.create";
@@ -37,4 +37,6 @@ public static class AuditActions
     public const string NodeRename = "node.rename";
     public const string NodeMove = "node.move";
     public const string FileDownload = "file.download";
+    public const string SettingsChange = "settings.change";
+    public const string QuotaChange = "user.quota_change";
 }

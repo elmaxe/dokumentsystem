@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
+import { AdminPeoplePage, AdminSettingsPage, AdminStoragePage } from "./admin/AdminPage";
 import { sessionQuery } from "./api";
 import { AppShell } from "./AppShell";
 import { FilesPage } from "./files/FilesPage";
@@ -58,6 +59,30 @@ const placeRoutes = (["shared", "recent", "starred", "trash"] as const).map((pla
   }),
 );
 
+/** Admin pages: people who aren't admins are sent home. */
+const adminRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/admin",
+  beforeLoad: ({ context }) => {
+    if (context.session.user.role !== "admin") {
+      throw redirect({ to: "/" });
+    }
+  },
+  component: Outlet,
+});
+
+const adminIndexRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: "/",
+  beforeLoad: () => {
+    throw redirect({ to: "/admin/people" });
+  },
+});
+
+const adminPeopleRoute = createRoute({ getParentRoute: () => adminRoute, path: "/people", component: AdminPeoplePage });
+const adminStorageRoute = createRoute({ getParentRoute: () => adminRoute, path: "/storage", component: AdminStoragePage });
+const adminSettingsRoute = createRoute({ getParentRoute: () => adminRoute, path: "/settings", component: AdminSettingsPage });
+
 export type SignInSearch = { returnTo?: string; error?: string };
 
 const signInRoute = createRoute({
@@ -74,7 +99,7 @@ const signInRoute = createRoute({
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, ...placeRoutes]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminSettingsRoute]), ...placeRoutes]), signInRoute]),
     context: { queryClient },
   });
 }

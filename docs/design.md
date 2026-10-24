@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.10** · Last updated: 2026-10-23
+> Status: **Draft v0.10** · Last updated: 2026-10-24
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -185,7 +185,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 ### 4.3 Configuration
 
 - **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
-- **Everything else is admin settings stored in the DB** and edited in the UI:
+- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decision 17): the default quota, version retention, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
   - quota defaults
   - trash and version retention
   - SMTP
@@ -229,14 +229,14 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   - Email, display name and role are refreshed on every login. Disabled users are refused, and their sessions stop working.
   - An optional **allow-list**: only users in the IdP group named by `OIDC_USER_GROUP` (e.g. `dokument-users`) may log in. Admins are always allowed.
   - The `dokument-admins` group → admin role. The mapping is re-evaluated on each login.
-  - An optional claim sets the quota tier.
+  - An optional claim sets the person's quota (§17.1).
 - **Rate limiting:** 20 login starts per minute per IP.
 - **Break-glass:** a CLI command in the container (`dokument admin reset-oidc` / `create-admin-token`) for when the IdP is broken.
 - **Local development:** Aspire runs Keycloak with a `dokument` realm. Its test users are alice (admin), bob (user) and carol (no groups); each password is the username.
 - **Built in M0:** login, sessions, CSRF and active devices. **Still to come:**
   - API keys and the break-glass CLI
   - auth audit events, with the audit table in M1
-  - the quota claim, with quotas in M1
+  - the quota claim (§17.1), right after the admin settings page
   - the mobile hand-off, in M5
 
 ---
@@ -244,8 +244,9 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 ## 6. Data model (sketch)
 
 ```
-users(id, oidc_issuer, oidc_subject, email, display_name, role {user|admin}, quota_bytes NULL→default,
-      used_bytes, reserved_bytes, locale, created_at, last_login_at, disabled_at,
+users(id, oidc_issuer, oidc_subject, email, display_name, role {user|admin},
+      quota_bytes NULL→default, quota_unlimited,   -- own limit, the default, or no limit (§17)
+      used_bytes, reserved_bytes, locale NULL→browser {sv|en}, created_at, last_login_at, disabled_at,
       UNIQUE (oidc_issuer, oidc_subject))
 
 nodes(id, owner_id, parent_id NULL, kind {folder|file}, name, name_key,
@@ -307,6 +308,7 @@ Notes:
 
 ```
 /data/originals/            # PRECIOUS — back this up
+  keys/                     # ASP.NET Data Protection keys that encrypt secrets in settings (§21)
   blobs/ab/cd/abcdef…sha256 # content-addressed, write-once, never modified
   tmp/{upload_id}           # in-flight uploads (tus), same filesystem for atomic rename
 /data/derived/              # REGENERABLE — backup optional
@@ -469,7 +471,7 @@ Modeled on Immich's `immich-machine-learning`.
   - The worker sends **derived inputs**, not originals: page images rendered at OCR resolution, downscaled previews, and 16 kHz mono audio for transcription. This keeps LAN traffic small even for huge files.
   - Models are downloaded on first use into a cache volume and unloaded after an idle TTL.
 - **Configured in the admin UI:**
-  - **A list of ML URLs, in priority order, each with its own API key.** Example: `http://gaming-pc:3003` (GPU) first, `http://ml:3003` (on the NAS) as fallback.
+  - **A list of ML URLs, in priority order, each with its own optional API key** (sent as `Authorization: Bearer`, stored encrypted, never returned to the browser). Example: `http://gaming-pc:3003` (GPU) first, `http://ml:3003` (on the NAS) as fallback. The admin page checks each URL's `GET /health` when it opens, and has a test button for a new one. Up to 10 URLs.
   - The worker health-checks each URL and uses the first healthy one. If none is reachable, ML-dependent jobs wait in the queue instead of failing.
   - Per-feature toggles and model selection: OCR model and languages, embedding model, transcription model size.
 - **Bulk import scenario:**
@@ -583,6 +585,7 @@ These are better in React DOM than through React Native Web.
 
 - **Layout:** a left nav rail, a top search bar and a content area. On mobile it collapses to a bottom nav.
   - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter.
+  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: machine learning, virus scanning, versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
 - **Content area:** grid/list toggle, breadcrumbs, sorting, multi-select with a contextual action bar, right-click menu.
 - **Details panel:** info, sharing, versions, activity.
 - **Upload tray** (bottom-right) with per-file progress, pause/resume and retry.
@@ -667,6 +670,8 @@ Sizes, dates and counts use tabular numbers.
 | 840–1199 px | Collapsed nav rail (88 px) | Grid / list | Dialogs |
 | ≥ 1200 px | Expanded nav (256 px) with storage meter | Grid / list + details panel (360 px) | Dialogs; upload tray bottom-right |
 
+On admin pages the same rail and bottom nav hold the admin pages instead (§15.2), with no storage meter.
+
 Touch interactions replace the desktop ones: long-press instead of right-click and rubber-band selection, and tap to open instead of double-click.
 
 ### 16.4 Core components
@@ -690,6 +695,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 ### 16.5 Content and accessibility
 
 - Copy is in sv and en from day one. Swedish runs about 30 % longer, so never size a control to fit English text.
+- **Copy doesn't assume a setup.** Dokumentsystem is open source and runs on whatever people have, so the UI never says "the NAS", "your household" or names a particular machine or provider. Say "this server", "your OIDC provider" or "a more powerful computer" instead. Product names appear only as examples ("such as Authentik or Keycloak") or when they come from config (`OIDC_PROVIDER_NAME`).
 - Copy is in sentence case, with no exclamation marks and no emoji. Buttons are verbs ("Copy link"), and toasts confirm in the past tense ("Link copied"). Errors say what happened and what to do next.
 - **Icons:** Material Symbols Rounded (Apache-2.0), outlined by default and filled when active or selected.
 - Keyboard navigation everywhere: arrow keys in the grid, Space to select, Enter to open, Delete to trash. Focus is shown by a visible 2 px focus ring. Every icon button has a label.
@@ -700,11 +706,21 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 
 ## 17. Quotas
 
-- **Admin settings:** a default quota for new users, and a per-user override, which may be unlimited.
+- **Admin settings:** a default quota (no limit until an admin sets one), and per person either the default, a limit of their own, or no limit. Changing someone's quota writes a `user.quota_change` audit event. The default applies at reservation time, so lowering it never deletes anything; it only stops new uploads.
 - **Counted:** originals of all versions owned by the user, including trash, with blobs deduplicated per user. **Not counted:** renditions and thumbnails.
 - **Enforcement:** reserve at upload start and settle at completion (§8). `used_bytes` is updated in the same transaction. A nightly reconciliation job recomputes it and logs any drift.
 - **UX:** a storage meter in the nav, a breakdown page (by type, largest files, trash, old versions), and email plus in-app warnings at 80% and 95%.
-- **Admin view:** per-user usage, total disk usage, and the free space on the volume.
+- **Admin view:** per-user usage, total disk usage, and the free space on the volume. Built on the admin Storage and People pages: the size of all originals (each blob once), and total and free space for the volume holding originals (plus the derived volume when it is separate).
+
+### 17.1 Quota from an OIDC claim (planned, next after the admin page)
+
+Households that manage people in their IdP can set each person's storage there instead of on the admin page.
+
+- **Configuration:** `OIDC_QUOTA_CLAIM` names the claim, read from the ID token or userinfo like the groups claim. It is a bootstrap setting like the other `OIDC_*` variables (§4.3). Unset means no claim is read and nothing changes.
+- **Values:** a byte count (`53687091200`), a decimal size (`50GB`, `1.5TB`, `500 MB`, case-insensitive, 1 GB = 10⁹ bytes as everywhere in the UI), or `unlimited`. A claim that can't be parsed is ignored and logged as a warning, without blocking the login.
+- **Applied on every login,** like the admin-group mapping (§5). The user row records where the quota came from (`quota_source {admin|claim}`). A changed value writes a `user.quota_change` audit event with the actor `system` and the source `claim`.
+- **The claim wins (proposed).** While a person's quota comes from the claim, the People page shows it as "Set by {provider}" and the edit dialog is read-only, so the page and the IdP never fight. If the claim later disappears, the person falls back to the default quota at the next login, and an admin can set a limit of their own again.
+- **Open:** whether an admin should be able to override a claim on the page. The proposal is no: the IdP stays the single source of truth for people it manages.
 
 ---
 
@@ -761,10 +777,11 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
   - SVG and HTML are previewed only as rasterized or plain text.
 - **Rate limiting** on auth endpoints and public links. Public-link passwords are hashed with Argon2id.
 - **Authorization** is checked in the application layer for every operation, and search reuses the same predicate. Integration tests cover the permission matrix.
-- **Secrets** (SMTP password, ML API keys) are encrypted at rest in the DB using ASP.NET Data Protection keys stored in a volume.
+- **Secrets** (SMTP password, ML API keys) are encrypted at rest in the DB using ASP.NET Data Protection keys stored in `/data/originals/keys`, so they are backed up with the originals. The worker mounts originals read-only and can decrypt with the same keys. Losing the keys only loses these secrets; an admin enters them again.
 - **Dependency hygiene:** Renovate, image scanning (Trivy) in CI, pinned base images.
 - **Virus scanning: not in v1.** On a household NAS the risk doesn't justify ~3–4 GB RAM for ClamAV.
   - The pipeline has a `scan` stage hook. Later it can call an optional **ClamAV** container (`clamav/clamav`, the official image) over clamd's `INSTREAM` protocol.
+  - The admin page already stores the clamd address (`tcp://host:port`, port 3310 by default) and tests it with `zVERSION`, so the scan stage only has to read it.
   - Infected files would be quarantined and blocked from download.
 
 ---
@@ -823,6 +840,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 ## 23. Internationalization
 
 - **sv and en from day one:** UI, emails and date/number formats.
+- **Each person picks their language** in the account menu: Same as browser (the default), Svenska or English. The choice is saved on the account (`users.locale`), so it follows them across devices and emails can use it. The sign-in page, before anyone is known, follows the browser.
 - OCR languages are configurable (default `swe+eng`). The search stemmer is chosen per detected page language.
 
 ---
@@ -863,7 +881,9 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 14 | File storage (M1) | 2026-10-22: our own tus 1.0 endpoint; the server hashes the finished temp file once; names are `NodeName` (NFC, case-insensitive, 255 bytes); owner-only access until sharing (M4) behind one `NodeAccess` predicate; no quota until an admin sets one; audit table unpartitioned until M6 (§6–8, §18) |
 | 15 | Thumbnails and previews (M2) | 2026-10-23: our own Postgres job table; renditions keyed by blob hash; WebP thumbs at 256 and 640 px plus a 2048 px preview only when the browser can't show the original; HEIC via the image's system libvips; the grid polls until SignalR; the viewer reads an unaudited `/preview` endpoint (§6, §7, §10, §14) |
 | 16 | Observability | 2026-10-23: OpenTelemetry for traces, metrics and logs, off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set; standard `OTEL_*` variables only; trace context stored on jobs; strict no-PII attribute rules; optional Prometheus endpoint on a separate port. On by default under the Aspire AppHost in development. Prometheus on `METRICS_PORT` uses the beta OpenTelemetry exporter (§22.1) |
+| 17 | Admin settings page | 2026-10-23: admin pages with sections that save separately (2026-10-24: split into People, Storage and Settings, with an admin rail that replaces the normal nav on those pages, as in Immich, §15.2); default quota off until set, per-person default / own limit / no limit; ML URLs in priority order with encrypted API keys and live health checks; ClamAV address stored and tested but not yet used; sign-in shown read-only; language is a per-person choice in the account menu (§4.3, §11, §17, §21, §23) |
 
 ## 26. Open questions
 
 1. **Video:** transcode to MP4 once, or generate HLS for large files? MP4-once is simpler and probably sufficient.
+2. **Quota claim precedence (§17.1):** should an admin be able to override a quota that comes from the OIDC claim? Proposed: no, the claim wins.

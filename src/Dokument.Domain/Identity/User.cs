@@ -10,11 +10,29 @@ public sealed class User
     public required string DisplayName { get; set; }
     public UserRole Role { get; set; }
 
-    /// <summary>Null means the admin-set default quota applies.</summary>
-    public long? QuotaBytes { get; set; }
+    /// <summary>The person's own limit. Null with <see cref="QuotaUnlimited"/> false means the default applies.</summary>
+    public long? QuotaBytes { get; private set; }
+
+    public bool QuotaUnlimited { get; private set; }
+
+    public UserQuota Quota
+    {
+        get =>
+            QuotaUnlimited ? UserQuota.Unlimited
+            : QuotaBytes is { } bytes ? UserQuota.Limit(bytes)
+            : UserQuota.Default;
+        set
+        {
+            QuotaUnlimited = value.Kind == UserQuotaKind.Unlimited;
+            QuotaBytes = value.Bytes;
+        }
+    }
+
     public long UsedBytes { get; set; }
     public long ReservedBytes { get; set; }
-    public string? Locale { get; set; }
+
+    /// <summary>The UI language the person picked; null follows the browser (§23).</summary>
+    public UiLanguage? Locale { get; set; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? LastLoginAt { get; set; }
     public DateTimeOffset? DisabledAt { get; set; }

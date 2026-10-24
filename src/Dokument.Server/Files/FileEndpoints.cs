@@ -5,6 +5,7 @@ using Dokument.Domain.Previews;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
+using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Telemetry;
 using Dokument.Server.Auth;
 using Microsoft.AspNetCore.Builder;
@@ -296,6 +297,7 @@ public static class FileEndpoints
         HttpContext context,
         DriveService drive,
         DokumentDbContext db,
+        SettingsStore settings,
         TimeProvider time,
         CancellationToken ct
     )
@@ -303,7 +305,7 @@ public static class FileEndpoints
         var actor = context.Actor();
         var node = await drive.GetFileAsync(actor, id, ct);
         var versions = await drive.ListVersionsAsync(actor, id, ct);
-        return TypedResults.Ok(await VersionDtosAsync(db, node, versions, time, ct));
+        return TypedResults.Ok(await VersionDtosAsync(db, settings, node, versions, time, ct));
     }
 
     private static async Task<Ok<VersionDto>> RestoreVersion(
@@ -312,6 +314,7 @@ public static class FileEndpoints
         HttpContext context,
         DriveService drive,
         DokumentDbContext db,
+        SettingsStore settings,
         TimeProvider time,
         CancellationToken ct
     )
@@ -321,7 +324,9 @@ public static class FileEndpoints
         var node = await drive.GetFileAsync(actor, id, ct);
         var versions = await drive.ListVersionsAsync(actor, id, ct);
         return TypedResults.Ok(
-            (await VersionDtosAsync(db, node, versions, time, ct)).Single(v => v.Id == restored.Id)
+            (await VersionDtosAsync(db, settings, node, versions, time, ct)).Single(v =>
+                v.Id == restored.Id
+            )
         );
     }
 
@@ -332,6 +337,7 @@ public static class FileEndpoints
         HttpContext context,
         DriveService drive,
         DokumentDbContext db,
+        SettingsStore settings,
         TimeProvider time,
         CancellationToken ct
     )
@@ -341,7 +347,9 @@ public static class FileEndpoints
         var node = await drive.GetFileAsync(actor, id, ct);
         var versions = await drive.ListVersionsAsync(actor, id, ct);
         return TypedResults.Ok(
-            (await VersionDtosAsync(db, node, versions, time, ct)).Single(v => v.Id == versionId)
+            (await VersionDtosAsync(db, settings, node, versions, time, ct)).Single(v =>
+                v.Id == versionId
+            )
         );
     }
 
@@ -424,14 +432,13 @@ public static class FileEndpoints
     private static async Task<Ok<StorageUsage>> GetStorage(
         ClaimsPrincipal principal,
         DokumentDbContext db,
+        SettingsStore settings,
         CancellationToken ct
     )
     {
-        var usage = await db
-            .Users.Where(u => u.Id == principal.UserId())
-            .Select(u => new StorageUsage(u.UsedBytes, u.QuotaBytes))
-            .SingleAsync(ct);
-        return TypedResults.Ok(usage);
+        var user = await db.Users.AsNoTracking().SingleAsync(u => u.Id == principal.UserId(), ct);
+        var defaultQuota = (await settings.GetAsync(SettingKeys.Storage, ct)).DefaultQuota;
+        return TypedResults.Ok(new StorageUsage(user.UsedBytes, user.Quota.Resolve(defaultQuota)));
     }
 
     internal static async Task<Dictionary<Guid, DuplicateMatch>> MatchesAsync(
@@ -474,6 +481,7 @@ public static class FileEndpoints
 
     private static async Task<List<VersionDto>> VersionDtosAsync(
         DokumentDbContext db,
+        SettingsStore settings,
         Node node,
         List<FileVersion> versions,
         TimeProvider time,
@@ -484,11 +492,8 @@ public static class FileEndpoints
         var names = await db
             .Users.Where(u => uploaderIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
-        var purge = VersionRetention.Default.PurgeDates(
-            versions,
-            node.CurrentVersionId,
-            time.GetUtcNow()
-        );
+        var retention = (await settings.GetAsync(SettingKeys.Versions, ct)).Retention;
+        var purge = retention.PurgeDates(versions, node.CurrentVersionId, time.GetUtcNow());
         return versions
             .Select(v => new VersionDto(
                 v.Id,

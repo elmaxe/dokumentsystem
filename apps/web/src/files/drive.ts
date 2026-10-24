@@ -26,7 +26,7 @@ export class ApiError extends Error {
   }
 }
 
-async function unwrap<T>(request: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
+export async function unwrap<T>(request: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
   const { data, error, response } = await request;
   if (!response.ok || data === undefined) throw new ApiError(response.status, (error ?? {}) as Problem);
   return data;

@@ -6,6 +6,7 @@ using Dokument.Domain.Identity;
 using Dokument.Domain.Jobs;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
+using Dokument.Infrastructure.Settings;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -17,6 +18,7 @@ public sealed class DriveService(
     BlobStore blobs,
     AuditLog audit,
     PreviewService previews,
+    SettingsStore settings,
     TimeProvider time
 )
 {
@@ -537,10 +539,15 @@ public sealed class DriveService(
     /// <summary>Reserves quota for an upload (§8.1). Fails when the owner's quota can't hold it.</summary>
     internal async Task ReserveQuotaAsync(Guid ownerId, long bytes, CancellationToken ct)
     {
+        var defaultQuota = (await settings.GetAsync(SettingKeys.Storage, ct)).DefaultQuota.Bytes;
         var reserved = await db
             .Users.Where(u =>
                 u.Id == ownerId
-                && (u.QuotaBytes == null || u.UsedBytes + u.ReservedBytes + bytes <= u.QuotaBytes)
+                && (
+                    u.QuotaUnlimited
+                    || (u.QuotaBytes ?? defaultQuota) == null
+                    || u.UsedBytes + u.ReservedBytes + bytes <= (u.QuotaBytes ?? defaultQuota)
+                )
             )
             .ExecuteUpdateAsync(
                 s => s.SetProperty(u => u.ReservedBytes, u => u.ReservedBytes + bytes),
