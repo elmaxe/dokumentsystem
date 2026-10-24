@@ -49,6 +49,9 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(u => u.Role).HasColumnName("role").HasConversion(LowercaseEnum<UserRole>());
             e.Property(u => u.QuotaBytes).HasColumnName("quota_bytes");
             e.Property(u => u.QuotaUnlimited).HasColumnName("quota_unlimited");
+            e.Property(u => u.QuotaSource)
+                .HasColumnName("quota_source")
+                .HasConversion(LowercaseEnum<QuotaSource>());
             e.Ignore(u => u.Quota);
             e.Property(u => u.UsedBytes).HasColumnName("used_bytes");
             e.Property(u => u.ReservedBytes).HasColumnName("reserved_bytes");

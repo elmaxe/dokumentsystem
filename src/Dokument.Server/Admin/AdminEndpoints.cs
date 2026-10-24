@@ -3,6 +3,7 @@ using Dokument.Domain.Audit;
 using Dokument.Domain.Identity;
 using Dokument.Domain.Settings;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Storage;
@@ -66,7 +67,8 @@ public static class AdminEndpoints
                     oidc.ProviderName,
                     oidc.Issuer,
                     oidc.Policy.UserGroup,
-                    oidc.Policy.AdminGroup
+                    oidc.Policy.AdminGroup,
+                    oidc.QuotaClaim
                 )
             )
         );
@@ -275,12 +277,13 @@ public static class AdminEndpoints
     private static async Task<Ok<List<AdminUser>>> ListUsers(
         DokumentDbContext db,
         SettingsStore settings,
+        OidcSettings oidc,
         CancellationToken ct
     )
     {
         var defaultQuota = (await settings.GetAsync(SettingKeys.Storage, ct)).DefaultQuota;
         var users = await db.Users.AsNoTracking().OrderBy(u => u.DisplayName).ToListAsync(ct);
-        return TypedResults.Ok(users.Select(u => AdminUserOf(u, defaultQuota)).ToList());
+        return TypedResults.Ok(users.Select(u => AdminUserOf(u, defaultQuota, oidc)).ToList());
     }
 
     private static async Task<Results<Ok<AdminUser>, NotFound, ValidationProblem>> PutUserQuota(
@@ -289,6 +292,7 @@ public static class AdminEndpoints
         HttpContext context,
         DokumentDbContext db,
         SettingsStore settings,
+        OidcSettings oidc,
         AuditLog audit,
         CancellationToken ct
     )
@@ -315,24 +319,40 @@ public static class AdminEndpoints
             return TypedResults.NotFound();
         }
 
+        if (QuotaFromClaim(user, oidc))
+        {
+            return Invalid(
+                "kind",
+                "This person's storage is set by the sign-in provider. Change it there."
+            );
+        }
+
         var before = user.Quota;
-        user.Quota = quota;
+        user.SetQuota(quota, QuotaSource.Admin);
         audit.Add(
             context.Actor(),
             AuditActions.QuotaChange,
             details: new JsonObject
             {
                 ["userId"] = id,
-                ["from"] = QuotaJson(before),
-                ["to"] = QuotaJson(quota),
+                ["from"] = QuotaAudit.Json(before),
+                ["to"] = QuotaAudit.Json(quota),
+                ["source"] = QuotaAudit.SourceName(QuotaSource.Admin),
             }
         );
         await db.SaveChangesAsync(ct);
         var defaultQuota = (await settings.GetAsync(SettingKeys.Storage, ct)).DefaultQuota;
-        return TypedResults.Ok(AdminUserOf(user, defaultQuota));
+        return TypedResults.Ok(AdminUserOf(user, defaultQuota, oidc));
     }
 
-    private static AdminUser AdminUserOf(User user, StorageLimit defaultQuota) =>
+    /// <summary>
+    /// Whether the IdP sets this person's quota (§17.1): the claim wins, so admins can't change it. If the claim is no
+    /// longer configured, admins take the quota over again.
+    /// </summary>
+    private static bool QuotaFromClaim(User user, OidcSettings oidc) =>
+        user.QuotaSource == QuotaSource.Claim && oidc.QuotaClaim is not null;
+
+    private static AdminUser AdminUserOf(User user, StorageLimit defaultQuota, OidcSettings oidc) =>
         new(
             user.Id,
             user.DisplayName,
@@ -340,13 +360,11 @@ public static class AdminEndpoints
             user.Role,
             user.UsedBytes,
             QuotaDto.From(user.Quota),
+            QuotaFromClaim(user, oidc) ? QuotaSource.Claim : QuotaSource.Admin,
             user.Quota.Resolve(defaultQuota),
             user.LastLoginAt,
             user.IsDisabled
         );
-
-    private static JsonObject QuotaJson(UserQuota quota) =>
-        new() { ["kind"] = quota.Kind.ToString().ToLowerInvariant(), ["bytes"] = quota.Bytes };
 
     private static MlSettingsDto MlDto(MlSettings ml) =>
         new(

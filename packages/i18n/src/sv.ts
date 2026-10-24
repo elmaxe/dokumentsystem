@@ -403,6 +403,9 @@ export const sv: Strings = {
       anyone: "Alla som tjänsten släpper in",
       membersOf: "Medlemmar i {{group}}",
       admins: "Administratörer",
+      quota: "Lagring per person",
+      quotaClaim: "Från claimen {{group}}, när tjänsten skickar den",
+      quotaHere: "Anges under Personer",
       off: "Inloggningen är inte inställd. Ange OIDC_ISSUER, OIDC_CLIENT_ID och OIDC_CLIENT_SECRET för servern och starta om den.",
     },
     ml: {
@@ -499,6 +502,9 @@ export const sv: Strings = {
       defaultLimit: "standard",
       usage: "{{used}} av {{quota}} · {{source}}",
       usageUnlimited: "{{used}} · ingen gräns",
+      noLimit: "ingen gräns",
+      setBy: "Anges av {{provider}}",
+      provider: "inloggningstjänsten",
       edit: "Ändra lagring för {{name}}",
       disabled: "Avstängd",
     },
@@ -512,6 +518,7 @@ export const sv: Strings = {
       ownLabel: "Gräns i GB",
       none: "Ingen gräns",
       noneHint: "Kan fylla disken",
+      fromClaim: "Inställningen kommer från {{provider}}. Ändra den där, så uppdateras den nästa gång {{name}} loggar in.",
     },
   },
   dialogs: {

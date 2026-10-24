@@ -250,6 +250,8 @@ function Legend({ className, children }: { className: string; children: ReactNod
 function PeopleSection() {
   const { t, i18n } = useTranslation();
   const users = useQuery(adminUsersQuery);
+  const settings = useQuery(adminSettingsQuery);
+  const provider = settings.data?.signIn.providerName ?? t("admin.people.provider");
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const tones = [1, 3, 2, 0] as const;
 
@@ -297,13 +299,19 @@ function PeopleSection() {
                       className={percent >= 95 ? "text-error" : "text-warning"}
                     />
                   )}
-                  {quota === null
-                    ? t("admin.people.usageUnlimited", { used })
-                    : t("admin.people.usage", {
+                  {user.quotaSource === "claim"
+                    ? t("admin.people.usage", {
                         used,
-                        quota: formatBytes(quota, i18n.language),
-                        source: user.quota.kind === "limit" ? t("admin.people.ownLimit") : t("admin.people.defaultLimit"),
-                      })}
+                        quota: quota === null ? t("admin.people.noLimit") : formatBytes(quota, i18n.language),
+                        source: t("admin.people.setBy", { provider }),
+                      })
+                    : quota === null
+                      ? t("admin.people.usageUnlimited", { used })
+                      : t("admin.people.usage", {
+                          used,
+                          quota: formatBytes(quota, i18n.language),
+                          source: user.quota.kind === "limit" ? t("admin.people.ownLimit") : t("admin.people.defaultLimit"),
+                        })}
                 </span>
               </div>
               <IconButton icon="edit" label={t("admin.people.edit", { name: user.displayName })} onClick={() => setEditing(user)} />
@@ -311,14 +319,16 @@ function PeopleSection() {
           );
         })}
       </ul>
-      {editing && <QuotaDialog key={editing.id} user={editing} onClose={() => setEditing(null)} />}
+      {editing && <QuotaDialog key={editing.id} user={editing} provider={provider} onClose={() => setEditing(null)} />}
     </Section>
   );
 }
 
-function QuotaDialog({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+function QuotaDialog({ user, provider, onClose }: { user: AdminUser; provider: string; onClose: () => void }) {
   const { t, i18n } = useTranslation();
   const settings = useQuery(adminSettingsQuery);
+  // The provider's quota claim wins (§17.1), so the dialog only shows it.
+  const locked = user.quotaSource === "claim";
   const [kind, setKind] = useState(user.quota.kind);
   const [gb, setGb] = useState(user.quota.bytes ? toGb(user.quota.bytes) : "");
   const { busy, save } = useSave();
@@ -345,25 +355,34 @@ function QuotaDialog({ user, onClose }: { user: AdminUser; onClose: () => void }
       description={t("admin.quota.uses", { used: formatBytes(user.usedBytes, i18n.language) })}
       width="sm"
       footer={
-        <>
-          <Button variant="text" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            disabled={busy || (kind === "limit" && bytes === null)}
-            onClick={() => void save(() => admin.putQuota(user.id, kind, bytes)).then(onClose)}
-          >
-            {t("common.save")}
-          </Button>
-        </>
+        locked ? (
+          <Button onClick={onClose}>{t("common.close")}</Button>
+        ) : (
+          <>
+            <Button variant="text" onClick={onClose}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={busy || (kind === "limit" && bytes === null)}
+              onClick={() => void save(() => admin.putQuota(user.id, kind, bytes)).then(onClose)}
+            >
+              {t("common.save")}
+            </Button>
+          </>
+        )
       }
     >
-      <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
+      {locked && (
+        <Banner tone="info" className="mb-3">
+          {t("admin.quota.fromClaim", { provider, name: user.displayName })}
+        </Banner>
+      )}
+      <fieldset disabled={locked} className="m-0 flex flex-col gap-1 border-0 p-0 disabled:opacity-60">
         <legend className="sr-only">{t("admin.storage.defaultQuota")}</legend>
         {options.map((option) => (
           <label
             key={option.id}
-            className={`flex cursor-pointer items-start gap-3 rounded-md p-3 ${kind === option.id ? "bg-secondary-container" : "hover:bg-on-surface/8"}`}
+            className={`flex items-start gap-3 rounded-md p-3 ${kind === option.id ? "bg-secondary-container" : locked ? "" : "hover:bg-on-surface/8"} ${locked ? "cursor-default" : "cursor-pointer"}`}
           >
             <input
               type="radio"
@@ -706,6 +725,10 @@ function SignInSection({ settings }: { settings: AdminSettings }) {
       signIn.userGroup ? <Group name={signIn.userGroup} /> : t("admin.signIn.anyone"),
     ],
     [t("admin.signIn.admins"), <Group name={signIn.adminGroup} />],
+    [
+      t("admin.signIn.quota"),
+      signIn.quotaClaim ? <Group name={signIn.quotaClaim} template="admin.signIn.quotaClaim" /> : t("admin.signIn.quotaHere"),
+    ],
   ];
   return (
     <Section id="signIn" intro={t("admin.signIn.readOnlyIntro")}>
@@ -725,9 +748,10 @@ function SignInSection({ settings }: { settings: AdminSettings }) {
   );
 }
 
-function Group({ name }: { name: string }) {
+/** A sentence with a group or claim name from the provider set in monospace. */
+function Group({ name, template = "admin.signIn.membersOf" }: { name: string; template?: "admin.signIn.membersOf" | "admin.signIn.quotaClaim" }) {
   const { t } = useTranslation();
-  const [before, after] = t("admin.signIn.membersOf", { group: "\u0000" }).split("\u0000");
+  const [before, after] = t(template, { group: "\u0000" }).split("\u0000");
   return (
     <>
       {before}

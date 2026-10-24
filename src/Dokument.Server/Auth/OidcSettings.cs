@@ -7,6 +7,7 @@ namespace Dokument.Server.Auth;
 /// OIDC bootstrap configuration from environment variables (docs/design.md §4.3, §5). Sign-in is off until
 /// <c>OIDC_ISSUER</c> and <c>OIDC_CLIENT_ID</c> are set, so a fresh install still starts and passes health checks.
 /// </summary>
+/// <param name="QuotaClaim">The claim that sets each person's quota at login (§17.1); null reads none.</param>
 public sealed record OidcSettings(
     string? Issuer,
     string? ClientId,
@@ -14,7 +15,8 @@ public sealed record OidcSettings(
     string Scope,
     string GroupsClaim,
     string? ProviderName,
-    LoginPolicy Policy
+    LoginPolicy Policy,
+    string? QuotaClaim = null
 )
 {
     public bool Enabled =>
@@ -35,7 +37,8 @@ public sealed record OidcSettings(
             Policy: new LoginPolicy(
                 UserGroup: Get("OIDC_USER_GROUP"),
                 AdminGroup: Get("OIDC_ADMIN_GROUP") ?? LoginPolicy.DefaultAdminGroup
-            )
+            ),
+            QuotaClaim: Get("OIDC_QUOTA_CLAIM")
         );
     }
 }

@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.11** · Last updated: 2026-10-24
+> Status: **Draft v0.12** · Last updated: 2026-10-24
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -215,6 +215,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   | `OIDC_USER_GROUP` | unset (anyone at the IdP may log in) | Allow-list group |
   | `OIDC_ADMIN_GROUP` | `dokument-admins` | Members get the admin role |
   | `OIDC_PROVIDER_NAME` | unset | Shown on the button: "Sign in with …" |
+  | `OIDC_QUOTA_CLAIM` | unset (quotas are set on the admin page) | A claim that sets each person's storage at login (§17.1) |
 
 - **`PUBLIC_URL`** sets the scheme, host and path base that the app sees itself at, behind the reverse proxy. It drives the redirect URI and the cookie's Secure flag.
 - **Sessions:** after a successful OIDC login, the server issues **its own session**. The IdP's tokens are discarded.
@@ -247,6 +248,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 ```
 users(id, oidc_issuer, oidc_subject, email, display_name, role {user|admin},
       quota_bytes NULL→default, quota_unlimited,   -- own limit, the default, or no limit (§17)
+      quota_source {admin|claim},                   -- who set it (§17.1)
       used_bytes, reserved_bytes, locale NULL→browser {sv|en}, created_at, last_login_at, disabled_at,
       UNIQUE (oidc_issuer, oidc_subject))
 
@@ -718,15 +720,21 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **UX:** a storage meter in the nav, which also says how much of the storage emptying the trash would free ("1.4 GB of it in the trash"), a breakdown page (by type, largest files, trash, old versions), and email plus in-app warnings at 80% and 95%.
 - **Admin view:** per-user usage, total disk usage, and the free space on the volume. Built on the admin Storage and People pages: the size of all originals (each blob once), and total and free space for the volume holding originals (plus the derived volume when it is separate).
 
-### 17.1 Quota from an OIDC claim (planned, next after the admin page)
+### 17.1 Quota from an OIDC claim
 
-Households that manage people in their IdP can set each person's storage there instead of on the admin page.
+People who are managed in an IdP can get their storage from it instead of from the admin page.
 
-- **Configuration:** `OIDC_QUOTA_CLAIM` names the claim, read from the ID token or userinfo like the groups claim. It is a bootstrap setting like the other `OIDC_*` variables (§4.3). Unset means no claim is read and nothing changes.
-- **Values:** a byte count (`53687091200`), a decimal size (`50GB`, `1.5TB`, `500 MB`, case-insensitive, 1 GB = 10⁹ bytes as everywhere in the UI), or `unlimited`. A claim that can't be parsed is ignored and logged as a warning, without blocking the login.
-- **Applied on every login,** like the admin-group mapping (§5). The user row records where the quota came from (`quota_source {admin|claim}`). A changed value writes a `user.quota_change` audit event with the actor `system` and the source `claim`.
-- **The claim wins (proposed).** While a person's quota comes from the claim, the People page shows it as "Set by {provider}" and the edit dialog is read-only, so the page and the IdP never fight. If the claim later disappears, the person falls back to the default quota at the next login, and an admin can set a limit of their own again.
-- **Open:** whether an admin should be able to override a claim on the page. The proposal is no: the IdP stays the single source of truth for people it manages.
+- **Configuration:** `OIDC_QUOTA_CLAIM` names the claim, read from the ID token or userinfo like the groups claim (§5). It is a bootstrap setting like the other `OIDC_*` variables (§4.3). Unset means no claim is read and nothing changes. The admin page's Sign-in section shows which claim is read.
+- **Values** (a string or a JSON number):
+  - a byte count: `53687091200`
+  - a size: `50GB`, `50 GiB`, `1.5TB`, `500m`, case-insensitive, with the units B, K, M, G and T, each optionally followed by B or iB
+  - `unlimited`
+- **Sizes are binary**, like everywhere in the UI: `GB` and `GiB` both mean 1024³ bytes, so `50GB` shows as exactly 50 GiB on the People page. IdP admins type `GB` far more often than `GiB`, and reading it as 10⁹ would show an odd 46.6 GiB.
+- **A value that can't be read** (zero, negative, fractional bytes, an unknown unit, or anything else) is ignored and logged as a warning. The login goes ahead and the person keeps the quota they had.
+- **Applied on every login,** like the admin-group mapping (§5). `users.quota_source` records whether the quota came from an admin or the claim. A change writes a `user.quota_change` audit event with the actor kind `system` and `"source": "claim"` in its details; changes made on the admin page carry `"source": "admin"`. A login that changes nothing writes nothing.
+- **The claim wins** (decided 2026-10-24). While a person's quota comes from the claim, the People page says "Set by {provider}" (or "Set by your sign-in provider" without `OIDC_PROVIDER_NAME`) and the edit dialog is read-only with a note to change it at the IdP. The API refuses the change too.
+- **When the claim goes away:** if the IdP stops sending it for someone, they fall back to the default quota at their next login and admins can set a limit again. If `OIDC_QUOTA_CLAIM` itself is removed, nothing changes at login, but the People page treats those quotas as the admin's again, so they can be edited.
+- **Dev setup:** the Aspire AppHost sets `OIDC_QUOTA_CLAIM=dokument_quota`, and the dev Keycloak gives bob `50GB` through a user attribute mapped into userinfo.
 
 ---
 
@@ -890,8 +898,8 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 16 | Observability | 2026-10-23: OpenTelemetry for traces, metrics and logs, off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set; standard `OTEL_*` variables only; trace context stored on jobs; strict no-PII attribute rules; optional Prometheus endpoint on a separate port. On by default under the Aspire AppHost in development. Prometheus on `METRICS_PORT` uses the beta OpenTelemetry exporter (§22.1) |
 | 17 | Admin settings page | 2026-10-23: admin pages with sections that save separately (2026-10-24: split into People, Storage and Settings, with an admin rail that replaces the normal nav on those pages, as in Immich, §15.2); default quota off until set, per-person default / own limit / no limit; ML URLs in priority order with encrypted API keys and live health checks; ClamAV address stored and tested but not yet used; sign-in shown read-only; language is a per-person choice in the account menu (§4.3, §11, §17, §21, §23) |
 | 18 | Trash and retention | 2026-10-24: trash groups by `trashed_root_id`, listed by root on the Trash page; restore to My files when the folder is gone or trashed, numbering on name clashes; Undo after trashing; no browsing inside trashed folders yet; trash retention is an admin setting (default 30 days); the purge runs hourly in the server role and also enforces version retention; per-blob advisory lock shared with uploads; no manual per-version delete and no warning email yet (§12) |
+| 19 | Quota from an OIDC claim | 2026-10-24: `OIDC_QUOTA_CLAIM` sets each person's quota at every login from a byte count, a binary size (`GB` = `GiB` = 1024³) or `unlimited`; unreadable values are ignored with a warning; the claim wins and locks the admin dialog; a missing claim falls back to the default; changes are audited as `system` with the source `claim` (§17.1) |
 
 ## 26. Open questions
 
 1. **Video:** transcode to MP4 once, or generate HLS for large files? MP4-once is simpler and probably sufficient.
-2. **Quota claim precedence (§17.1):** should an admin be able to override a quota that comes from the OIDC claim? Proposed: no, the claim wins.

@@ -398,6 +398,9 @@ export const en = {
       anyone: "Anyone your provider lets in",
       membersOf: "Members of {{group}}",
       admins: "Admins",
+      quota: "Storage per person",
+      quotaClaim: "From the {{group}} claim, when the provider sends it",
+      quotaHere: "Set under People",
       off: "Sign-in isn't set up. Set OIDC_ISSUER, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET for the server, then restart it.",
     },
     ml: {
@@ -493,6 +496,9 @@ export const en = {
       defaultLimit: "default",
       usage: "{{used}} of {{quota}} · {{source}}",
       usageUnlimited: "{{used}} · no limit",
+      noLimit: "no limit",
+      setBy: "Set by {{provider}}",
+      provider: "your sign-in provider",
       edit: "Edit storage for {{name}}",
       disabled: "Disabled",
     },
@@ -506,6 +512,7 @@ export const en = {
       ownLabel: "Limit in GB",
       none: "No limit",
       noneHint: "Can fill the disk",
+      fromClaim: "This setting comes from {{provider}}. Change it there, and it updates the next time {{name}} signs in.",
     },
   },
   dialogs: {

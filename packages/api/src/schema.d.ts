@@ -711,6 +711,7 @@ export interface components {
             /** Format: int64 */
             usedBytes: number;
             quota: components["schemas"]["QuotaDto"];
+            quotaSource: components["schemas"]["QuotaSource"];
             /** Format: int64 */
             effectiveQuotaBytes: null | number;
             /** Format: date-time */
@@ -860,6 +861,8 @@ export interface components {
             /** Format: int64 */
             bytes: null | number;
         };
+        /** @enum {unknown} */
+        QuotaSource: "admin" | "claim";
         RenameRequest: {
             name: string;
         };
@@ -899,6 +902,7 @@ export interface components {
             issuer: null | string;
             userGroup: null | string;
             adminGroup: string;
+            quotaClaim: null | string;
         };
         StorageReport: {
             /** Format: int64 */

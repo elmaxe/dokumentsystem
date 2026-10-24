@@ -15,17 +15,26 @@ public sealed class User
 
     public bool QuotaUnlimited { get; private set; }
 
-    public UserQuota Quota
+    /// <summary>Who set <see cref="Quota"/>: an admin, or the IdP's quota claim at the last login (§17.1).</summary>
+    public QuotaSource QuotaSource { get; private set; }
+
+    public UserQuota Quota =>
+        QuotaUnlimited ? UserQuota.Unlimited
+        : QuotaBytes is { } bytes ? UserQuota.Limit(bytes)
+        : UserQuota.Default;
+
+    /// <summary>Sets the quota and where it came from. Returns false when neither changed.</summary>
+    public bool SetQuota(UserQuota quota, QuotaSource source)
     {
-        get =>
-            QuotaUnlimited ? UserQuota.Unlimited
-            : QuotaBytes is { } bytes ? UserQuota.Limit(bytes)
-            : UserQuota.Default;
-        set
+        if (quota == Quota && source == QuotaSource)
         {
-            QuotaUnlimited = value.Kind == UserQuotaKind.Unlimited;
-            QuotaBytes = value.Bytes;
+            return false;
         }
+
+        QuotaUnlimited = quota.Kind == UserQuotaKind.Unlimited;
+        QuotaBytes = quota.Bytes;
+        QuotaSource = source;
+        return true;
     }
 
     public long UsedBytes { get; set; }

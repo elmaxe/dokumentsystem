@@ -122,6 +122,98 @@ public sealed class AdminTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task The_quota_claim_sets_quotas_at_login_and_wins_over_the_admin_page()
+    {
+        await using var app = await DokumentApp.StartAsync(
+            postgres,
+            new Dictionary<string, string?> { ["OIDC_QUOTA_CLAIM"] = "dokument_quota" }
+        );
+        using var admin = await FileTests.SignInAsync(app, Admin);
+        const long gib = 1024L * 1024 * 1024;
+
+        // Numbers in userinfo work as well as strings.
+        using var alice = await FileTests.SignInAsync(
+            app,
+            Alice with
+            {
+                Claims = new Dictionary<string, object> { ["dokument_quota"] = "50GB" },
+            }
+        );
+        Assert.Equal(new StorageUsage(0, 50 * gib, 0), await StorageAsync(alice));
+        using var again = await FileTests.SignInAsync(
+            app,
+            Alice with
+            {
+                Claims = new Dictionary<string, object> { ["dokument_quota"] = 2048L },
+            }
+        );
+        Assert.Equal(new StorageUsage(0, 2048, 0), await StorageAsync(alice));
+
+        var users = await admin.GetFromJsonAsync<List<AdminUser>>(
+            "/api/v1/admin/users",
+            Json.Options
+        );
+        var aliceRow = users!.Single(u => u.Email == Alice.Email);
+        Assert.Equal(QuotaSource.Claim, aliceRow.QuotaSource);
+        Assert.Equal(QuotaSource.Admin, users!.Single(u => u.Email == Admin.Email).QuotaSource);
+        var settings = await admin.GetFromJsonAsync<AdminSettingsDto>(
+            "/api/v1/admin/settings",
+            Json.Options
+        );
+        Assert.Equal("dokument_quota", settings!.SignIn.QuotaClaim);
+
+        // The claim wins: the page can't change it.
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (
+                await admin.PutAsJsonAsync(
+                    $"/api/v1/admin/users/{aliceRow.Id}/quota",
+                    new QuotaDto(UserQuotaKind.Unlimited, null),
+                    Json.Options
+                )
+            ).StatusCode
+        );
+
+        // A value that can't be read keeps the last good one and doesn't block the login.
+        using var garbled = await FileTests.SignInAsync(
+            app,
+            Alice with
+            {
+                Claims = new Dictionary<string, object> { ["dokument_quota"] = "lots" },
+            }
+        );
+        Assert.Equal(new StorageUsage(0, 2048, 0), await StorageAsync(garbled));
+
+        // Without the claim, the default applies again and admins can set a limit.
+        using var without = await FileTests.SignInAsync(app, Alice);
+        Assert.Equal(new StorageUsage(0, null, 0), await StorageAsync(without));
+        (
+            await admin.PutAsJsonAsync(
+                $"/api/v1/admin/users/{aliceRow.Id}/quota",
+                new QuotaDto(UserQuotaKind.Limit, 5000),
+                Json.Options
+            )
+        ).EnsureSuccessStatusCode();
+
+        await using var scope = app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<DokumentDbContext>();
+        var changes = await db
+            .AuditEvents.Where(e => e.Action == AuditActions.QuotaChange)
+            .OrderBy(e => e.Id)
+            .ToListAsync();
+        Assert.Equal(
+            [
+                (AuditActorKind.System, "claim"),
+                (AuditActorKind.System, "claim"),
+                (AuditActorKind.System, "claim"),
+                (AuditActorKind.User, "admin"),
+            ],
+            changes.Select(e => (e.ActorKind, e.Details!["source"]!.GetValue<string>()))
+        );
+        Assert.Equal(50 * gib, changes[0].Details!["to"]!["bytes"]!.GetValue<long>());
+    }
+
+    [Fact]
     public async Task ML_api_keys_are_kept_secret_and_survive_reordering()
     {
         await using var app = await DokumentApp.StartAsync(postgres);

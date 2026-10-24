@@ -55,9 +55,11 @@ public class SettingsTests
             DisplayName = "d",
         };
         Assert.Equal(UserQuota.Default, user.Quota);
-        user.Quota = UserQuota.Unlimited;
+        Assert.True(user.SetQuota(UserQuota.Unlimited, QuotaSource.Admin));
         Assert.Equal(UserQuota.Unlimited, user.Quota);
-        user.Quota = UserQuota.Limit(7);
+        Assert.True(user.SetQuota(UserQuota.Limit(7), QuotaSource.Admin));
+        Assert.False(user.SetQuota(UserQuota.Limit(7), QuotaSource.Admin));
+        Assert.True(user.SetQuota(UserQuota.Limit(7), QuotaSource.Claim));
         Assert.Equal(UserQuota.Limit(7), user.Quota);
         Assert.False(user.QuotaUnlimited);
     }
