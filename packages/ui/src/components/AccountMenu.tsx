@@ -14,9 +14,8 @@ export type AccountMenuProps = {
   /** The language the UI is in now, shown next to "Same as browser". */
   currentLanguage: "sv" | "en";
   onLanguageChange: (language: LanguageChoice) => void;
-  /** Times to the second ("09:14:07"); saved per person so it follows them to every device. */
-  showSeconds: boolean;
-  onShowSecondsChange: (showSeconds: boolean) => void;
+  /** The person's settings page. */
+  onSettings: () => void;
   /**
    * Trash, for narrow screens: the bottom nav has no room for it (§16.3). Hidden where the nav rail shows it.
    */
@@ -32,10 +31,7 @@ const item =
   "flex h-control cursor-pointer items-center gap-3 px-4 text-body-md outline-none select-none data-highlighted:bg-on-surface/8 data-[state=open]:bg-on-surface/8 pointer-coarse:h-touch pointer-coarse:text-body-lg";
 const separator = "my-2 h-px bg-outline-variant";
 
-/**
- * The menu behind the avatar: who is signed in, their language and display settings, Trash on phones, admin
- * settings and sign-out.
- */
+/** The menu behind the avatar: who is signed in, their language, settings, Trash on phones, admin settings and sign-out. */
 export function AccountMenu({
   trigger,
   name,
@@ -43,8 +39,7 @@ export function AccountMenu({
   language,
   currentLanguage,
   onLanguageChange,
-  showSeconds,
-  onShowSecondsChange,
+  onSettings,
   onTrash,
   onAdmin,
   onSignOut,
@@ -109,22 +104,10 @@ export function AccountMenu({
               </DropdownMenu.SubContent>
             </DropdownMenu.Portal>
           </DropdownMenu.Sub>
-          <DropdownMenu.CheckboxItem
-            checked={showSeconds}
-            onCheckedChange={onShowSecondsChange}
-            onSelect={(event) => event.preventDefault()}
-            className={`group ${item}`}
-          >
-            <Icon name="schedule" className="text-on-surface-variant" />
-            <span className="flex-1">{t("account.showSeconds")}</span>
-            {/* Drawn like Switch; the menu item itself is the checkbox screen readers hear. */}
-            <span
-              aria-hidden
-              className="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border-2 border-outline bg-surface-container-highest transition-colors duration-(--duration-medium) group-data-[state=checked]:border-primary group-data-[state=checked]:bg-primary"
-            >
-              <span className="block size-3 translate-x-1 rounded-full bg-outline transition-all duration-(--duration-medium) ease-emphasized group-data-[state=checked]:size-4 group-data-[state=checked]:translate-x-4.5 group-data-[state=checked]:bg-on-primary" />
-            </span>
-          </DropdownMenu.CheckboxItem>
+          <DropdownMenu.Item onSelect={onSettings} className={item}>
+            <Icon name="settings" className="text-on-surface-variant" />
+            {t("account.settings")}
+          </DropdownMenu.Item>
           {onTrash && (
             <DropdownMenu.Item onSelect={onTrash} className={`${item} md:hidden`}>
               <Icon name="delete" className="text-on-surface-variant" />

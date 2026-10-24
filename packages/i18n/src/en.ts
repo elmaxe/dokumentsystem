@@ -369,8 +369,16 @@ export const en = {
     languageBrowserShort: "Browser",
     languageNow: "Now {{language}}",
     languageFailed: "The language couldn't be saved. Try again.",
-    showSeconds: "Show seconds in times",
+    settings: "Settings",
     settingFailed: "The setting couldn't be saved. Try again.",
+  },
+  settings: {
+    title: "Settings",
+    time: {
+      title: "Date and time",
+      seconds: "Show seconds in times",
+      example: "Times look like {{example}}",
+    },
   },
   admin: {
     title: "Admin settings",

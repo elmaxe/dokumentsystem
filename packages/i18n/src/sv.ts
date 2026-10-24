@@ -374,8 +374,16 @@ export const sv: Strings = {
     languageBrowserShort: "Webbläsaren",
     languageNow: "Nu {{language}}",
     languageFailed: "Språket kunde inte sparas. Försök igen.",
-    showSeconds: "Visa sekunder i tider",
+    settings: "Inställningar",
     settingFailed: "Inställningen kunde inte sparas. Försök igen.",
+  },
+  settings: {
+    title: "Inställningar",
+    time: {
+      title: "Datum och tid",
+      seconds: "Visa sekunder i tider",
+      example: "Tider ser ut så här: {{example}}",
+    },
   },
   admin: {
     title: "Administratörsinställningar",
