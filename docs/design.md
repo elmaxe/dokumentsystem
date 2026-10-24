@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.11** · Last updated: 2026-10-24
+> Status: **Draft v0.12** · Last updated: 2026-10-24
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -159,6 +159,7 @@ services:
       - ${ORIGINALS_LOCATION}:/data/originals:ro
       - ${DERIVED_LOCATION}:/data/derived
       - ${BACKUP_LOCATION}:/data/backups
+      - ${EXPORT_LOCATION}:/data/exports   # optional: where export jobs write (§7.1)
   postgres:
     image: ghcr.io/elmaxe/dokumentsystem-postgres:${DOKUMENT_VERSION}
     volumes: [ "${DB_DATA_LOCATION}:/var/lib/postgresql/data" ]
@@ -315,7 +316,8 @@ Notes:
 /data/derived/              # REGENERABLE — backup optional
   thumbs/ab/{sha256}/{kind}.webp   # thumb_s, thumb_m, preview; keyed by blob like the originals
   previews/ab/{sha256}/…           # later: PDF renditions of Office files, web-playable video, posters
-/data/backups/              # DB dumps (see §13)
+/data/backups/              # DB dumps and name manifests (§7.1, §19)
+/data/exports/              # optional: readable copies written by export jobs (§7.1)
 ```
 
 - **Write path:**
@@ -325,7 +327,22 @@ Notes:
   4. Commit the DB transaction: the blob row (`ON CONFLICT DO NOTHING`), the node or version, `ref_count + 1`, the quota and the audit event.
 - **Blob deletion** happens only in the purge job (§12): when `ref_count` drops to 0, the blob is deleted **after** the DB commit (outbox pattern).
 - **Integrity job:** a scheduled sweep finds orphaned blobs, missing blobs and checksum mismatches (bit rot), and reports to admins.
-- **Export:** `dokument export --user X --to /path` writes the real folder tree with original names and mtimes. This is the "if the app dies, my files are still mine" guarantee.
+- **People are kept apart in the database only.** All blobs share one pool, and the same bytes from two people are stored once. Every node has an `owner_id`, every request goes through `NodeAccess`, and downloads go by node id, never by hash. Quota counts each blob once per owner (§17).
+- **The pool stays unreadable on purpose.** Blobs have no names or extensions; names, types and the tree are in the DB. That is what makes renames and moves a single DB update, keeps writes atomic, and makes versions, trash and dedup plain rows. Readable files come from exports instead (§7.1).
+
+### 7.1 Export and manifests
+
+Decided 2026-10-24 (decision 19) over a live mirror of hardlinks, real paths on disk (as in Nextcloud) and sidecar files next to each blob. This is the "if the app dies, my files are still mine" guarantee.
+
+- **Name manifest:** right after each scheduled DB dump (§19), the worker writes `manifest-{timestamp}.jsonl.gz` beside it in `/data/backups`, with the same retention as the dumps. It has one line per version that isn't purged: owner (id, email, display name), path of folder names from the top of My files, name, version number, whether it's current, trashed or kept forever, blob hash, size, MIME type and modified time. Written to a temp file, then renamed, so a half-written manifest never replaces a good one.
+  - With the blobs and a manifest, the tree can be rebuilt with no Postgres at all. `dokument export --manifest <file>` does that, and the format is documented so a short script can too.
+- **Export job:** writes a person's files (or everyone's, one folder per person) as an ordinary folder tree with original names and modified times.
+  - Runs on the job queue in the worker, which only reads originals, into the optional `/data/exports` volume. Admins start it from the admin Storage page, and the CLI `dokument export --user X --to /path` runs the same code.
+  - Writes current versions by default; "include old versions" adds them as `name (v3).ext` in a `.versions/` folder beside each file. Trash is left out.
+  - Exports are **real copies** and take real space. Running one again into the same folder is incremental: files whose size and modified time match are skipped, and files gone from the app are removed from the export.
+  - Names that Windows or SMB can't hold (`: ? * " < > |`, trailing dots and spaces) are escaped, and names that clash only in case get " (2)" in the export. The app's names are never changed.
+  - Progress is on the job; an export that fails says which file and why. Each run writes an `export.start` and `export.finish` audit event, but not one per file.
+  - Can be put on a schedule like the DB dump, **off by default**.
 
 ---
 
@@ -758,6 +775,7 @@ Households that manage people in their IdP can set each person's storage there i
   - `/data/derived` can be skipped.
   - Order: dump the DB first, then snapshot the files. Orphan blobs after a restore are harmless (the integrity job cleans them up); missing blobs are not.
 - **Restore procedure** documented and tested in CI: restore the dump, start, run an integrity check.
+- **If the DB is lost with no usable dump,** the newest name manifest plus `/data/originals/blobs` still give back every file with its name and folder (§7.1).
 
 ---
 
@@ -862,7 +880,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
-| **M6: Ops** | DB dump schedule, integrity job, admin system page, export CLI, docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
+| **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search), remote ML URLs with fallback, transcription |
 | **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders) |
 
@@ -877,7 +895,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 3 | Audit preview opens? | **No.** Downloads are audited, previews are not (§18). |
 | 4 | Duplicate uploads | **Tell the user**: a pre-upload check with Skip / Upload anyway / Open existing, limited to files the user can access (§8.3) |
 | 5 | Public links with upload ("file requests") | **Later** (roadmap) |
-| 6 | Storage layout | App-owned, content-addressed (§7) |
+| 6 | Storage layout | App-owned, content-addressed (§7); readable copies come from exports (decision 19) |
 | 7 | Sharing model | Personal folders shared to users; no team drives (§9) |
 | 8 | Virus scanning | Not in v1; hook for optional ClamAV (§21) |
 | 9 | WebDAV | Later |
@@ -890,6 +908,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 16 | Observability | 2026-10-23: OpenTelemetry for traces, metrics and logs, off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set; standard `OTEL_*` variables only; trace context stored on jobs; strict no-PII attribute rules; optional Prometheus endpoint on a separate port. On by default under the Aspire AppHost in development. Prometheus on `METRICS_PORT` uses the beta OpenTelemetry exporter (§22.1) |
 | 17 | Admin settings page | 2026-10-23: admin pages with sections that save separately (2026-10-24: split into People, Storage and Settings, with an admin rail that replaces the normal nav on those pages, as in Immich, §15.2); default quota off until set, per-person default / own limit / no limit; ML URLs in priority order with encrypted API keys and live health checks; ClamAV address stored and tested but not yet used; sign-in shown read-only; language is a per-person choice in the account menu (§4.3, §11, §17, §21, §23) |
 | 18 | Trash and retention | 2026-10-24: trash groups by `trashed_root_id`, listed by root on the Trash page; restore to My files when the folder is gone or trashed, numbering on name clashes; Undo after trashing; no browsing inside trashed folders yet; trash retention is an admin setting (default 30 days); the purge runs hourly in the server role and also enforces version retention; per-blob advisory lock shared with uploads; no manual per-version delete and no warning email yet (§12) |
+| 19 | Readable files on disk | 2026-10-24: keep the hash-named pool as the only store; no real paths on disk, sidecars or live mirror. A name manifest is written beside each DB dump, so the tree can be rebuilt without Postgres, and an export job (worker, into `/data/exports`, also the `export` CLI) writes readable copies, incrementally, optionally with old versions, on a schedule that starts off. Lands in M6 (§7.1, §19) |
 
 ## 26. Open questions
 
