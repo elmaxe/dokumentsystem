@@ -25,31 +25,50 @@ export function BottomNav({ active, onNavigate, className }: BottomNavProps) {
       aria-label={t("nav.label")}
       className={cn("flex h-20 w-full bg-surface-container pt-3 pb-4", className)}
     >
-      {items.map((item) => {
-        const on = item.id === active;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onNavigate(item.id)}
-            aria-current={on ? "page" : undefined}
-            className={cn(
-              "flex min-w-0 flex-1 cursor-pointer flex-col items-center gap-1 px-1 text-label-md",
-              on ? "text-on-surface" : "text-on-surface-variant",
-            )}
-          >
-            <span
-              className={cn(
-                "flex h-8 w-16 items-center justify-center rounded-full",
-                on && "bg-secondary-container text-on-secondary-container",
-              )}
-            >
-              <Icon name={item.icon} filled={on} />
-            </span>
-            <span className="max-w-full truncate">{t(item.key)}</span>
-          </button>
-        );
-      })}
+      {items.map((item) => (
+        <BottomNavItem
+          key={item.id}
+          icon={item.icon}
+          label={t(item.key)}
+          active={item.id === active}
+          onClick={() => onNavigate(item.id)}
+        />
+      ))}
     </nav>
+  );
+}
+
+/** One destination in a bottom bar. */
+export function BottomNavItem({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex min-w-0 flex-1 cursor-pointer flex-col items-center gap-1 px-1 text-label-md",
+        active ? "text-on-surface" : "text-on-surface-variant",
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-8 w-16 items-center justify-center rounded-full",
+          active && "bg-secondary-container text-on-secondary-container",
+        )}
+      >
+        <Icon name={icon} filled={active} />
+      </span>
+      <span className="max-w-full truncate">{label}</span>
+    </button>
   );
 }

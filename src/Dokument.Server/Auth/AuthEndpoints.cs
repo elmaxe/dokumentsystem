@@ -27,6 +27,12 @@ public static class AuthEndpoints
         auth.MapGet("/session", GetSession).WithName("GetSession").RequireAuthorization();
         auth.MapPost("/logout", Logout).WithName("Logout").RequireAuthorization();
 
+        api.MapPut("/me/language", SetLanguage)
+            .WithName("SetMyLanguage")
+            .WithTags("Auth")
+            .RequireAuthorization()
+            .WithDescription("Null follows the browser's language.");
+
         var sessions = api.MapGroup("/sessions").WithTags("Sessions").RequireAuthorization();
         sessions.MapGet("", ListMySessions).WithName("ListSessions");
         sessions.MapDelete("/{id:guid}", RevokeMySession).WithName("RevokeSession");
@@ -79,6 +85,37 @@ public static class AuthEndpoints
         return TypedResults.Ok(
             new CurrentSession(UserProfile.From(user), principal.SessionId(), csrfToken)
         );
+    }
+
+    private static async Task<Results<Ok<UserProfile>, ValidationProblem>> SetLanguage(
+        SetLanguageRequest request,
+        ClaimsPrincipal principal,
+        DokumentDbContext db,
+        CancellationToken ct
+    )
+    {
+        UiLanguage? language = null;
+        if (request.Language is not null)
+        {
+            language = UiLanguage.TryParse(request.Language);
+            if (language is null)
+            {
+                return TypedResults.ValidationProblem(
+                    new Dictionary<string, string[]>
+                    {
+                        ["language"] =
+                        [
+                            $"Pick one of {string.Join(", ", UiLanguage.All.Select(l => l.Code))}.",
+                        ],
+                    }
+                );
+            }
+        }
+
+        var user = await db.Users.SingleAsync(u => u.Id == principal.UserId(), ct);
+        user.Locale = language;
+        await db.SaveChangesAsync(ct);
+        return TypedResults.Ok(UserProfile.From(user));
     }
 
     private static async Task<NoContent> Logout(
@@ -142,11 +179,21 @@ public sealed record AuthConfig(bool Enabled, string? ProviderName);
 /// <param name="CsrfToken">Send this in <c>X-CSRF-Token</c> on mutations. Null for bearer sessions, which don't need it.</param>
 public sealed record CurrentSession(UserProfile User, Guid SessionId, string? CsrfToken);
 
-public sealed record UserProfile(Guid Id, string DisplayName, string? Email, UserRole Role)
+/// <param name="Language">The UI language the user picked; null follows the browser.</param>
+public sealed record UserProfile(
+    Guid Id,
+    string DisplayName,
+    string? Email,
+    UserRole Role,
+    string? Language
+)
 {
     public static UserProfile From(User user) =>
-        new(user.Id, user.DisplayName, user.Email, user.Role);
+        new(user.Id, user.DisplayName, user.Email, user.Role, user.Locale?.Code);
 }
+
+/// <param name="Language"><c>sv</c>, <c>en</c>, or null to follow the browser.</param>
+public sealed record SetLanguageRequest(string? Language);
 
 public sealed record SessionInfo(
     Guid Id,

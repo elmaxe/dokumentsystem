@@ -1,0 +1,355 @@
+using System.Text.Json.Nodes;
+using Dokument.Domain.Audit;
+using Dokument.Domain.Identity;
+using Dokument.Domain.Settings;
+using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Persistence;
+using Dokument.Infrastructure.Settings;
+using Dokument.Infrastructure.Storage;
+using Dokument.Server.Auth;
+using Dokument.Server.Files;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+
+namespace Dokument.Server.Admin;
+
+/// <summary>The admin settings page (docs/design.md §4.3, §11, §17, §21). Admins only.</summary>
+public static class AdminEndpoints
+{
+    public static RouteGroupBuilder MapAdminEndpoints(this RouteGroupBuilder api)
+    {
+        var admin = api.MapGroup("/admin")
+            .WithTags("Admin")
+            .RequireAuthorization(SessionAuthentication.AdminPolicy);
+        admin.MapGet("/settings", GetSettings).WithName("AdminGetSettings");
+        admin.MapPut("/settings/storage", PutStorage).WithName("AdminPutStorageSettings");
+        admin.MapPut("/settings/versions", PutVersions).WithName("AdminPutVersionSettings");
+        admin.MapPut("/settings/ml", PutMl).WithName("AdminPutMlSettings");
+        admin.MapPut("/settings/scanner", PutScanner).WithName("AdminPutScannerSettings");
+        admin
+            .MapGet("/ml/status", GetMlStatus)
+            .WithName("AdminGetMlStatus")
+            .WithDescription("Checks every saved ML service now.");
+        admin.MapPost("/ml/test", TestMl).WithName("AdminTestMl");
+        admin.MapPost("/scanner/test", TestScanner).WithName("AdminTestScanner");
+        admin.MapGet("/storage", GetStorageReport).WithName("AdminGetStorage");
+        admin.MapGet("/users", ListUsers).WithName("AdminListUsers");
+        admin.MapPut("/users/{id:guid}/quota", PutUserQuota).WithName("AdminPutUserQuota");
+        return api;
+    }
+
+    private static async Task<Ok<AdminSettingsDto>> GetSettings(
+        SettingsStore settings,
+        OidcSettings oidc,
+        CancellationToken ct
+    )
+    {
+        var storage = await settings.GetAsync(SettingKeys.Storage, ct);
+        var versions = await settings.GetAsync(SettingKeys.Versions, ct);
+        var ml = await settings.GetAsync(SettingKeys.Ml, ct);
+        var scanner = await settings.GetAsync(SettingKeys.Scanner, ct);
+        return TypedResults.Ok(
+            new AdminSettingsDto(
+                new StorageSettingsDto(storage.DefaultQuota.Bytes),
+                new VersionSettingsDto(versions.KeepDays, versions.MaxVersions),
+                MlDto(ml),
+                new ScannerSettingsDto(scanner.Address?.ToString()),
+                new SignInInfo(
+                    oidc.Enabled,
+                    oidc.ProviderName,
+                    oidc.Issuer,
+                    oidc.Policy.UserGroup,
+                    oidc.Policy.AdminGroup
+                )
+            )
+        );
+    }
+
+    private static async Task<Results<Ok<StorageSettingsDto>, ValidationProblem>> PutStorage(
+        StorageSettingsDto request,
+        HttpContext context,
+        SettingsStore settings,
+        CancellationToken ct
+    )
+    {
+        if (request.DefaultQuotaBytes is <= 0)
+        {
+            return Invalid("defaultQuotaBytes", "A limit must be more than 0 bytes.");
+        }
+
+        var value = new StorageSettings(StorageLimit.From(request.DefaultQuotaBytes));
+        await settings.SetAsync(SettingKeys.Storage, value, context.Actor(), ct);
+        return TypedResults.Ok(request);
+    }
+
+    private static async Task<Results<Ok<VersionSettingsDto>, ValidationProblem>> PutVersions(
+        VersionSettingsDto request,
+        HttpContext context,
+        SettingsStore settings,
+        CancellationToken ct
+    )
+    {
+        var value = new VersionSettings(request.KeepDays, request.MaxVersions);
+        if (!value.IsValid)
+        {
+            return Invalid(
+                "versions",
+                $"Keep versions for 1 to {VersionSettings.MaxKeepDays} days, and 1 to {VersionSettings.MaxMaxVersions} per file."
+            );
+        }
+
+        await settings.SetAsync(SettingKeys.Versions, value, context.Actor(), ct);
+        return TypedResults.Ok(request);
+    }
+
+    private static async Task<Results<Ok<MlSettingsDto>, ValidationProblem>> PutMl(
+        UpdateMlSettingsRequest request,
+        HttpContext context,
+        SettingsStore settings,
+        SecretProtector secrets,
+        CancellationToken ct
+    )
+    {
+        if (request.Endpoints.Count > MlSettings.MaxEndpoints)
+        {
+            return Invalid("endpoints", $"Add at most {MlSettings.MaxEndpoints} ML services.");
+        }
+
+        var saved = (await settings.GetAsync(SettingKeys.Ml, ct)).Endpoints;
+        var endpoints = new List<MlEndpoint>();
+        for (var i = 0; i < request.Endpoints.Count; i++)
+        {
+            var update = request.Endpoints[i];
+            if (ServiceUrl.TryParse(update.Url, out var error) is not { } url)
+            {
+                return Invalid($"endpoints[{i}].url", error!);
+            }
+
+            if (endpoints.Any(e => e.Url == url))
+            {
+                return Invalid($"endpoints[{i}].url", "This ML service is already in the list.");
+            }
+
+            var key =
+                update.KeepApiKey ? saved.FirstOrDefault(e => e.Url == url)?.ProtectedApiKey
+                : string.IsNullOrWhiteSpace(update.ApiKey) ? null
+                : secrets.Protect(update.ApiKey.Trim());
+            endpoints.Add(new MlEndpoint(url, key));
+        }
+
+        var value = new MlSettings(endpoints);
+        await settings.SetAsync(SettingKeys.Ml, value, context.Actor(), ct);
+        return TypedResults.Ok(MlDto(value));
+    }
+
+    private static async Task<Results<Ok<ScannerSettingsDto>, ValidationProblem>> PutScanner(
+        ScannerSettingsDto request,
+        HttpContext context,
+        SettingsStore settings,
+        CancellationToken ct
+    )
+    {
+        ClamdAddress? address = null;
+        if (!string.IsNullOrWhiteSpace(request.Address))
+        {
+            address = ClamdAddress.TryParse(request.Address, out var error);
+            if (address is null)
+            {
+                return Invalid("address", error!);
+            }
+        }
+
+        await settings.SetAsync(
+            SettingKeys.Scanner,
+            new ScannerSettings(address),
+            context.Actor(),
+            ct
+        );
+        return TypedResults.Ok(new ScannerSettingsDto(address?.ToString()));
+    }
+
+    private static async Task<Ok<List<MlEndpointStatus>>> GetMlStatus(
+        SettingsStore settings,
+        SecretProtector secrets,
+        ServiceProbe probe,
+        CancellationToken ct
+    )
+    {
+        var endpoints = (await settings.GetAsync(SettingKeys.Ml, ct)).Endpoints;
+        var results = await Task.WhenAll(
+            endpoints.Select(async e => new MlEndpointStatus(
+                e.Url.Value,
+                await probe.CheckMlAsync(e.Url, ApiKeyOf(e, secrets), ct)
+            ))
+        );
+        return TypedResults.Ok(results.ToList());
+    }
+
+    private static async Task<Results<Ok<ProbeResult>, ValidationProblem>> TestMl(
+        TestMlRequest request,
+        SettingsStore settings,
+        SecretProtector secrets,
+        ServiceProbe probe,
+        CancellationToken ct
+    )
+    {
+        if (ServiceUrl.TryParse(request.Url, out var error) is not { } url)
+        {
+            return Invalid("url", error!);
+        }
+
+        var apiKey = request.ApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            var saved = (await settings.GetAsync(SettingKeys.Ml, ct)).Endpoints.FirstOrDefault(e =>
+                e.Url == url
+            );
+            apiKey = saved is null ? null : ApiKeyOf(saved, secrets);
+        }
+
+        return TypedResults.Ok(await probe.CheckMlAsync(url, apiKey?.Trim(), ct));
+    }
+
+    private static async Task<Results<Ok<ProbeResult>, ValidationProblem>> TestScanner(
+        TestScannerRequest request,
+        ServiceProbe probe,
+        CancellationToken ct
+    ) =>
+        ClamdAddress.TryParse(request.Address, out var error) is { } address
+            ? TypedResults.Ok(await probe.CheckClamdAsync(address, ct))
+            : Invalid("address", error!);
+
+    private static async Task<Ok<StorageReport>> GetStorageReport(
+        DokumentDbContext db,
+        IOptions<StorageOptions> storage,
+        CancellationToken ct
+    )
+    {
+        var filesBytes = await db.Blobs.SumAsync(b => (long?)b.Size, ct) ?? 0;
+        var paths = new[]
+        {
+            ("originals", storage.Value.OriginalsPath),
+            ("derived", storage.Value.DerivedPath),
+        };
+        var drives = DriveInfo.GetDrives().Where(d => d.IsReady).ToList();
+        var volumes = paths
+            .Select(p => (Holds: p.Item1, Drive: DriveOf(drives, p.Item2)))
+            .Where(p => p.Drive is not null)
+            .GroupBy(p => p.Drive!.RootDirectory.FullName)
+            .Select(g => new VolumeUsage(
+                g.Select(p => p.Holds).ToList(),
+                g.First().Drive!.TotalSize,
+                g.First().Drive!.AvailableFreeSpace
+            ))
+            .ToList();
+        return TypedResults.Ok(new StorageReport(filesBytes, volumes));
+    }
+
+    private static async Task<Ok<List<AdminUser>>> ListUsers(
+        DokumentDbContext db,
+        SettingsStore settings,
+        CancellationToken ct
+    )
+    {
+        var defaultQuota = (await settings.GetAsync(SettingKeys.Storage, ct)).DefaultQuota;
+        var users = await db.Users.AsNoTracking().OrderBy(u => u.DisplayName).ToListAsync(ct);
+        return TypedResults.Ok(users.Select(u => AdminUserOf(u, defaultQuota)).ToList());
+    }
+
+    private static async Task<Results<Ok<AdminUser>, NotFound, ValidationProblem>> PutUserQuota(
+        Guid id,
+        QuotaDto request,
+        HttpContext context,
+        DokumentDbContext db,
+        SettingsStore settings,
+        AuditLog audit,
+        CancellationToken ct
+    )
+    {
+        UserQuota quota;
+        switch (request.Kind)
+        {
+            case UserQuotaKind.Limit when request.Bytes is > 0:
+                quota = UserQuota.Limit(request.Bytes.Value);
+                break;
+            case UserQuotaKind.Limit:
+                return Invalid("bytes", "A limit must be more than 0 bytes.");
+            case UserQuotaKind.Unlimited:
+                quota = UserQuota.Unlimited;
+                break;
+            default:
+                quota = UserQuota.Default;
+                break;
+        }
+
+        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        var before = user.Quota;
+        user.Quota = quota;
+        audit.Add(
+            context.Actor(),
+            AuditActions.QuotaChange,
+            details: new JsonObject
+            {
+                ["userId"] = id,
+                ["from"] = QuotaJson(before),
+                ["to"] = QuotaJson(quota),
+            }
+        );
+        await db.SaveChangesAsync(ct);
+        var defaultQuota = (await settings.GetAsync(SettingKeys.Storage, ct)).DefaultQuota;
+        return TypedResults.Ok(AdminUserOf(user, defaultQuota));
+    }
+
+    private static AdminUser AdminUserOf(User user, StorageLimit defaultQuota) =>
+        new(
+            user.Id,
+            user.DisplayName,
+            user.Email,
+            user.Role,
+            user.UsedBytes,
+            QuotaDto.From(user.Quota),
+            user.Quota.Resolve(defaultQuota),
+            user.LastLoginAt,
+            user.IsDisabled
+        );
+
+    private static JsonObject QuotaJson(UserQuota quota) =>
+        new() { ["kind"] = quota.Kind.ToString().ToLowerInvariant(), ["bytes"] = quota.Bytes };
+
+    private static MlSettingsDto MlDto(MlSettings ml) =>
+        new(
+            ml.Endpoints.Select(e => new MlEndpointDto(e.Url.Value, e.ProtectedApiKey is not null))
+                .ToList()
+        );
+
+    private static string? ApiKeyOf(MlEndpoint endpoint, SecretProtector secrets) =>
+        endpoint.ProtectedApiKey is { } key ? secrets.Unprotect(key) : null;
+
+    /// <summary>The mounted volume a path lives on: the drive with the longest root that contains it.</summary>
+    private static DriveInfo? DriveOf(List<DriveInfo> drives, string path)
+    {
+        var full = Path.GetFullPath(path);
+        return drives
+            .Where(d =>
+                full.StartsWith(d.RootDirectory.FullName, StringComparison.Ordinal)
+                && (
+                    full.Length == d.RootDirectory.FullName.Length
+                    || d.RootDirectory.FullName.EndsWith('/')
+                    || full[d.RootDirectory.FullName.Length] == '/'
+                )
+            )
+            .MaxBy(d => d.RootDirectory.FullName.Length);
+    }
+
+    private static ValidationProblem Invalid(string field, string message) =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]> { [field] = [message] });
+}

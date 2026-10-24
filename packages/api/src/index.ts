@@ -18,6 +18,13 @@ export type DuplicateCheckResult = components["schemas"]["DuplicateCheckResult"]
 export type NameConflictPolicy = components["schemas"]["NameConflictPolicy"];
 export type StorageUsage = components["schemas"]["StorageUsage"];
 export type ThumbnailState = components["schemas"]["ThumbnailState"];
+export type AdminSettings = components["schemas"]["AdminSettingsDto"];
+export type AdminUser = components["schemas"]["AdminUser"];
+export type StorageReport = components["schemas"]["StorageReport"];
+export type MlEndpointStatus = components["schemas"]["MlEndpointStatus"];
+export type MlEndpointUpdate = components["schemas"]["MlEndpointUpdate"];
+export type ProbeResult = components["schemas"]["ProbeResult"];
+export type Quota = components["schemas"]["QuotaDto"];
 
 /** The tus endpoint for resumable uploads (docs/design.md §8.1). */
 export const uploadsPath = "/api/v1/uploads";

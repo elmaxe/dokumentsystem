@@ -1,19 +1,26 @@
+import { pickLanguage, type Language } from "@dokument/i18n";
 import {
+  AccountMenu,
   ActionMenu,
+  AdminBottomNav,
+  AdminRail,
+  adminPlaces,
   Avatar,
   BottomNav,
   Icon,
+  IconButton,
   NavRail,
   UploadTray,
   useSnackbar,
+  type AdminPlace,
   type MenuAction,
   type Place,
 } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
-import { useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { logout, sessionQuery } from "./api";
+import { api, logout, sessionQuery } from "./api";
 import { NameDialog } from "./files/dialogs";
 import { drive, errorMessage, folderQuery, invalidateFolders, nameKey, storageQuery } from "./files/drive";
 import { UploadProvider } from "./files/uploads";
@@ -37,7 +44,7 @@ export function AppShell() {
 }
 
 function Shell() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const toast = useSnackbar();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -48,7 +55,11 @@ function Shell() {
   const { folderId = null } = useParams({ strict: false }) as { folderId?: string };
   const place = (Object.entries(placePaths).find(([, path]) => path !== "/" && pathname.startsWith(path))?.[0] ??
     "files") as Place;
-  const inFiles = place === "files";
+  const inAdmin = pathname.startsWith("/admin");
+  const adminPlace = adminPlaces.find((item) => pathname.startsWith(`/admin/${item.id}`))?.id;
+  const toAdmin = (id: AdminPlace) => void navigate({ to: `/admin/${id}` });
+  const exitAdmin = () => void navigate({ to: "/" });
+  const inFiles = place === "files" && !inAdmin;
   const listing = useQuery({ ...folderQuery(inFiles ? folderId : null) });
   const folderName = listing.data?.folder?.name ?? t("nav.myFiles");
   const [trayCollapsed, setTrayCollapsed] = useState(false);
@@ -98,23 +109,53 @@ function Shell() {
   }
 
   const name = session.data?.user.displayName ?? "";
+  const picked = (session.data?.user.language ?? null) as Language | null;
+
+  // The saved language wins over the browser's (§23); "Same as browser" clears it.
+  useEffect(() => {
+    if (session.data === undefined) return;
+    const language = picked ?? pickLanguage(navigator.languages);
+    document.documentElement.lang = language;
+    if (i18n.language !== language) void i18n.changeLanguage(language);
+  }, [session.data, picked, i18n]);
+
+  async function setLanguage(choice: "browser" | Language) {
+    const { data } = await api.PUT("/api/v1/me/language", { body: { language: choice === "browser" ? null : choice } });
+    if (!data) {
+      toast(t("account.languageFailed"));
+      return;
+    }
+    queryClient.setQueryData(sessionQuery.queryKey, (current) => (current ? { ...current, user: data } : current));
+  }
 
   return (
     <div className="flex h-dvh min-h-0 bg-surface text-on-surface">
-      <NavRail
-        active={place}
-        onNavigate={(id) => void navigate({ to: placePaths[id] })}
-        newActions={newActions}
-        onNewAction={onNew}
-        used={storage.data?.usedBytes ?? 0}
-        quota={storage.data ? (storage.data.quotaBytes ?? null) : null}
-        className="max-md:hidden"
-      />
+      {inAdmin ? (
+        <AdminRail active={adminPlace} onNavigate={toAdmin} onExit={exitAdmin} className="max-md:hidden" />
+      ) : (
+        <NavRail
+          active={place}
+          onNavigate={(id) => void navigate({ to: placePaths[id] })}
+          newActions={newActions}
+          onNewAction={onNew}
+          used={storage.data?.usedBytes ?? 0}
+          quota={storage.data ? (storage.data.quotaBytes ?? null) : null}
+          className="max-md:hidden"
+        />
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-topbar shrink-0 items-center gap-2 px-4 sm:px-6">
-          <ActionMenu
-            actions={[{ id: "signout", icon: "logout", label: t("auth.signOut") }]}
-            onAction={() => void signOut()}
+          {inAdmin && (
+            <IconButton icon="arrow_back" label={t("admin.nav.exit")} onClick={exitAdmin} className="-ml-2 md:hidden" />
+          )}
+          <AccountMenu
+            name={name}
+            email={session.data?.user.email}
+            language={picked ?? "browser"}
+            currentLanguage={i18n.language === "sv" ? "sv" : "en"}
+            onLanguageChange={(choice) => void setLanguage(choice)}
+            onAdmin={session.data?.user.role === "admin" ? () => void navigate({ to: "/admin/people" }) : undefined}
+            onSignOut={() => void signOut()}
             trigger={
               <button
                 type="button"
@@ -137,11 +178,15 @@ function Shell() {
             </div>
           )}
         </div>
-        <BottomNav
-          active={place === "files" || place === "shared" || place === "recent" ? place : undefined}
-          onNavigate={(id) => (id === "search" ? toast(t("common.notYet")) : void navigate({ to: placePaths[id] }))}
-          className="shrink-0 md:hidden"
-        />
+        {inAdmin ? (
+          <AdminBottomNav active={adminPlace} onNavigate={toAdmin} className="shrink-0 md:hidden" />
+        ) : (
+          <BottomNav
+            active={place === "files" || place === "shared" || place === "recent" ? place : undefined}
+            onNavigate={(id) => (id === "search" ? toast(t("common.notYet")) : void navigate({ to: placePaths[id] }))}
+            className="shrink-0 md:hidden"
+          />
+        )}
       </div>
 
       {inFiles && uploads.items.length === 0 && (
