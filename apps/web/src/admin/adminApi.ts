@@ -30,6 +30,7 @@ export const admin = {
     unwrap(api.PUT("/api/v1/admin/settings/storage", { body: { defaultQuotaBytes } })),
   putVersions: (keepDays: number, maxVersions: number) =>
     unwrap(api.PUT("/api/v1/admin/settings/versions", { body: { keepDays, maxVersions } })),
+  putTrash: (keepDays: number) => unwrap(api.PUT("/api/v1/admin/settings/trash", { body: { keepDays } })),
   putMl: (endpoints: { url: string; apiKey: string | null; keepApiKey: boolean }[]) =>
     unwrap(api.PUT("/api/v1/admin/settings/ml", { body: { endpoints } })),
   putScanner: (address: string | null) => unwrap(api.PUT("/api/v1/admin/settings/scanner", { body: { address } })),

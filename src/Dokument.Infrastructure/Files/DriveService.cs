@@ -228,6 +228,13 @@ public sealed class DriveService(
         }
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await PurgeService.LockBlobAsync(db, old.BlobHash, ct);
+        if (!await db.Blobs.AnyAsync(b => b.Hash == old.BlobHash && b.RefCount > 0, ct))
+        {
+            // The purge job removed this version a moment ago.
+            throw DriveException.NotFound("version");
+        }
+
         var version = await AddVersionAsync(
             node,
             old.BlobHash,
@@ -371,6 +378,7 @@ public sealed class DriveService(
             ),
             reservedBytes: 0,
             AuditActions.FileCopy,
+            storeBytes: null,
             ct
         );
     }
@@ -378,17 +386,29 @@ public sealed class DriveService(
     /// <summary>
     /// Records bytes that are already in the blob store as a new file, or a new version of an existing one, and settles
     /// the quota: the reservation is released and the size counts once per blob per owner (§17).
+    /// <paramref name="storeBytes"/> moves the bytes into the blob store; it runs under the blob's lock, so the purge job
+    /// can't delete a blob file that is being reused (§12). Without it, the blob must already be stored.
     /// </summary>
     internal async Task<AddedFile> AddFileAsync(
         Actor actor,
         NewFile file,
         long reservedBytes,
         string auditAction,
+        Action? storeBytes,
         CancellationToken ct
     )
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var now = time.GetUtcNow();
+        await PurgeService.LockBlobAsync(db, file.Hash, ct);
+        if (storeBytes is not null)
+        {
+            storeBytes();
+        }
+        else if (!File.Exists(blobs.PathOf(StorageKey.For(file.Hash))))
+        {
+            throw DriveException.NotFound("file with that content");
+        }
 
         Node? existing;
         Guid ownerId;
@@ -616,7 +636,7 @@ public sealed class DriveService(
             ? parsed
             : throw new DriveException(DriveError.InvalidRequest, error);
 
-    private async Task<NodeName> FreeNameAsync(
+    internal async Task<NodeName> FreeNameAsync(
         Guid ownerId,
         Guid? folderId,
         NodeName name,

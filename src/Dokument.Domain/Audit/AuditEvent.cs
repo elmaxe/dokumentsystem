@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 
 namespace Dokument.Domain.Audit;
 
-/// <summary>An append-only record of something a user did (docs/design.md §18), written in the same transaction as the change.</summary>
+/// <summary>An append-only record of something a user or the system did (docs/design.md §18), written in the same transaction as the change.</summary>
 public sealed class AuditEvent
 {
     public Guid Id { get; init; } = Guid.CreateVersion7();
@@ -37,6 +37,16 @@ public static class AuditActions
     public const string NodeRename = "node.rename";
     public const string NodeMove = "node.move";
     public const string FileDownload = "file.download";
+    public const string NodeTrash = "node.trash";
+    public const string NodeRestore = "node.restore";
+    public const string NodeDeleteForever = "node.delete_forever";
+    public const string TrashEmpty = "trash.empty";
+
+    /// <summary>The purge job removed trash past its retention (§12). Written by the system.</summary>
+    public const string NodePurge = "node.purge";
+
+    /// <summary>The purge job removed a version past the retention policy (§8.2). Written by the system.</summary>
+    public const string VersionPurge = "version.purge";
     public const string SettingsChange = "settings.change";
     public const string QuotaChange = "user.quota_change";
 }

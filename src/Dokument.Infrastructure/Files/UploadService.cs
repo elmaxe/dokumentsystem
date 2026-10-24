@@ -227,7 +227,6 @@ public sealed class UploadService(
             );
         }
 
-        blobs.Commit(upload.Id, hash);
         AddedFile added;
         try
         {
@@ -245,6 +244,7 @@ public sealed class UploadService(
                 ),
                 reservedBytes: upload.Size,
                 AuditActions.FileUpload,
+                storeBytes: () => blobs.Commit(upload.Id, hash),
                 ct
             );
         }

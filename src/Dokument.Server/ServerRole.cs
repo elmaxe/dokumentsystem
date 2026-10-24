@@ -35,6 +35,7 @@ public static class ServerRole
         builder.Services.AddProblemDetails();
         builder.Services.AddExceptionHandler<DriveExceptionHandler>();
         builder.Services.AddHostedService<UploadCleanup>();
+        builder.Services.AddHostedService<PurgeSchedule>();
         builder.Services.AddScoped<NodeDtoMapper>();
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
@@ -90,6 +91,7 @@ public static class ServerRole
             .AllowAnonymous();
         api.MapAuthEndpoints();
         api.MapFileEndpoints();
+        api.MapTrashEndpoints();
         api.MapTusEndpoints();
         api.MapAdminEndpoints();
         app.MapFallback("/api/{**path}", () => TypedResults.NotFound());

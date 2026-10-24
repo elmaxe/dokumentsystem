@@ -28,6 +28,7 @@ public static class AdminEndpoints
         admin.MapGet("/settings", GetSettings).WithName("AdminGetSettings");
         admin.MapPut("/settings/storage", PutStorage).WithName("AdminPutStorageSettings");
         admin.MapPut("/settings/versions", PutVersions).WithName("AdminPutVersionSettings");
+        admin.MapPut("/settings/trash", PutTrash).WithName("AdminPutTrashSettings");
         admin.MapPut("/settings/ml", PutMl).WithName("AdminPutMlSettings");
         admin.MapPut("/settings/scanner", PutScanner).WithName("AdminPutScannerSettings");
         admin
@@ -50,12 +51,14 @@ public static class AdminEndpoints
     {
         var storage = await settings.GetAsync(SettingKeys.Storage, ct);
         var versions = await settings.GetAsync(SettingKeys.Versions, ct);
+        var trash = await settings.GetAsync(SettingKeys.Trash, ct);
         var ml = await settings.GetAsync(SettingKeys.Ml, ct);
         var scanner = await settings.GetAsync(SettingKeys.Scanner, ct);
         return TypedResults.Ok(
             new AdminSettingsDto(
                 new StorageSettingsDto(storage.DefaultQuota.Bytes),
                 new VersionSettingsDto(versions.KeepDays, versions.MaxVersions),
+                new TrashSettingsDto(trash.KeepDays),
                 MlDto(ml),
                 new ScannerSettingsDto(scanner.Address?.ToString()),
                 new SignInInfo(
@@ -103,6 +106,26 @@ public static class AdminEndpoints
         }
 
         await settings.SetAsync(SettingKeys.Versions, value, context.Actor(), ct);
+        return TypedResults.Ok(request);
+    }
+
+    private static async Task<Results<Ok<TrashSettingsDto>, ValidationProblem>> PutTrash(
+        TrashSettingsDto request,
+        HttpContext context,
+        SettingsStore settings,
+        CancellationToken ct
+    )
+    {
+        var value = new TrashSettings(request.KeepDays);
+        if (!value.IsValid)
+        {
+            return Invalid(
+                "keepDays",
+                $"Keep items in the trash for 1 to {TrashSettings.MaxKeepDays} days."
+            );
+        }
+
+        await settings.SetAsync(SettingKeys.Trash, value, context.Actor(), ct);
         return TypedResults.Ok(request);
     }
 

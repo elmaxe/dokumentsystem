@@ -63,7 +63,7 @@ public sealed class AdminTests(PostgresFixture postgres)
                 new StorageSettingsDto(1000)
             )
         ).EnsureSuccessStatusCode();
-        Assert.Equal(new StorageUsage(0, 1000), await StorageAsync(alice));
+        Assert.Equal(new StorageUsage(0, 1000, 0), await StorageAsync(alice));
         Assert.Equal(
             HttpStatusCode.RequestEntityTooLarge,
             (await FileTests.CreateUploadAsync(alice, "big.bin", 1500, null, null)).StatusCode
@@ -101,7 +101,7 @@ public sealed class AdminTests(PostgresFixture postgres)
                 Json.Options
             )
         ).EnsureSuccessStatusCode();
-        Assert.Equal(new StorageUsage(0, 5000), await StorageAsync(alice));
+        Assert.Equal(new StorageUsage(0, 5000, 0), await StorageAsync(alice));
 
         Assert.Equal(
             HttpStatusCode.BadRequest,

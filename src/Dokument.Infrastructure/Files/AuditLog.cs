@@ -29,4 +29,23 @@ public sealed class AuditLog(DokumentDbContext db, TimeProvider time)
                 Details = details,
             }
         );
+
+    /// <summary>Something the system did on its own, such as the purge job (§12).</summary>
+    public void AddSystem(
+        string action,
+        Guid? nodeId = null,
+        Guid? versionId = null,
+        JsonObject? details = null
+    ) =>
+        db.AuditEvents.Add(
+            new AuditEvent
+            {
+                At = time.GetUtcNow(),
+                ActorKind = AuditActorKind.System,
+                Action = action,
+                TargetNodeId = nodeId,
+                TargetVersionId = versionId,
+                Details = details,
+            }
+        );
 }

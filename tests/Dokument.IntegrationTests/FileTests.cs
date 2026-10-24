@@ -317,7 +317,7 @@ public sealed class FileTests(PostgresFixture postgres)
             (await CreateUploadAsync(alice, "b.bin", 600, null, null)).StatusCode
         );
         var storage = await alice.GetFromJsonAsync<StorageUsage>("/api/v1/storage", Json.Options);
-        Assert.Equal(new StorageUsage(0, 1000), storage);
+        Assert.Equal(new StorageUsage(0, 1000, 0), storage);
     }
 
     [Fact]
@@ -384,7 +384,7 @@ public sealed class FileTests(PostgresFixture postgres)
             )
         )!;
 
-    private static async Task<List<VersionDto>> VersionsAsync(HttpClient client, Guid id) =>
+    internal static async Task<List<VersionDto>> VersionsAsync(HttpClient client, Guid id) =>
         (
             await client.GetFromJsonAsync<List<VersionDto>>(
                 $"/api/v1/nodes/{id}/versions",

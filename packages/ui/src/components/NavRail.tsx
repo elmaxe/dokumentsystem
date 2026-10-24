@@ -14,6 +14,8 @@ export type NavRailProps = {
   used: number;
   /** Null means no limit. */
   quota: number | null;
+  /** What emptying the trash would free, in bytes. */
+  trash?: number;
   /** auto collapses to 88px under 1200px and expands to 256px with the storage meter above (§16.3). */
   mode?: "auto" | "expanded" | "collapsed";
   className?: string;
@@ -26,6 +28,7 @@ export function NavRail({
   onNewAction = () => {},
   used,
   quota,
+  trash,
   mode = "auto",
   className,
 }: NavRailProps) {
@@ -71,6 +74,7 @@ export function NavRail({
       <StorageMeter
         used={used}
         quota={quota}
+        trash={trash}
         className="hidden border-t border-outline-variant px-4 pt-3 pb-2 rail-expanded:flex"
       />
     </nav>

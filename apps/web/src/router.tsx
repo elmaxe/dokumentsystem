@@ -4,6 +4,7 @@ import { AdminPeoplePage, AdminSettingsPage, AdminStoragePage } from "./admin/Ad
 import { sessionQuery } from "./api";
 import { AppShell } from "./AppShell";
 import { FilesPage } from "./files/FilesPage";
+import { TrashPage } from "./files/TrashPage";
 import { ViewerPage } from "./files/ViewerPage";
 import { PlacePage } from "./PlacePage";
 import { SignInPage } from "./SignInPage";
@@ -51,7 +52,9 @@ const fileRoute = createRoute({
   },
 });
 
-const placeRoutes = (["shared", "recent", "starred", "trash"] as const).map((place) =>
+const trashRoute = createRoute({ getParentRoute: () => authenticatedRoute, path: "/trash", component: TrashPage });
+
+const placeRoutes = (["shared", "recent", "starred"] as const).map((place) =>
   createRoute({
     getParentRoute: () => authenticatedRoute,
     path: `/${place}`,
@@ -99,7 +102,7 @@ const signInRoute = createRoute({
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminSettingsRoute]), ...placeRoutes]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminSettingsRoute]), trashRoute, ...placeRoutes]), signInRoute]),
     context: { queryClient },
   });
 }

@@ -739,6 +739,126 @@
         }
       }
     },
+    "/api/v1/nodes/trash": {
+      "post": {
+        "tags": [
+          "Trash"
+        ],
+        "description": "Moves files and folders to the trash, folders with everything in them. Undo with /trash/restore.",
+        "operationId": "TrashNodes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeIdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/trash": {
+      "get": {
+        "tags": [
+          "Trash"
+        ],
+        "description": "What the user trashed, newest first. Things that went with a folder are counted in it, not listed.",
+        "operationId": "ListTrash",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashListing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trash/restore": {
+      "post": {
+        "tags": [
+          "Trash"
+        ],
+        "operationId": "RestoreFromTrash",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeIdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trash/delete": {
+      "post": {
+        "tags": [
+          "Trash"
+        ],
+        "description": "Deletes items in the trash forever. Can't be undone.",
+        "operationId": "DeleteForever",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeIdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/trash/empty": {
+      "post": {
+        "tags": [
+          "Trash"
+        ],
+        "description": "Deletes everything in the trash forever. Can't be undone.",
+        "operationId": "EmptyTrash",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyTrashResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/uploads/{id}": {
       "get": {
         "tags": [
@@ -854,6 +974,46 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VersionSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/settings/trash": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutTrashSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrashSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashSettingsDto"
                 }
               }
             }
@@ -1159,6 +1319,7 @@
         "required": [
           "storage",
           "versions",
+          "trash",
           "ml",
           "scanner",
           "signIn"
@@ -1170,6 +1331,9 @@
           },
           "versions": {
             "$ref": "#/components/schemas/VersionSettingsDto"
+          },
+          "trash": {
+            "$ref": "#/components/schemas/TrashSettingsDto"
           },
           "ml": {
             "$ref": "#/components/schemas/MlSettingsDto"
@@ -1422,6 +1586,18 @@
           },
           "inTrash": {
             "type": "boolean"
+          }
+        }
+      },
+      "EmptyTrashResponse": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -1709,6 +1885,21 @@
           }
         }
       },
+      "NodeIdsRequest": {
+        "required": [
+          "ids"
+        ],
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
       "NodeKind": {
         "enum": [
           "folder",
@@ -1783,6 +1974,35 @@
         "properties": {
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "RestoredItem": {
+        "required": [
+          "node",
+          "movedToRoot"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeDto"
+          },
+          "movedToRoot": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RestoreResponse": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RestoredItem"
+            }
           }
         }
       },
@@ -1945,7 +2165,8 @@
       "StorageUsage": {
         "required": [
           "usedBytes",
-          "quotaBytes"
+          "quotaBytes",
+          "trashBytes"
         ],
         "type": "object",
         "properties": {
@@ -1958,6 +2179,10 @@
               "null",
               "integer"
             ],
+            "format": "int64"
+          },
+          "trashBytes": {
+            "type": "integer",
             "format": "int64"
           }
         }
@@ -1997,6 +2222,80 @@
           "pending",
           "ready"
         ]
+      },
+      "TrashItem": {
+        "required": [
+          "node",
+          "path",
+          "trashedAt",
+          "deleteAt",
+          "itemCount",
+          "size"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeDto"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          },
+          "trashedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deleteAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "itemCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "TrashListing": {
+        "required": [
+          "items",
+          "freeableBytes",
+          "keepDays"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrashItem"
+            }
+          },
+          "freeableBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "keepDays": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TrashSettingsDto": {
+        "required": [
+          "keepDays"
+        ],
+        "type": "object",
+        "properties": {
+          "keepDays": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
       },
       "UpdateMlSettingsRequest": {
         "required": [
@@ -2243,6 +2542,9 @@
     },
     {
       "name": "Files"
+    },
+    {
+      "name": "Trash"
     },
     {
       "name": "Uploads"

@@ -126,7 +126,7 @@ export function FilesScreen() {
 
       {trash && items.length > 0 && (
         <Banner tone="info" action={<Button variant="text" onClick={() => app.act("deleteForever", items.map((i) => i.id))}>{t("files.emptyTrash")}</Button>}>
-          {t("files.trashNote")}
+          {t("files.trashNote", { count: 30 })}
         </Banner>
       )}
 
@@ -134,7 +134,7 @@ export function FilesScreen() {
         <EmptyState
           icon={empty[2]}
           title={t(`files.empty.${empty[0]}`)}
-          text={t(`files.empty.${empty[1]}`)}
+          text={t(`files.empty.${empty[1]}`, { count: 30 })}
           className="mt-4"
         />
       ) : app.view === "grid" ? (

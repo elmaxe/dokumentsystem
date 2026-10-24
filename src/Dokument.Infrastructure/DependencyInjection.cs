@@ -42,6 +42,9 @@ public static class DependencyInjection
         services.AddScoped<AuditLog>();
         services.AddScoped<DriveService>();
         services.AddScoped<UploadService>();
+        services.AddScoped<PurgeService>();
+        services.AddSingleton<PurgeSignal>();
+        services.AddScoped<TrashService>();
         services.AddScoped<JobQueue>();
         services.AddSingleton<DerivedStore>();
         services.AddScoped<PreviewService>();

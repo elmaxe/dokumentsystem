@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.10** · Last updated: 2026-10-24
+> Status: **Draft v0.11** · Last updated: 2026-10-24
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -72,6 +72,7 @@ Scale target: up to about 1M files and a few TB per instance.
       ┌──────────────────────▼───────────────────────┐
       │ server   (image: dokumentsystem, ROLE=server)│
       │  REST API · tus uploads · SignalR · web SPA  │
+      │  trash and version purge                     │
       └───────┬───────────────────────────┬──────────┘
               │                           │
    ┌──────────▼─────────┐        ┌────────▼──────────────┐
@@ -79,7 +80,7 @@ Scale target: up to about 1M files and a few TB per instance.
    │ + pg_search        │  jobs  │ metadata · thumbnails │
    │ + vchord/pgvector  │        │ text extraction · PDF │
    └────────────────────┘        │ renditions · transcode│
-                                 │ trash purge · backups │
+                                 │ backups               │
                                  └───┬──────────────┬────┘
             /data (NAS volumes) ◄────┘              │ HTTP (API key)
                                                     ▼
@@ -95,7 +96,7 @@ Scale target: up to about 1M files and a few TB per instance.
 
 | Component | Responsibility | Needs storage? | Needs DB? |
 |---|---|---|---|
-| `server` | API, auth, uploads, downloads/streaming, SignalR, serves the web SPA | yes (rw originals) | yes |
+| `server` | API, auth, uploads, downloads/streaming, SignalR, serves the web SPA, the purge (§12) | yes (rw originals) | yes |
 | `worker` | Runs background jobs; calls `ml` and `gotenberg` | yes (ro originals, rw derived) | yes |
 | `ml` | Stateless inference over HTTP | **no** | **no** |
 | `gotenberg` | Converts Office documents to PDF (optional) | no | no |
@@ -113,7 +114,7 @@ src/
   Dokument.Application/     use cases, permissions, quota logic, job definitions
   Dokument.Infrastructure/  EF Core + migrations, storage, queue, SMTP, ML client, Gotenberg client
   Dokument.Server/          server role: API, tus, SignalR, auth, serves the web SPA
-  Dokument.Worker/          worker role: job handlers (thumbnails, extraction, purge, backup …)
+  Dokument.Worker/          worker role: job handlers (thumbnails, extraction, backup …)
   Dokument.Host/            single entrypoint (`dokument`); picks role(s) from the ROLE env var
   Dokument.AppHost/         .NET Aspire for local dev: Postgres, server, worker and Vite
 tests/
@@ -185,7 +186,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 ### 4.3 Configuration
 
 - **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
-- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decision 17): the default quota, version retention, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
+- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17 and 18): the default quota, trash and version retention, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
   - quota defaults
   - trash and version retention
   - SMTP
@@ -359,6 +360,7 @@ Also:
   - The current version is always kept.
   - A version's age counts from when the next version replaced it. The versions API reports each version's purge date, so the UI can say "Removed in N days".
   - Users can mark a version **"Keep forever"**, which exempts it from purging. It still counts toward quota.
+  - The purge (§12) removes versions past these limits every hour.
 - **Quota counts all versions**, deduplicated per blob per owner.
 - Renditions and extracted text exist **per version**. Search indexes **only the current version**.
 
@@ -491,17 +493,21 @@ Modeled on Immich's `immich-machine-learning`.
 
 ## 12. Trash and retention
 
-- **Trash a node:** set `trashed_at` on it. Every descendant gets `trashed_root_id = node`. This is a subtree update via `path`.
-- **Restore** brings back exactly the items with that `trashed_root_id`. If the original parent is gone, the node is restored to the root ("My files").
-- **Trash counts toward quota**, as in Google Drive.
-- **Retention:** an admin setting (default 30 days). A daily purge job **permanently deletes** expired items:
-  - decrement `blobs.ref_count`
-  - delete renditions
-  - write an audit event
-  - delete blobs after commit
-- "Empty trash" and "Delete forever" are available to the owner. Both require confirmation and are audited.
-- An email warning "N items will be permanently deleted in 3 days" is optional, per user preference.
-- Old versions beyond the retention policy are purged by the same job.
+Built in M1 (decision 18).
+
+- **Trash a node:** set `trashed_at` on it and on everything live below it, and `trashed_root_id = node` on all of them, in one subtree update via `path`. Items trashed earlier inside it keep their own group. Trashed nodes are hidden from folders, the viewer, downloads and search, and their names no longer count for uniqueness. The duplicate check still finds them ("in the trash").
+- **Trash page:** lists only the groups' roots, newest first, with the original location, when it was trashed, "Deleted forever in N days" (amber with an icon in the last 7 days) and the size, a folder's contents included. Trashed items can't be opened; opening one offers to restore it. Browsing inside a trashed folder may come later.
+- **Restore** brings back exactly the items with that `trashed_root_id`. If the original folder is gone or itself in the trash, the item goes to the top of "My files" and the toast says why. If the name is taken, it gets a number, as with Keep both. Moving to the trash shows an Undo toast, which is a restore.
+- **Trash counts toward quota**, as in Google Drive. The storage meter says how much emptying the trash would free.
+- **Retention:** an admin setting (the `trash` key, default 30 days), next to the version limits in the "Trash and versions" section. Changes apply to what is already in the trash.
+- **"Delete forever" and "Empty trash"** are available to the owner. Both confirm with a danger button and are audited. The rows go at once; the purge deletes the files within seconds.
+- **The purge** runs in the server role, because it deletes originals and the worker mounts them read-only (§10.4). It runs on start, **every hour** (so the countdown holds to the hour), and right after a delete forever. Each run, in batches of 200:
+  1. Deletes trash groups older than the retention, a whole subtree per transaction, with a `node.purge` audit event.
+  2. Deletes versions past the version policy (§8.2), with a `version.purge` audit event each. It is the same rule as the API's "Removed in N days", written as one SQL query with window functions.
+  3. For each deleted version, lowers `blobs.ref_count`, and lowers the owner's `used_bytes` by the blob's size once they have no version left with those bytes.
+  4. Deletes blobs whose `ref_count` is zero: the row (its renditions and preview state cascade), the original and its thumbnails.
+- **Blob lock:** uploads and the purge take the same transaction-scoped advisory lock per blob hash. The upload holds it while it moves its temp file into `blobs/` and records the version; the purge holds it while it deletes the row and the files. So a file that someone uploads again at the moment the purge deletes it is never lost: the upload either finds the old file still referenced or stores its own copy.
+- An email warning "N items will be permanently deleted in 3 days" waits for notifications (§20).
 
 ---
 
@@ -584,8 +590,8 @@ These are better in React DOM than through React Native Web.
 ### 15.2 Web (desktop + mobile browser)
 
 - **Layout:** a left nav rail, a top search bar and a content area. On mobile it collapses to a bottom nav.
-  - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter.
-  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: machine learning, virus scanning, versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
+  - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter. The phone bottom nav has no room for Trash, so it is in the account menu there.
+  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: machine learning, virus scanning, trash and versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
 - **Content area:** grid/list toggle, breadcrumbs, sorting, multi-select with a contextual action bar, right-click menu.
 - **Details panel:** info, sharing, versions, activity.
 - **Upload tray** (bottom-right) with per-file progress, pause/resume and retry.
@@ -682,7 +688,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **Chip:** search filters that mirror the operators ("Type: PDF" for `type:pdf`).
 - **FileTypeIcon:** a Material Symbol in the `file-*` colour per MIME group. Also the thumbnail fallback. Folders stay neutral.
 - **FileGrid:** folders first, then file tiles with 4:3 thumbnails. Documents (PDF, Office, text) show the top of page 1; photos are cropped to fill. A shimmer shows while a thumbnail is pending, and the thumbnail is swapped in when it is ready: for now the listing is polled (every 2 s, then every 10 s) while anything is pending, and SignalR replaces that with live updates. Video tiles show a duration badge.
-- **FileList:** a sortable name / owner / modified / size table. Under 600 px of container width, the columns fold into a second line.
+- **FileList:** a sortable name / owner / modified / size table. Under 600 px of container width, the columns fold into a second line. Pages can swap the columns after the name: the Trash page shows original location / deleted / size.
 - **ActionBar:** the selection count plus Share, Download, Move, Trash and More.
 - **UploadTray:** one row per tus upload, in one of the states hashing, uploading, paused, done, duplicate ("Remove this copy") or failed (Retry), each with an icon and words.
 - **DuplicateDialog:** the §8.3 prompt. A batch offers Skip duplicates / Upload all / Review; a single file offers Skip / Upload anyway / Open existing.
@@ -709,7 +715,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **Admin settings:** a default quota (no limit until an admin sets one), and per person either the default, a limit of their own, or no limit. Changing someone's quota writes a `user.quota_change` audit event. The default applies at reservation time, so lowering it never deletes anything; it only stops new uploads.
 - **Counted:** originals of all versions owned by the user, including trash, with blobs deduplicated per user. **Not counted:** renditions and thumbnails.
 - **Enforcement:** reserve at upload start and settle at completion (§8). `used_bytes` is updated in the same transaction. A nightly reconciliation job recomputes it and logs any drift.
-- **UX:** a storage meter in the nav, a breakdown page (by type, largest files, trash, old versions), and email plus in-app warnings at 80% and 95%.
+- **UX:** a storage meter in the nav, which also says how much of the storage emptying the trash would free ("1.4 GB of it in the trash"), a breakdown page (by type, largest files, trash, old versions), and email plus in-app warnings at 80% and 95%.
 - **Admin view:** per-user usage, total disk usage, and the free space on the volume. Built on the admin Storage and People pages: the size of all originals (each blob once), and total and free space for the volume holding originals (plus the derived volume when it is separate).
 
 ### 17.1 Quota from an OIDC claim (planned, next after the admin page)
@@ -729,7 +735,8 @@ Households that manage people in their IdP can set each person's storage there i
 - **Append-only `audit_events`**, written **in the same transaction** as the change itself.
 - **Events:**
   - auth: login, logout, session revoked, API key created
-  - files: upload, new version, restore version, rename, move, download, trash, restore, permanent delete
+  - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`)
+  - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), with the actor kind `system`
   - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged.
   - sharing: share granted/changed/revoked, link created/accessed/revoked
   - admin: settings changed, quota changed, user disabled
@@ -850,7 +857,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | Milestone | Scope |
 |---|---|
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
-| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, and the web file browser. **Still to come:** trash and the purge job (which also enforces version retention), starred and recent, folder uploads, live updates. |
+| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, and the trash with the hourly purge that also enforces version retention. **Still to come:** starred and recent, folder uploads, live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media. **Still to come:** metadata, video posters and transcoding, Gotenberg, the admin queue page, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
@@ -882,6 +889,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 15 | Thumbnails and previews (M2) | 2026-10-23: our own Postgres job table; renditions keyed by blob hash; WebP thumbs at 256 and 640 px plus a 2048 px preview only when the browser can't show the original; HEIC via the image's system libvips; the grid polls until SignalR; the viewer reads an unaudited `/preview` endpoint (§6, §7, §10, §14) |
 | 16 | Observability | 2026-10-23: OpenTelemetry for traces, metrics and logs, off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set; standard `OTEL_*` variables only; trace context stored on jobs; strict no-PII attribute rules; optional Prometheus endpoint on a separate port. On by default under the Aspire AppHost in development. Prometheus on `METRICS_PORT` uses the beta OpenTelemetry exporter (§22.1) |
 | 17 | Admin settings page | 2026-10-23: admin pages with sections that save separately (2026-10-24: split into People, Storage and Settings, with an admin rail that replaces the normal nav on those pages, as in Immich, §15.2); default quota off until set, per-person default / own limit / no limit; ML URLs in priority order with encrypted API keys and live health checks; ClamAV address stored and tested but not yet used; sign-in shown read-only; language is a per-person choice in the account menu (§4.3, §11, §17, §21, §23) |
+| 18 | Trash and retention | 2026-10-24: trash groups by `trashed_root_id`, listed by root on the Trash page; restore to My files when the folder is gone or trashed, numbering on name clashes; Undo after trashing; no browsing inside trashed folders yet; trash retention is an admin setting (default 30 days); the purge runs hourly in the server role and also enforces version retention; per-blob advisory lock shared with uploads; no manual per-version delete and no warning email yet (§12) |
 
 ## 26. Open questions
 
