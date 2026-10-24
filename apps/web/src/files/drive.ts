@@ -5,7 +5,9 @@ import type {
   NodeDetails,
   NodeDto,
   Problem,
+  RestoredItem,
   StorageUsage,
+  TrashListing,
   VersionDto,
 } from "@dokument/api";
 import { thumbnailUrl } from "@dokument/api";
@@ -24,6 +26,12 @@ export class ApiError extends Error {
   ) {
     super(problem.detail ?? problem.title ?? `Request failed with ${status}`);
   }
+}
+
+/** For requests that answer 204 No Content. */
+export async function send(request: Promise<{ error?: unknown; response: Response }>): Promise<void> {
+  const { error, response } = await request;
+  if (!response.ok) throw new ApiError(response.status, (error ?? {}) as Problem);
 }
 
 export async function unwrap<T>(request: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
@@ -101,12 +109,26 @@ export const storageQuery = queryOptions({
   queryFn: (): Promise<StorageUsage> => unwrap(api.GET("/api/v1/storage")),
 });
 
+export const trashQuery = queryOptions({
+  queryKey: ["trash"],
+  queryFn: (): Promise<TrashListing> => unwrap(api.GET("/api/v1/trash")),
+});
+
 /** Refetches what a change to files in these folders can affect. */
 export async function invalidateFolders(queryClient: QueryClient, folderIds: (string | null)[]) {
   await Promise.all([
     ...Array.from(new Set(folderIds.map((id) => id ?? "root")), (key) =>
       queryClient.invalidateQueries({ queryKey: ["folder", key] }),
     ),
+    queryClient.invalidateQueries({ queryKey: ["storage"] }),
+  ]);
+}
+
+/** Refetches after moving things in or out of the trash: the trash, the storage meter and every folder listing. */
+export async function invalidateTrash(queryClient: QueryClient) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["trash"] }),
+    queryClient.invalidateQueries({ queryKey: ["folder"] }),
     queryClient.invalidateQueries({ queryKey: ["storage"] }),
   ]);
 }
@@ -127,6 +149,11 @@ export const drive = {
         body: { keepForever },
       }),
     ),
+  trash: (ids: string[]) => send(api.POST("/api/v1/nodes/trash", { body: { ids } })),
+  restore: async (ids: string[]): Promise<RestoredItem[]> =>
+    (await unwrap(api.POST("/api/v1/trash/restore", { body: { ids } }))).items,
+  deleteForever: (ids: string[]) => send(api.POST("/api/v1/trash/delete", { body: { ids } })),
+  emptyTrash: async () => (await unwrap(api.POST("/api/v1/trash/empty"))).items,
   checkDuplicates: async (files: { name: string; size: number; sha256: string }[]): Promise<DuplicateCheckResult[]> =>
     (await unwrap(api.POST("/api/v1/uploads/check", { body: { files } }))).files,
   copyFromContent: (

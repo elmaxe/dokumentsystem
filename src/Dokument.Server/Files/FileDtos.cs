@@ -121,4 +121,31 @@ public sealed record UploadStatus(
 );
 
 /// <param name="QuotaBytes">Null means unlimited.</param>
-public sealed record StorageUsage(long UsedBytes, long? QuotaBytes);
+/// <param name="TrashBytes">The part of <paramref name="UsedBytes"/> that emptying the trash would free.</param>
+public sealed record StorageUsage(long UsedBytes, long? QuotaBytes, long TrashBytes);
+
+public sealed record NodeIdsRequest(List<Guid> Ids);
+
+/// <param name="Path">Where the item was: the folders above it, top first. Empty for the top of My files.</param>
+/// <param name="DeleteAt">When the purge job deletes it forever (§12).</param>
+/// <param name="ItemCount">For a folder, how many things went to the trash with it.</param>
+/// <param name="Size">Bytes of the current versions, a folder's contents included.</param>
+public sealed record TrashItem(
+    NodeDto Node,
+    List<PathEntry> Path,
+    DateTimeOffset TrashedAt,
+    DateTimeOffset DeleteAt,
+    int ItemCount,
+    long Size
+);
+
+/// <param name="FreeableBytes">The storage that emptying the trash would free.</param>
+/// <param name="KeepDays">How long the trash keeps items, as the admin set it.</param>
+public sealed record TrashListing(List<TrashItem> Items, long FreeableBytes, int KeepDays);
+
+/// <param name="MovedToRoot">Its folder is in the trash too, so it went to the top of My files instead.</param>
+public sealed record RestoredItem(NodeDto Node, bool MovedToRoot);
+
+public sealed record RestoreResponse(List<RestoredItem> Items);
+
+public sealed record EmptyTrashResponse(int Items);

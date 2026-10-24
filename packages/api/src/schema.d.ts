@@ -396,6 +396,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Moves files and folders to the trash, folders with everything in them. Undo with /trash/restore. */
+        post: operations["TrashNodes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What the user trashed, newest first. Things that went with a folder are counted in it, not listed. */
+        get: operations["ListTrash"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["RestoreFromTrash"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Deletes items in the trash forever. Can't be undone. */
+        post: operations["DeleteForever"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash/empty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Deletes everything in the trash forever. Can't be undone. */
+        post: operations["EmptyTrash"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads/{id}": {
         parameters: {
             query?: never;
@@ -454,6 +538,22 @@ export interface paths {
         };
         get?: never;
         put: operations["AdminPutVersionSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["AdminPutTrashSettings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -597,6 +697,7 @@ export interface components {
         AdminSettingsDto: {
             storage: components["schemas"]["StorageSettingsDto"];
             versions: components["schemas"]["VersionSettingsDto"];
+            trash: components["schemas"]["TrashSettingsDto"];
             ml: components["schemas"]["MlSettingsDto"];
             scanner: components["schemas"]["ScannerSettingsDto"];
             signIn: components["schemas"]["SignInInfo"];
@@ -662,6 +763,10 @@ export interface components {
             name: string;
             path: components["schemas"]["PathEntry"][];
             inTrash: boolean;
+        };
+        EmptyTrashResponse: {
+            /** Format: int32 */
+            items: number;
         };
         FolderListing: {
             folder: null | components["schemas"]["NodeDto"];
@@ -735,6 +840,9 @@ export interface components {
             versionNumber: null | number;
             thumbnail: components["schemas"]["ThumbnailState"];
         };
+        NodeIdsRequest: {
+            ids: string[];
+        };
         /** @enum {unknown} */
         NodeKind: "folder" | "file";
         PathEntry: {
@@ -754,6 +862,13 @@ export interface components {
         };
         RenameRequest: {
             name: string;
+        };
+        RestoredItem: {
+            node: components["schemas"]["NodeDto"];
+            movedToRoot: boolean;
+        };
+        RestoreResponse: {
+            items: components["schemas"]["RestoredItem"][];
         };
         ScannerSettingsDto: {
             address: null | string;
@@ -799,6 +914,8 @@ export interface components {
             usedBytes: number;
             /** Format: int64 */
             quotaBytes: null | number;
+            /** Format: int64 */
+            trashBytes: number;
         };
         TestMlRequest: {
             url: string;
@@ -809,6 +926,29 @@ export interface components {
         };
         /** @enum {unknown} */
         ThumbnailState: "none" | "pending" | "ready";
+        TrashItem: {
+            node: components["schemas"]["NodeDto"];
+            path: components["schemas"]["PathEntry"][];
+            /** Format: date-time */
+            trashedAt: string;
+            /** Format: date-time */
+            deleteAt: string;
+            /** Format: int32 */
+            itemCount: number;
+            /** Format: int64 */
+            size: number;
+        };
+        TrashListing: {
+            items: components["schemas"]["TrashItem"][];
+            /** Format: int64 */
+            freeableBytes: number;
+            /** Format: int32 */
+            keepDays: number;
+        };
+        TrashSettingsDto: {
+            /** Format: int32 */
+            keepDays: number;
+        };
         UpdateMlSettingsRequest: {
             endpoints: components["schemas"]["MlEndpointUpdate"][];
         };
@@ -1438,6 +1578,114 @@ export interface operations {
             };
         };
     };
+    TrashNodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeIdsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ListTrash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashListing"];
+                };
+            };
+        };
+    };
+    RestoreFromTrash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeIdsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreResponse"];
+                };
+            };
+        };
+    };
+    DeleteForever: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeIdsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EmptyTrash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmptyTrashResponse"];
+                };
+            };
+        };
+    };
     GetUpload: {
         parameters: {
             query?: never;
@@ -1533,6 +1781,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionSettingsDto"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminPutTrashSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrashSettingsDto"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashSettingsDto"];
                 };
             };
             /** @description Bad Request */

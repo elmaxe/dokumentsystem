@@ -619,36 +619,60 @@ function ScannerSection({ settings }: { settings: AdminSettings }) {
   );
 }
 
+/** Trash and versions (§8.2, §12): how long deleted items and older versions are kept. */
 function VersionsSection({ settings }: { settings: AdminSettings }) {
   const { t } = useTranslation();
+  const [trash, setTrash] = useState(String(settings.trash.keepDays));
   const [days, setDays] = useState(String(settings.versions.keepDays));
   const [count, setCount] = useState(String(settings.versions.maxVersions));
   const { busy, save } = useSave();
+  const trashDays = Number(trash);
   const keepDays = Number(days);
   const maxVersions = Number(count);
-  const valid =
-    Number.isInteger(keepDays) && keepDays >= 1 && keepDays <= 3650 && Number.isInteger(maxVersions) && maxVersions >= 1 && maxVersions <= 10_000;
-  const dirty = keepDays !== settings.versions.keepDays || maxVersions !== settings.versions.maxVersions;
+  const inDays = (n: number) => Number.isInteger(n) && n >= 1 && n <= 3650;
+  const valid = inDays(trashDays) && inDays(keepDays) && Number.isInteger(maxVersions) && maxVersions >= 1 && maxVersions <= 10_000;
+  const trashDirty = trashDays !== settings.trash.keepDays;
+  const versionsDirty = keepDays !== settings.versions.keepDays || maxVersions !== settings.versions.maxVersions;
+  const defaults = trash === "30" && days === "30" && count === "100";
 
   return (
     <Section id="versions" intro={t("admin.versions.intro")}>
+      <NumberField label={t("admin.versions.trashFor")} unit={t("admin.versions.daysUnit")} value={trash} onChange={setTrash} />
       <div className="grid gap-5 sm:grid-cols-2">
         <NumberField label={t("admin.versions.keepFor")} unit={t("admin.versions.daysUnit")} value={days} onChange={setDays} />
         <NumberField label={t("admin.versions.atMost")} unit={t("admin.versions.versionsUnit")} value={count} onChange={setCount} />
       </div>
-      {!valid && <Banner tone="error">{t("admin.versions.invalid")}</Banner>}
+      {valid ? (
+        <p className="m-0 flex items-start gap-2 text-body-sm text-on-surface-variant">
+          <Icon name="info" size={20} />
+          {t("admin.versions.applies")}
+        </p>
+      ) : (
+        <Banner tone="error">{t("admin.versions.invalid")}</Banner>
+      )}
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           variant="text"
-          disabled={days === "30" && count === "100"}
+          disabled={defaults}
           onClick={() => {
+            setTrash("30");
             setDays("30");
             setCount("100");
           }}
         >
           {t("admin.versions.reset")}
         </Button>
-        <Button variant="tonal" icon="check" disabled={busy || !valid || !dirty} onClick={() => void save(() => admin.putVersions(keepDays, maxVersions))}>
+        <Button
+          variant="tonal"
+          icon="check"
+          disabled={busy || !valid || !(trashDirty || versionsDirty)}
+          onClick={() =>
+            void save(async () => {
+              if (trashDirty) await admin.putTrash(trashDays);
+              if (versionsDirty) await admin.putVersions(keepDays, maxVersions);
+            })
+          }
+        >
           {t("common.save")}
         </Button>
       </div>

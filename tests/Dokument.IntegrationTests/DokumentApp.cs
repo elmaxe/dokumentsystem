@@ -11,6 +11,7 @@ namespace Dokument.IntegrationTests;
 
 /// <summary>The real app, with its own database, signing in against <see cref="FakeOidcProvider"/>.</summary>
 public sealed class DokumentApp(
+    PostgresFixture postgres,
     string connectionString,
     FakeOidcProvider idp,
     IReadOnlyDictionary<string, string?>? settings = null
@@ -28,6 +29,7 @@ public sealed class DokumentApp(
     )
     {
         var app = new DokumentApp(
+            postgres,
             await postgres.CreateDatabaseAsync(),
             await FakeOidcProvider.StartAsync(),
             settings
@@ -103,6 +105,11 @@ public sealed class DokumentApp(
     public override async ValueTask DisposeAsync()
     {
         await base.DisposeAsync();
+
+        // Each test has its own database. Its pooled connections would sit idle until the pool prunes them, and enough
+        // of them run Postgres out of connection slots, so drop it and them.
+        await postgres.DropDatabaseAsync(connectionString);
+
         await idp.DisposeAsync();
         Directory.Delete(dataRoot, recursive: true);
     }

@@ -23,6 +23,18 @@ public sealed record VersionSettings(int KeepDays, int MaxVersions)
         KeepDays is >= 1 and <= MaxKeepDays && MaxVersions is >= 1 and <= MaxMaxVersions;
 }
 
+/// <summary>How long trashed items are kept before the purge job deletes them forever (§12).</summary>
+public sealed record TrashSettings(int KeepDays)
+{
+    public const int MaxKeepDays = 3650;
+
+    public static readonly TrashSettings Default = new(30);
+
+    public TimeSpan KeepFor => TimeSpan.FromDays(KeepDays);
+
+    public bool IsValid => KeepDays is >= 1 and <= MaxKeepDays;
+}
+
 /// <summary>ML services in priority order (§11). The worker uses the first healthy one.</summary>
 public sealed record MlSettings(IReadOnlyList<MlEndpoint> Endpoints)
 {

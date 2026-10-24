@@ -433,12 +433,19 @@ public static class FileEndpoints
         ClaimsPrincipal principal,
         DokumentDbContext db,
         SettingsStore settings,
+        TrashService trash,
         CancellationToken ct
     )
     {
         var user = await db.Users.AsNoTracking().SingleAsync(u => u.Id == principal.UserId(), ct);
         var defaultQuota = (await settings.GetAsync(SettingKeys.Storage, ct)).DefaultQuota;
-        return TypedResults.Ok(new StorageUsage(user.UsedBytes, user.Quota.Resolve(defaultQuota)));
+        return TypedResults.Ok(
+            new StorageUsage(
+                user.UsedBytes,
+                user.Quota.Resolve(defaultQuota),
+                await trash.FreeableBytesAsync(user.Id, ct)
+            )
+        );
     }
 
     internal static async Task<Dictionary<Guid, DuplicateMatch>> MatchesAsync(

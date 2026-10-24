@@ -40,6 +40,13 @@ public static class SettingKeys
         )
     );
 
+    public static readonly SettingKey<TrashSettings> Trash = new(
+        "trash",
+        TrashSettings.Default,
+        s => new JsonObject { ["keepDays"] = s.KeepDays },
+        json => new TrashSettings(json.GetProperty("keepDays").GetInt32())
+    );
+
     public static readonly SettingKey<MlSettings> Ml = new(
         "ml",
         MlSettings.Default,

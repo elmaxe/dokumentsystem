@@ -140,6 +140,7 @@ function Shell() {
           onNewAction={onNew}
           used={storage.data?.usedBytes ?? 0}
           quota={storage.data ? (storage.data.quotaBytes ?? null) : null}
+          trash={storage.data?.trashBytes}
           className="max-md:hidden"
         />
       )}
@@ -154,6 +155,7 @@ function Shell() {
             language={picked ?? "browser"}
             currentLanguage={i18n.language === "sv" ? "sv" : "en"}
             onLanguageChange={(choice) => void setLanguage(choice)}
+            onTrash={() => void navigate({ to: "/trash" })}
             onAdmin={session.data?.user.role === "admin" ? () => void navigate({ to: "/admin/people" }) : undefined}
             onSignOut={() => void signOut()}
             trigger={

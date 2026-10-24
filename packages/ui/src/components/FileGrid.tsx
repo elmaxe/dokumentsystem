@@ -1,5 +1,5 @@
 import { formatFileDate } from "@dokument/core";
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
 import { isFolder, isPaged, type FileItem } from "../lib/files";
@@ -22,7 +22,7 @@ export type FileViewProps<T extends FileItem = FileItem> = {
   menuActions?: (item: T) => MenuAction[];
   onAction?: (action: string, item: T) => void;
   /** Overrides the metadata line, such as "You opened today" in Recent. */
-  meta?: (item: T) => string;
+  meta?: (item: T) => ReactNode;
 };
 
 type TileProps = {
@@ -31,7 +31,7 @@ type TileProps = {
   itemProps: ReturnType<ReturnType<typeof useFileSelection<FileItem>>["itemProps"]>;
   menuActions?: MenuAction[];
   onAction?: (action: string) => void;
-  meta: string;
+  meta: ReactNode;
 };
 
 function Tile({ item, selected, itemProps, menuActions, onAction, meta }: TileProps) {

@@ -28,6 +28,7 @@ import {
   errorMessage,
   folderQuery,
   invalidateFolders,
+  invalidateTrash,
   toItem,
   type Item,
 } from "./drive";
@@ -84,6 +85,25 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
     if (files.length > 0) toast(t("toasts.downloading", { count: files.length }));
   };
 
+  const trash = async (targets: Item[]) => {
+    const ids = targets.map((item) => item.id);
+    try {
+      await drive.trash(ids);
+      setSelected([]);
+      toast(t("toasts.trashed", { count: ids.length }), {
+        label: t("common.undo"),
+        onClick: () =>
+          void drive
+            .restore(ids)
+            .catch((error: unknown) => toast(errorMessage(t, error)))
+            .finally(() => void invalidateTrash(queryClient)),
+      });
+    } catch (error) {
+      toast(errorMessage(t, error));
+    }
+    await invalidateTrash(queryClient);
+  };
+
   const act = (action: string, targets: Item[]) => {
     const first = targets[0];
     if (!first) return;
@@ -105,6 +125,9 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
         setSelected([first.id]);
         setDetails({ open: true, tab: "info" });
         break;
+      case "trash":
+        void trash(targets);
+        break;
       default:
         toast(t("common.notYet"));
     }
@@ -116,6 +139,7 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
     { id: "rename", icon: "edit", label: t("actions.rename"), separatorBefore: isFolder(item) },
     { id: "move", icon: "drive_file_move", label: t("actions.move") },
     { id: "details", icon: "info", label: t("actions.details") },
+    { id: "trash", icon: "delete", label: t("actions.trash"), separatorBefore: true },
   ];
 
   const meta = (item: Item) =>
@@ -126,6 +150,7 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
     selected,
     onSelectedChange: setSelected,
     onOpen: (item: Item) => act("open", [item]),
+    onTrash: (ids: string[]) => act("trash", ids.map((id) => byId.get(id)).filter((item): item is Item => !!item)),
     menuActions: menu,
     onAction: (action: string, item: Item) =>
       act(action, selected.includes(item.id) ? chosen : [item]),
@@ -145,6 +170,7 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
                 actions={[
                   { id: "download", icon: "download", label: t("actions.download") },
                   { id: "move", icon: "drive_file_move", label: t("actions.move") },
+                  { id: "trash", icon: "delete", label: t("actions.trash") },
                 ]}
                 moreActions={[
                   ...(single ? [{ id: "rename", icon: "edit", label: t("actions.rename") }] : []),

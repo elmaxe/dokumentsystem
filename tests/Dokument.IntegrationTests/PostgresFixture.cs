@@ -34,4 +34,16 @@ public sealed class PostgresFixture : IAsyncLifetime
             Database = name,
         }.ConnectionString;
     }
+
+    public async Task DropDatabaseAsync(string connectionString)
+    {
+        var name = new NpgsqlConnectionStringBuilder(connectionString).Database;
+        await using var connection = new NpgsqlConnection(container.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            $"DROP DATABASE IF EXISTS {name} WITH (FORCE)",
+            connection
+        );
+        await command.ExecuteNonQueryAsync();
+    }
 }

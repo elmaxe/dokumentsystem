@@ -7,6 +7,7 @@ namespace Dokument.Server.Admin;
 public sealed record AdminSettingsDto(
     StorageSettingsDto Storage,
     VersionSettingsDto Versions,
+    TrashSettingsDto Trash,
     MlSettingsDto Ml,
     ScannerSettingsDto Scanner,
     SignInInfo SignIn
@@ -16,6 +17,9 @@ public sealed record AdminSettingsDto(
 public sealed record StorageSettingsDto(long? DefaultQuotaBytes);
 
 public sealed record VersionSettingsDto(int KeepDays, int MaxVersions);
+
+/// <param name="KeepDays">Items in the trash are deleted forever this many days after they were trashed (§12).</param>
+public sealed record TrashSettingsDto(int KeepDays);
 
 public sealed record MlSettingsDto(List<MlEndpointDto> Endpoints);
 

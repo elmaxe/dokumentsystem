@@ -9,11 +9,13 @@ export type StorageMeterProps = {
   used: number;
   /** Bytes. Null means no limit: the meter shows only what is used. */
   quota: number | null;
+  /** Bytes of that which emptying the trash would free. Mentioned when there are any, so people know where to free space. */
+  trash?: number;
   className?: string;
 };
 
 /** Storage used against the quota. Warns at 80 % and is critical at 95 %, in words too (§16.4). */
-export function StorageMeter({ used, quota, className }: StorageMeterProps) {
+export function StorageMeter({ used, quota, trash = 0, className }: StorageMeterProps) {
   const { t, i18n } = useTranslation();
   const percent = quota ? Math.min(100, Math.round((used / quota) * 100)) : 0;
   const level = percent >= 95 ? "critical" : percent >= 80 ? "warning" : "ok";
@@ -51,6 +53,11 @@ export function StorageMeter({ used, quota, className }: StorageMeterProps) {
             ? t("storage.warning", { amounts })
             : amounts}
       </span>
+      {trash > 0 && (
+        <span className="tabular text-body-sm text-on-surface-variant">
+          {t("storage.inTrash", { size: formatBytes(trash, i18n.language) })}
+        </span>
+      )}
     </div>
   );
 }

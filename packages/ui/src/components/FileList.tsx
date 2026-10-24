@@ -1,4 +1,5 @@
 import { formatBytes, formatFileDate } from "@dokument/core";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
 import type { FileItem, Sort, SortKey } from "../lib/files";
@@ -12,17 +13,22 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { ActionContextMenu, ActionMenu } from "./Menu";
 
-export type FileListProps<T extends FileItem = FileItem> = FileViewProps<T> & {
-  sort: Sort;
-  onSortChange: (sort: Sort) => void;
+/** A column after the name. Columns with a sort key get a sortable header. */
+export type FileColumn<T extends FileItem = FileItem> = {
+  id: string;
+  label: string;
+  /** Width and alignment; add <code>@max-[600px]:hidden</code> to fold it into the second line on phones. */
+  className: string;
+  cell: (item: T) => ReactNode;
+  sortKey?: SortKey;
 };
 
-const columns: { key: SortKey; className: string }[] = [
-  { key: "name", className: "" },
-  { key: "owner", className: "w-[18%] @max-[600px]:hidden" },
-  { key: "modified", className: "w-[18%] @max-[600px]:hidden" },
-  { key: "size", className: "w-[11%] text-right @max-[600px]:hidden" },
-];
+export type FileListProps<T extends FileItem = FileItem> = FileViewProps<T> & {
+  sort?: Sort;
+  onSortChange?: (sort: Sort) => void;
+  /** Replaces the owner / modified / size columns, as the Trash page does. */
+  columns?: FileColumn<T>[];
+};
 
 /**
  * A sortable name / owner / modified / size table (§16.4). Under 600px of its own width the
@@ -39,6 +45,7 @@ export function FileList<T extends FileItem>({
   meta,
   sort,
   onSortChange,
+  columns: custom,
 }: FileListProps<T>) {
   const { t, i18n } = useTranslation();
   const coarse = useCoarsePointer();
@@ -54,6 +61,35 @@ export function FileList<T extends FileItem>({
   const size = (item: FileItem) =>
     item.size === undefined ? "—" : formatBytes(item.size, i18n.language);
   const date = (item: FileItem) => formatFileDate(item.modified, i18n.language);
+  const columns: FileColumn<T>[] = custom ?? [
+    {
+      id: "owner",
+      label: t("files.columns.owner"),
+      className: "w-[18%] truncate @max-[600px]:hidden",
+      cell: (item) => item.owner,
+      sortKey: "owner",
+    },
+    {
+      id: "modified",
+      label: t("files.columns.modified"),
+      className: "w-[18%] tabular truncate @max-[600px]:hidden",
+      cell: date,
+      sortKey: "modified",
+    },
+    {
+      id: "size",
+      label: t("files.columns.size"),
+      className: "w-[11%] tabular truncate text-right @max-[600px]:hidden",
+      cell: size,
+      sortKey: "size",
+    },
+  ];
+  // The <col> takes the width, and hides with the cells on phones so the name gets the room.
+  const colClass = (className: string) =>
+    className
+      .split(" ")
+      .filter((c) => c.startsWith("w-") || c === "@max-[600px]:hidden")
+      .join(" ");
 
   return (
     <div
@@ -64,8 +100,9 @@ export function FileList<T extends FileItem>({
         {/* Column widths live here, not on the header cells, because phones hide the header row. */}
         <colgroup>
           <col className="w-11" />
+          <col />
           {columns.map((column) => (
-            <col key={column.key} className={column.className.replace(/\btext-right\b/, "")} />
+            <col key={column.id} className={colClass(column.className)} />
           ))}
           <col className="w-12" />
         </colgroup>
@@ -78,35 +115,22 @@ export function FileList<T extends FileItem>({
                 label={t("files.selectAll")}
               />
             </th>
-            {columns.map((column) => {
-              const active = sort.key === column.key;
-              return (
-                <th
-                  key={column.key}
-                  aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
-                  className={cn("px-3 text-left font-normal", column.className)}
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onSortChange({
-                        key: column.key,
-                        dir: active && sort.dir === "asc" ? "desc" : "asc",
-                      })
-                    }
-                    className={cn(
-                      "inline-flex cursor-pointer items-center gap-1 rounded-xs text-label-md whitespace-nowrap",
-                      active ? "text-on-surface" : "text-on-surface-variant hover:text-on-surface",
-                    )}
-                  >
-                    {t(`files.columns.${column.key}`)}
-                    {active && (
-                      <Icon name={sort.dir === "asc" ? "arrow_upward" : "arrow_downward"} size={16} />
-                    )}
-                  </button>
-                </th>
-              );
-            })}
+            <SortHeader
+              label={t("files.columns.name")}
+              sortKey="name"
+              sort={sort}
+              onSortChange={onSortChange}
+            />
+            {columns.map((column) => (
+              <SortHeader
+                key={column.id}
+                label={column.label}
+                sortKey={column.sortKey}
+                sort={sort}
+                onSortChange={onSortChange}
+                className={cn(column.className.includes("text-right") && "text-right", column.className.includes("@max-[600px]:hidden") && "@max-[600px]:hidden")}
+              />
+            ))}
             <th className="w-12">
               <span className="sr-only">{t("files.columns.actions")}</span>
             </th>
@@ -165,11 +189,11 @@ export function FileList<T extends FileItem>({
                     <FileFlags item={item} />
                   </div>
                 </td>
-                <td className="truncate px-3 @max-[600px]:hidden">{item.owner}</td>
-                <td className="tabular truncate px-3 @max-[600px]:hidden">{date(item)}</td>
-                <td className="tabular truncate px-3 text-right @max-[600px]:hidden">
-                  {size(item)}
-                </td>
+                {columns.map((column) => (
+                  <td key={column.id} className={cn("px-3", column.className.replace(/\bw-\S+/, ""))}>
+                    {column.cell(item)}
+                  </td>
+                ))}
                 <td className="pr-2">
                   {actions && act && (
                     <ActionMenu
@@ -202,5 +226,43 @@ export function FileList<T extends FileItem>({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSortChange,
+  className,
+}: {
+  label: string;
+  sortKey?: SortKey;
+  sort?: Sort;
+  onSortChange?: (sort: Sort) => void;
+  className?: string;
+}) {
+  const active = !!sortKey && sort?.key === sortKey;
+  return (
+    <th
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+      className={cn("px-3 text-left font-normal", className)}
+    >
+      {sortKey && onSortChange ? (
+        <button
+          type="button"
+          onClick={() => onSortChange({ key: sortKey, dir: active && sort.dir === "asc" ? "desc" : "asc" })}
+          className={cn(
+            "inline-flex cursor-pointer items-center gap-1 rounded-xs text-label-md whitespace-nowrap",
+            active ? "text-on-surface" : "text-on-surface-variant hover:text-on-surface",
+          )}
+        >
+          {label}
+          {active && <Icon name={sort.dir === "asc" ? "arrow_upward" : "arrow_downward"} size={16} />}
+        </button>
+      ) : (
+        <span className="text-label-md whitespace-nowrap text-on-surface-variant">{label}</span>
+      )}
+    </th>
   );
 }
