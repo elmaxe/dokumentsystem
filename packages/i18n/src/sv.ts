@@ -15,7 +15,7 @@ export const sv: Strings = {
   },
   auth: {
     title: "Logga in på Dokumentsystem",
-    body: "Använd kontot du har i hushållets inloggningstjänst.",
+    body: "Använd kontot du redan har hos inloggningstjänsten.",
     signIn: "Logga in",
     signInWith: "Logga in med {{provider}}",
     notConfigured: "Inloggningen är inte konfigurerad än. Be din administratör att ställa in OIDC för servern.",
@@ -337,7 +337,7 @@ export const sv: Strings = {
       people: "Personer",
     },
     signIn: {
-      intro: "Personer loggar in med hushållets OIDC-tjänst, till exempel Authentik eller Keycloak.",
+      intro: "Personer loggar in via OIDC-tjänsten, till exempel Authentik eller Keycloak.",
       issuer: "Utfärdar-URL",
       clientId: "Klient-ID",
       clientSecret: "Klienthemlighet",
@@ -347,7 +347,7 @@ export const sv: Strings = {
       autoCreate: "Skapa konton vid första inloggningen",
       autoCreateHint: "Av betyder att bara personer du lägger till under Användare kan logga in.",
       readOnlyIntro:
-        "Personer loggar in med hushållets OIDC-tjänst. Inställningarna görs med miljövariabler när servern startar, så här visas de bara.",
+        "Personer loggar in via OIDC-tjänsten. Inställningarna görs med miljövariabler när servern startar, så här visas de bara.",
       provider: "Tjänst",
       whoCanSignIn: "Vem kan logga in",
       anyone: "Alla som tjänsten släpper in",
@@ -357,7 +357,7 @@ export const sv: Strings = {
     },
     ml: {
       intro:
-        "Maskininlärningen körs i en egen container, så den kan ligga på en starkare dator än NAS:en. Sökningen fungerar utan den.",
+        "Maskininlärningen körs i en egen container, så den kan köras på en kraftfullare dator än den här servern. Sökningen fungerar utan den.",
       url: "URL till ML-tjänsten",
       urlHint: "Till exempel http://gpu-box.lan:3003. Lämna tomt för att stänga av den.",
       test: "Testa anslutningen",
@@ -369,7 +369,7 @@ export const sv: Strings = {
       semantic: "Sökning på innebörd",
       transcribe: "Transkribering av ljud och video",
       listIntro:
-        "Maskininlärningen körs i en egen container, så den kan ligga på en starkare dator än NAS:en. Den första som svarar används, de andra är reserver.",
+        "Maskininlärningen körs i en egen container, så den kan köras på en kraftfullare dator än den här servern. Den första tjänsten i listan som svarar används, och de andra är reserver.",
       empty: "Inga maskininlärningstjänster än.",
       add: "Lägg till en maskininlärningstjänst",
       urlLabel: "URL",

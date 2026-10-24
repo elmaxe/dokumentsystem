@@ -692,6 +692,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 ### 16.5 Content and accessibility
 
 - Copy is in sv and en from day one. Swedish runs about 30 % longer, so never size a control to fit English text.
+- **Copy doesn't assume a setup.** Dokumentsystem is open source and runs on whatever people have, so the UI never says "the NAS", "your household" or names a particular machine or provider. Say "this server", "your OIDC provider" or "a more powerful computer" instead. Product names appear only as examples ("such as Authentik or Keycloak") or when they come from config (`OIDC_PROVIDER_NAME`).
 - Copy is in sentence case, with no exclamation marks and no emoji. Buttons are verbs ("Copy link"), and toasts confirm in the past tense ("Link copied"). Errors say what happened and what to do next.
 - **Icons:** Material Symbols Rounded (Apache-2.0), outlined by default and filled when active or selected.
 - Keyboard navigation everywhere: arrow keys in the grid, Space to select, Enter to open, Delete to trash. Focus is shown by a visible 2 px focus ring. Every icon button has a label.

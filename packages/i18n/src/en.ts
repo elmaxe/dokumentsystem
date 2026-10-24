@@ -13,7 +13,7 @@ export const en = {
   },
   auth: {
     title: "Sign in to Dokumentsystem",
-    body: "Use the account you have with your household's sign-in service.",
+    body: "Use the account you already have with your sign-in provider.",
     signIn: "Sign in",
     signInWith: "Sign in with {{provider}}",
     notConfigured: "Sign-in isn't set up yet. Ask your admin to configure OIDC for the server.",
@@ -333,7 +333,7 @@ export const en = {
       people: "People",
     },
     signIn: {
-      intro: "People sign in with your household's OIDC provider, such as Authentik or Keycloak.",
+      intro: "People sign in with your OIDC provider, such as Authentik or Keycloak.",
       issuer: "Issuer URL",
       clientId: "Client ID",
       clientSecret: "Client secret",
@@ -343,7 +343,7 @@ export const en = {
       autoCreate: "Create accounts on first sign-in",
       autoCreateHint: "Off means only people you add under Users can sign in.",
       readOnlyIntro:
-        "People sign in with your household's OIDC provider. These are set with environment variables when the server starts, so they're shown here read-only.",
+        "People sign in with your OIDC provider. These are set with environment variables when the server starts, so they're shown here read-only.",
       provider: "Provider",
       whoCanSignIn: "Who can sign in",
       anyone: "Anyone your provider lets in",
@@ -353,7 +353,7 @@ export const en = {
     },
     ml: {
       intro:
-        "Machine learning runs in its own container, so it can live on a stronger machine than the NAS. Search works without it.",
+        "Machine learning runs in its own container, so it can run on a more powerful computer than this server. Search works without it.",
       url: "ML service URL",
       urlHint: "For example http://gpu-box.lan:3003. Leave empty to turn it off.",
       test: "Test connection",
@@ -365,7 +365,7 @@ export const en = {
       semantic: "Search by meaning",
       transcribe: "Transcribe audio and video",
       listIntro:
-        "Machine learning runs in its own container, so it can live on a stronger computer than the NAS. The first one that answers is used; the rest are fallbacks.",
+        "Machine learning runs in its own container, so it can run on a more powerful computer than this server. The first service in the list that answers is used, and the others are fallbacks.",
       empty: "No machine learning services yet.",
       add: "Add a machine learning service",
       urlLabel: "URL",
