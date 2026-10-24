@@ -33,6 +33,9 @@ public sealed class User
 
     /// <summary>The UI language the person picked; null follows the browser (§23).</summary>
     public UiLanguage? Locale { get; set; }
+
+    /// <summary>Show times to the second ("09:14:07") instead of to the minute (§16.5).</summary>
+    public bool ShowSeconds { get; set; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? LastLoginAt { get; set; }
     public DateTimeOffset? DisabledAt { get; set; }

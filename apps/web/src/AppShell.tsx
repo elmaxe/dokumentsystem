@@ -7,6 +7,7 @@ import {
   adminPlaces,
   Avatar,
   BottomNav,
+  DisplaySettingsProvider,
   Icon,
   IconButton,
   NavRail,
@@ -128,7 +129,19 @@ function Shell() {
     queryClient.setQueryData(sessionQuery.queryKey, (current) => (current ? { ...current, user: data } : current));
   }
 
+  const showSeconds = session.data?.user.showSeconds ?? false;
+
+  async function setShowSeconds(value: boolean) {
+    const { data } = await api.PUT("/api/v1/me/preferences", { body: { showSeconds: value } });
+    if (!data) {
+      toast(t("account.settingFailed"));
+      return;
+    }
+    queryClient.setQueryData(sessionQuery.queryKey, (current) => (current ? { ...current, user: data } : current));
+  }
+
   return (
+    <DisplaySettingsProvider value={{ showSeconds }}>
     <div className="flex h-dvh min-h-0 bg-surface text-on-surface">
       {inAdmin ? (
         <AdminRail active={adminPlace} onNavigate={toAdmin} onExit={exitAdmin} className="max-md:hidden" />
@@ -155,6 +168,8 @@ function Shell() {
             language={picked ?? "browser"}
             currentLanguage={i18n.language === "sv" ? "sv" : "en"}
             onLanguageChange={(choice) => void setLanguage(choice)}
+            showSeconds={showSeconds}
+            onShowSecondsChange={(value) => void setShowSeconds(value)}
             onTrash={() => void navigate({ to: "/trash" })}
             onAdmin={session.data?.user.role === "admin" ? () => void navigate({ to: "/admin/people" }) : undefined}
             onSignOut={() => void signOut()}
@@ -259,5 +274,6 @@ function Shell() {
         }}
       />
     </div>
+    </DisplaySettingsProvider>
   );
 }

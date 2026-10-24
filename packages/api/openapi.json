@@ -66,6 +66,37 @@
         }
       }
     },
+    "/api/v1/me/preferences": {
+      "put": {
+        "tags": [
+          "Auth"
+        ],
+        "description": "Display settings that follow the person to every device.",
+        "operationId": "SetMyPreferences",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPreferencesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/config": {
       "get": {
         "tags": [
@@ -1601,6 +1632,23 @@
           }
         }
       },
+      "FolderCounts": {
+        "required": [
+          "files",
+          "folders"
+        ],
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "folders": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "FolderListing": {
         "required": [
           "folder",
@@ -1811,7 +1859,8 @@
           "modifiedAt",
           "currentVersionId",
           "versionNumber",
-          "thumbnail"
+          "thumbnail",
+          "contents"
         ],
         "type": "object",
         "properties": {
@@ -1882,6 +1931,16 @@
           },
           "thumbnail": {
             "$ref": "#/components/schemas/ThumbnailState"
+          },
+          "contents": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FolderCounts"
+              }
+            ]
           }
         }
       },
@@ -2089,6 +2148,17 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "SetPreferencesRequest": {
+        "required": [
+          "showSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "showSeconds": {
+            "type": "boolean"
           }
         }
       },
@@ -2367,7 +2437,8 @@
           "displayName",
           "email",
           "role",
-          "language"
+          "language",
+          "showSeconds"
         ],
         "type": "object",
         "properties": {
@@ -2392,6 +2463,9 @@
               "null",
               "string"
             ]
+          },
+          "showSeconds": {
+            "type": "boolean"
           }
         }
       },

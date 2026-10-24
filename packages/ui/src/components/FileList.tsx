@@ -1,8 +1,8 @@
-import { formatBytes, formatFileDate } from "@dokument/core";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
-import type { FileItem, Sort, SortKey } from "../lib/files";
+import { useFormat } from "../lib/display";
+import { contentsLabel, isFolder, isPaged, type FileItem, type Sort, type SortKey } from "../lib/files";
 import { useFileSelection } from "../lib/useFileSelection";
 import { useCoarsePointer } from "../lib/usePointer";
 import { IconButton } from "./Button";
@@ -47,7 +47,8 @@ export function FileList<T extends FileItem>({
   onSortChange,
   columns: custom,
 }: FileListProps<T>) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const format = useFormat();
   const coarse = useCoarsePointer();
   const { containerRef, itemProps } = useFileSelection({
     items,
@@ -58,9 +59,11 @@ export function FileList<T extends FileItem>({
   });
   const all = items.length > 0 && selected.length === items.length;
   const some = selected.length > 0 && !all;
-  const size = (item: FileItem) =>
-    item.size === undefined ? "—" : formatBytes(item.size, i18n.language);
-  const date = (item: FileItem) => formatFileDate(item.modified, i18n.language);
+  // An empty folder has nothing to measure, so it shows a dash like a size the server doesn't know.
+  const empty = (item: FileItem) => item.contents?.files === 0 && item.contents.folders === 0;
+  const hasSize = (item: FileItem) => item.size !== undefined && !empty(item);
+  const size = (item: FileItem) => (hasSize(item) ? format.bytes(item.size!) : "—");
+  const date = (item: FileItem) => format.date(item.modified);
   const columns: FileColumn<T>[] = custom ?? [
     {
       id: "owner",
@@ -73,14 +76,16 @@ export function FileList<T extends FileItem>({
       id: "modified",
       label: t("files.columns.modified"),
       className: "w-[18%] tabular truncate @max-[600px]:hidden",
-      cell: date,
+      cell: (item) => <span title={format.fullDate(item.modified)}>{date(item)}</span>,
       sortKey: "modified",
     },
     {
       id: "size",
       label: t("files.columns.size"),
       className: "w-[11%] tabular truncate text-right @max-[600px]:hidden",
-      cell: size,
+      cell: (item) => (
+        <span title={item.contents && contentsLabel(t, item.contents)}>{size(item)}</span>
+      ),
       sortKey: "size",
     },
   ];
@@ -165,11 +170,7 @@ export function FileList<T extends FileItem>({
                 </td>
                 <td className="px-3 @max-[600px]:py-2">
                   <div className="flex min-w-0 items-center gap-3">
-                    <FileTypeIcon
-                      kind={item.kind}
-                      shared={item.shared}
-                      className="@max-[600px]:text-[28px]"
-                    />
+                    <ListThumbnail item={item} />
                     <div className="flex min-w-0 flex-col">
                       <span
                         title={item.name}
@@ -181,7 +182,7 @@ export function FileList<T extends FileItem>({
                         {item.name}
                       </span>
                       <span className="tabular hidden truncate text-body-sm @max-[600px]:block">
-                        {meta?.(item) ?? [date(item), item.size !== undefined && size(item)]
+                        {meta?.(item) ?? [date(item), hasSize(item) && size(item)]
                           .filter(Boolean)
                           .join(" · ")}
                       </span>
@@ -226,6 +227,46 @@ export function FileList<T extends FileItem>({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * The thumbnail in place of the type icon once the worker has made one (§16.4): 32 px, 40 px on phones. Pages
+ * show their top, as in the grid. Folders and files without a preview keep the icon, in a box of the same size
+ * so names line up.
+ */
+function ListThumbnail({ item }: { item: FileItem }) {
+  const [failed, setFailed] = useState(false);
+  const box = "relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-xs @max-[600px]:size-10";
+  if (isFolder(item) || !item.thumbnail || failed) {
+    return (
+      <span className={cn(box, item.thumbnailPending && "bg-surface-container-high")}>
+        <FileTypeIcon
+          kind={item.kind}
+          shared={item.shared}
+          size={item.thumbnailPending ? "sm" : undefined}
+          className="@max-[600px]:text-[28px]"
+        />
+        {item.thumbnailPending && (
+          <span
+            aria-hidden
+            className="absolute inset-0 animate-shimmer bg-linear-100 from-transparent from-30% via-surface-container-lowest/60 to-transparent to-70%"
+          />
+        )}
+      </span>
+    );
+  }
+  return (
+    <span className={cn(box, "bg-surface-container-high", isPaged(item) && "border border-outline-variant bg-surface-container-lowest")}>
+      <img
+        src={item.thumbnail}
+        alt=""
+        draggable={false}
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className={cn("size-full object-cover", isPaged(item) && "object-top")}
+      />
+    </span>
   );
 }
 

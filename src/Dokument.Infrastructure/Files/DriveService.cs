@@ -82,6 +82,47 @@ public sealed class DriveService(
         return chains.ToDictionary(c => c.Key, c => c.Value.Select(id => byId[id]).ToList());
     }
 
+    /// <summary>
+    /// What each folder holds, keyed by folder id (§16.4): the current versions of every file below it and how many
+    /// files and folders that is, in one query however many folders. A live folder counts its live contents; a trashed
+    /// one counts what went to the trash with it.
+    /// </summary>
+    public async Task<Dictionary<Guid, FolderContents>> FolderContentsAsync(
+        IReadOnlyCollection<Node> folders,
+        CancellationToken ct = default
+    )
+    {
+        var ids = folders.Where(f => f.IsFolder).Select(f => f.Id).ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var rows = await db
+            .Database.SqlQuery<FolderContentsRow>(
+                $"""
+                SELECT f.id AS "FolderId",
+                       COALESCE(sum(v.size), 0)::bigint AS "Bytes",
+                       count(*) FILTER (WHERE n.kind = 'file')::int AS "Files",
+                       count(*) FILTER (WHERE n.kind = 'folder')::int AS "Folders"
+                FROM nodes f
+                JOIN nodes n ON n.path <@ f.path AND n.id <> f.id
+                    AND n.trashed_root_id IS NOT DISTINCT FROM f.trashed_root_id
+                LEFT JOIN file_versions v ON v.id = n.current_version_id
+                WHERE f.id = ANY({ids})
+                GROUP BY f.id
+                """
+            )
+            .ToListAsync(ct);
+        var found = rows.ToDictionary(
+            r => r.FolderId,
+            r => new FolderContents(r.Bytes, r.Files, r.Folders)
+        );
+        return ids.ToDictionary(id => id, id => found.GetValueOrDefault(id, FolderContents.Empty));
+    }
+
+    private sealed record FolderContentsRow(Guid FolderId, long Bytes, int Files, int Folders);
+
     public async Task<Node> CreateFolderAsync(
         Actor actor,
         Guid? parentId,
@@ -694,3 +735,9 @@ internal sealed record NewFile(
 public sealed record AddedFile(Node Node, FileVersion Version, bool Created, bool NewVersion);
 
 public sealed record FileContent(Node Node, FileVersion Version, string PhysicalPath);
+
+/// <summary>The size of everything in a folder, counting each file's current version once, and how many files and folders that is.</summary>
+public sealed record FolderContents(long Bytes, int Files, int Folders)
+{
+    public static readonly FolderContents Empty = new(0, 0, 0);
+}

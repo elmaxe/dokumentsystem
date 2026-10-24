@@ -1,5 +1,4 @@
 import type { TrashItem } from "@dokument/api";
-import { formatBytes, formatFileDate } from "@dokument/core";
 import {
   ActionBar,
   Banner,
@@ -12,6 +11,7 @@ import {
   useSnackbar,
   type FileColumn,
   type MenuAction,
+  useFormat,
 } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -33,7 +33,8 @@ type Confirm = { kind: "delete"; rows: Row[] } | { kind: "empty" } | { kind: "op
  * things back; Delete forever and Empty trash confirm first. Trashed items can't be opened until they're restored.
  */
 export function TrashPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const format = useFormat();
   const toast = useSnackbar();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -80,7 +81,7 @@ export function TrashPage() {
       className: "w-[24%] @max-[600px]:hidden",
       cell: (row) => (
         <span className="tabular flex flex-col py-1 leading-tight">
-          <span>{formatFileDate(row.trash.trashedAt, i18n.language)}</span>
+          <span title={format.fullDate(row.trash.trashedAt)}>{format.date(row.trash.trashedAt)}</span>
           <span className="text-body-sm">{daysLeft(row) <= soonDays ? warning(row) : countdown(row)}</span>
         </span>
       ),
@@ -91,7 +92,7 @@ export function TrashPage() {
       className: "w-[11%] tabular truncate text-right @max-[600px]:hidden",
       cell: (row) => (
         <span className="flex flex-col py-1 leading-tight">
-          <span>{row.size ? formatBytes(row.size, i18n.language) : "—"}</span>
+          <span>{row.size ? format.bytes(row.size) : "—"}</span>
           {row.trash.itemCount > 0 && (
             <span className="text-body-sm">{t("trash.items", { count: row.trash.itemCount })}</span>
           )}
@@ -190,7 +191,7 @@ export function TrashPage() {
           title: t("trash.empty.title"),
           text: `${t("trash.empty.text", {
             count: rows.length,
-            size: formatBytes(listing.data?.freeableBytes ?? 0, i18n.language),
+            size: format.bytes(listing.data?.freeableBytes ?? 0),
           })} ${t("trash.cantUndo")}`,
           action: t("files.emptyTrash"),
           danger: true,

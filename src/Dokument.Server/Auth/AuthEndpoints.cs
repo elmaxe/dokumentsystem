@@ -32,6 +32,11 @@ public static class AuthEndpoints
             .WithTags("Auth")
             .RequireAuthorization()
             .WithDescription("Null follows the browser's language.");
+        api.MapPut("/me/preferences", SetPreferences)
+            .WithName("SetMyPreferences")
+            .WithTags("Auth")
+            .RequireAuthorization()
+            .WithDescription("Display settings that follow the person to every device.");
 
         var sessions = api.MapGroup("/sessions").WithTags("Sessions").RequireAuthorization();
         sessions.MapGet("", ListMySessions).WithName("ListSessions");
@@ -118,6 +123,19 @@ public static class AuthEndpoints
         return TypedResults.Ok(UserProfile.From(user));
     }
 
+    private static async Task<Ok<UserProfile>> SetPreferences(
+        SetPreferencesRequest request,
+        ClaimsPrincipal principal,
+        DokumentDbContext db,
+        CancellationToken ct
+    )
+    {
+        var user = await db.Users.SingleAsync(u => u.Id == principal.UserId(), ct);
+        user.ShowSeconds = request.ShowSeconds;
+        await db.SaveChangesAsync(ct);
+        return TypedResults.Ok(UserProfile.From(user));
+    }
+
     private static async Task<NoContent> Logout(
         HttpContext context,
         ClaimsPrincipal principal,
@@ -180,20 +198,25 @@ public sealed record AuthConfig(bool Enabled, string? ProviderName);
 public sealed record CurrentSession(UserProfile User, Guid SessionId, string? CsrfToken);
 
 /// <param name="Language">The UI language the user picked; null follows the browser.</param>
+/// <param name="ShowSeconds">Times show seconds ("09:14:07").</param>
 public sealed record UserProfile(
     Guid Id,
     string DisplayName,
     string? Email,
     UserRole Role,
-    string? Language
+    string? Language,
+    bool ShowSeconds
 )
 {
     public static UserProfile From(User user) =>
-        new(user.Id, user.DisplayName, user.Email, user.Role, user.Locale?.Code);
+        new(user.Id, user.DisplayName, user.Email, user.Role, user.Locale?.Code, user.ShowSeconds);
 }
 
 /// <param name="Language"><c>sv</c>, <c>en</c>, or null to follow the browser.</param>
 public sealed record SetLanguageRequest(string? Language);
+
+/// <param name="ShowSeconds">Show times to the second.</param>
+public sealed record SetPreferencesRequest(bool ShowSeconds);
 
 public sealed record SessionInfo(
     Guid Id,

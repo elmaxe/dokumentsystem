@@ -40,13 +40,13 @@ export const admin = {
     unwrap(api.PUT("/api/v1/admin/users/{id}/quota", { params: { path: { id } }, body: { kind, bytes } })),
 };
 
-export const GB = 1_000_000_000;
+export const GiB = 1024 ** 3;
 
-/** Bytes as the GB number shown in a field: up to two decimals, no trailing zeros. */
-export const toGb = (bytes: number) => String(Math.round((bytes / GB) * 100) / 100);
+/** Bytes as the GiB number shown in a field: up to two decimals, no trailing zeros. */
+export const toGib = (bytes: number) => String(Math.round((bytes / GiB) * 100) / 100);
 
-/** The GB a person typed, as bytes; null when it isn't a size above 0. */
-export function parseGb(value: string): number | null {
+/** The GiB a person typed, as bytes; null when it isn't a size above 0. */
+export function parseGib(value: string): number | null {
   const number = Number(value.trim().replace(",", "."));
-  return Number.isFinite(number) && number > 0 ? Math.round(number * GB) : null;
+  return Number.isFinite(number) && number > 0 ? Math.round(number * GiB) : null;
 }

@@ -1,12 +1,14 @@
 using Dokument.Domain.Files;
 using Dokument.Domain.Previews;
+using Dokument.Infrastructure.Files;
 
 namespace Dokument.Server.Files;
 
-/// <param name="Size">Bytes of the current version. Null for folders.</param>
+/// <param name="Size">Bytes of the current version; for a folder, the current versions of everything in it.</param>
 /// <param name="MimeType">Of the current version. Null for folders.</param>
 /// <param name="Sha256">The current version's content hash, in hex. Null for folders.</param>
 /// <param name="Thumbnail">Whether <c>/nodes/{id}/thumbnail</c> has an image yet. Pending means the worker is on it; poll or wait.</param>
+/// <param name="Contents">How many files and folders a folder holds, at any depth. Null for files.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -21,20 +23,24 @@ public sealed record NodeDto(
     DateTimeOffset ModifiedAt,
     Guid? CurrentVersionId,
     int? VersionNumber,
-    ThumbnailState Thumbnail
+    ThumbnailState Thumbnail,
+    FolderCounts? Contents
 )
 {
     public static NodeDto From(
         Node node,
         IReadOnlyDictionary<Guid, string> ownerNames,
-        IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails
+        IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails,
+        IReadOnlyDictionary<Guid, FolderContents> folders
     ) =>
         new(
             node.Id,
             node.ParentId,
             node.Kind,
             node.Name.Value,
-            node.CurrentVersion?.Size,
+            folders.TryGetValue(node.Id, out var contents)
+                ? contents.Bytes
+                : node.CurrentVersion?.Size,
             node.CurrentVersion?.MimeType,
             node.CurrentVersion?.BlobHash.Hex,
             node.OwnerId,
@@ -45,9 +51,13 @@ public sealed record NodeDto(
             node.CurrentVersion?.Number,
             node.CurrentVersion is { } version
                 ? thumbnails.GetValueOrDefault(version.BlobHash, ThumbnailState.None)
-                : ThumbnailState.None
+                : ThumbnailState.None,
+            contents is null ? null : new FolderCounts(contents.Files, contents.Folders)
         );
 }
+
+/// <summary>What a folder holds, at any depth.</summary>
+public sealed record FolderCounts(int Files, int Folders);
 
 /// <summary>One step of a breadcrumb trail, from the top of "My files" down.</summary>
 public sealed record PathEntry(Guid Id, string Name);

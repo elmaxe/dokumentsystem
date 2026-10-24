@@ -246,6 +246,19 @@ public sealed class AdminTests(PostgresFixture postgres)
         Assert.Null((await DokumentApp.GetSessionAsync(alice)).User.Language);
     }
 
+    [Fact]
+    public async Task People_choose_to_show_seconds()
+    {
+        await using var app = await DokumentApp.StartAsync(postgres);
+        using var alice = await FileTests.SignInAsync(app, Alice);
+        Assert.False((await DokumentApp.GetSessionAsync(alice)).User.ShowSeconds);
+
+        (
+            await alice.PutAsJsonAsync("/api/v1/me/preferences", new SetPreferencesRequest(true))
+        ).EnsureSuccessStatusCode();
+        Assert.True((await DokumentApp.GetSessionAsync(alice)).User.ShowSeconds);
+    }
+
     private static async Task<StorageUsage?> StorageAsync(HttpClient client) =>
         await client.GetFromJsonAsync<StorageUsage>("/api/v1/storage", Json.Options);
 }
