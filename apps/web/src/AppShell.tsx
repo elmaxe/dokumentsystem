@@ -2,12 +2,17 @@ import { pickLanguage, type Language } from "@dokument/i18n";
 import {
   AccountMenu,
   ActionMenu,
+  AdminBottomNav,
+  AdminRail,
+  adminPlaces,
   Avatar,
   BottomNav,
   Icon,
+  IconButton,
   NavRail,
   UploadTray,
   useSnackbar,
+  type AdminPlace,
   type MenuAction,
   type Place,
 } from "@dokument/ui";
@@ -51,6 +56,9 @@ function Shell() {
   const place = (Object.entries(placePaths).find(([, path]) => path !== "/" && pathname.startsWith(path))?.[0] ??
     "files") as Place;
   const inAdmin = pathname.startsWith("/admin");
+  const adminPlace = adminPlaces.find((item) => pathname.startsWith(`/admin/${item.id}`))?.id;
+  const toAdmin = (id: AdminPlace) => void navigate({ to: `/admin/${id}` });
+  const exitAdmin = () => void navigate({ to: "/" });
   const inFiles = place === "files" && !inAdmin;
   const listing = useQuery({ ...folderQuery(inFiles ? folderId : null) });
   const folderName = listing.data?.folder?.name ?? t("nav.myFiles");
@@ -122,24 +130,31 @@ function Shell() {
 
   return (
     <div className="flex h-dvh min-h-0 bg-surface text-on-surface">
-      <NavRail
-        active={inAdmin ? undefined : place}
-        onNavigate={(id) => void navigate({ to: placePaths[id] })}
-        newActions={newActions}
-        onNewAction={onNew}
-        used={storage.data?.usedBytes ?? 0}
-        quota={storage.data ? (storage.data.quotaBytes ?? null) : null}
-        className="max-md:hidden"
-      />
+      {inAdmin ? (
+        <AdminRail active={adminPlace} onNavigate={toAdmin} onExit={exitAdmin} className="max-md:hidden" />
+      ) : (
+        <NavRail
+          active={place}
+          onNavigate={(id) => void navigate({ to: placePaths[id] })}
+          newActions={newActions}
+          onNewAction={onNew}
+          used={storage.data?.usedBytes ?? 0}
+          quota={storage.data ? (storage.data.quotaBytes ?? null) : null}
+          className="max-md:hidden"
+        />
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-topbar shrink-0 items-center gap-2 px-4 sm:px-6">
+          {inAdmin && (
+            <IconButton icon="arrow_back" label={t("admin.nav.exit")} onClick={exitAdmin} className="-ml-2 md:hidden" />
+          )}
           <AccountMenu
             name={name}
             email={session.data?.user.email}
             language={picked ?? "browser"}
             currentLanguage={i18n.language === "sv" ? "sv" : "en"}
             onLanguageChange={(choice) => void setLanguage(choice)}
-            onAdmin={session.data?.user.role === "admin" ? () => void navigate({ to: "/admin" }) : undefined}
+            onAdmin={session.data?.user.role === "admin" ? () => void navigate({ to: "/admin/people" }) : undefined}
             onSignOut={() => void signOut()}
             trigger={
               <button
@@ -163,11 +178,15 @@ function Shell() {
             </div>
           )}
         </div>
-        <BottomNav
-          active={!inAdmin && (place === "files" || place === "shared" || place === "recent") ? place : undefined}
-          onNavigate={(id) => (id === "search" ? toast(t("common.notYet")) : void navigate({ to: placePaths[id] }))}
-          className="shrink-0 md:hidden"
-        />
+        {inAdmin ? (
+          <AdminBottomNav active={adminPlace} onNavigate={toAdmin} className="shrink-0 md:hidden" />
+        ) : (
+          <BottomNav
+            active={place === "files" || place === "shared" || place === "recent" ? place : undefined}
+            onNavigate={(id) => (id === "search" ? toast(t("common.notYet")) : void navigate({ to: placePaths[id] }))}
+            className="shrink-0 md:hidden"
+          />
+        )}
       </div>
 
       {inFiles && uploads.items.length === 0 && (

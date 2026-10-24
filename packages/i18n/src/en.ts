@@ -323,6 +323,14 @@ export const en = {
   },
   admin: {
     title: "Admin settings",
+    nav: {
+      label: "Admin",
+      title: "Admin",
+      exit: "Back to files",
+      people: "People",
+      storage: "Storage",
+      settings: "Settings",
+    },
     sections: {
       signIn: "Sign-in",
       ml: "Machine learning",

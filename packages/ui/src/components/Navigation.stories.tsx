@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { AccountMenu, type LanguageChoice } from "./AccountMenu";
+import { AdminBottomNav, AdminRail } from "./AdminNav";
+import type { AdminPlace } from "../lib/places";
 import { Avatar } from "./Avatar";
 import { BottomNav, type BottomPlace } from "./BottomNav";
 import { Breadcrumbs } from "./Breadcrumbs";
@@ -30,6 +32,33 @@ export const RailExpanded: Story = { name: "Nav rail, expanded", render: () => <
 
 /** 840–1199px: 88px with labels under the icons. */
 export const RailCollapsed: Story = { name: "Nav rail, collapsed", render: () => <Rail mode="collapsed" /> };
+
+/** On admin pages the admin rail takes the nav rail's place. */
+export const Admin: Story = {
+  name: "Admin rail",
+  render: function Render() {
+    const [active, setActive] = useState<AdminPlace>("people");
+    return (
+      <div className="flex h-160">
+        <AdminRail mode="expanded" active={active} onNavigate={setActive} onExit={() => {}} />
+      </div>
+    );
+  },
+};
+
+/** The admin pages under 840px. */
+export const AdminBottom: Story = {
+  name: "Admin bottom nav",
+  render: function Render() {
+    const [active, setActive] = useState<AdminPlace>("people");
+    return (
+      <div className="flex h-dvh flex-col justify-end">
+        <AdminBottomNav active={active} onNavigate={setActive} />
+      </div>
+    );
+  },
+  globals: { viewport: { value: "phone", isRotated: false } },
+};
 
 /** Under 840px and in the app. */
 export const Bottom: Story = {

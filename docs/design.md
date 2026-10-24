@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.9** · Last updated: 2026-10-23
+> Status: **Draft v0.9** · Last updated: 2026-10-24
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -585,6 +585,7 @@ These are better in React DOM than through React Native Web.
 
 - **Layout:** a left nav rail, a top search bar and a content area. On mobile it collapses to a bottom nav.
   - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter.
+  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: machine learning, virus scanning, versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
 - **Content area:** grid/list toggle, breadcrumbs, sorting, multi-select with a contextual action bar, right-click menu.
 - **Details panel:** info, sharing, versions, activity.
 - **Upload tray** (bottom-right) with per-file progress, pause/resume and retry.
@@ -669,6 +670,8 @@ Sizes, dates and counts use tabular numbers.
 | 840–1199 px | Collapsed nav rail (88 px) | Grid / list | Dialogs |
 | ≥ 1200 px | Expanded nav (256 px) with storage meter | Grid / list + details panel (360 px) | Dialogs; upload tray bottom-right |
 
+On admin pages the same rail and bottom nav hold the admin pages instead (§15.2), with no storage meter.
+
 Touch interactions replace the desktop ones: long-press instead of right-click and rubber-band selection, and tap to open instead of double-click.
 
 ### 16.4 Core components
@@ -707,7 +710,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **Counted:** originals of all versions owned by the user, including trash, with blobs deduplicated per user. **Not counted:** renditions and thumbnails.
 - **Enforcement:** reserve at upload start and settle at completion (§8). `used_bytes` is updated in the same transaction. A nightly reconciliation job recomputes it and logs any drift.
 - **UX:** a storage meter in the nav, a breakdown page (by type, largest files, trash, old versions), and email plus in-app warnings at 80% and 95%.
-- **Admin view:** per-user usage, total disk usage, and the free space on the volume. Built in the admin page's Storage and People sections: the size of all originals (each blob once), and total and free space for the volume holding originals (plus the derived volume when it is separate).
+- **Admin view:** per-user usage, total disk usage, and the free space on the volume. Built on the admin Storage and People pages: the size of all originals (each blob once), and total and free space for the volume holding originals (plus the derived volume when it is separate).
 
 ### 17.1 Quota from an OIDC claim (planned, next after the admin page)
 
@@ -716,7 +719,7 @@ Households that manage people in their IdP can set each person's storage there i
 - **Configuration:** `OIDC_QUOTA_CLAIM` names the claim, read from the ID token or userinfo like the groups claim. It is a bootstrap setting like the other `OIDC_*` variables (§4.3). Unset means no claim is read and nothing changes.
 - **Values:** a byte count (`53687091200`), a decimal size (`50GB`, `1.5TB`, `500 MB`, case-insensitive, 1 GB = 10⁹ bytes as everywhere in the UI), or `unlimited`. A claim that can't be parsed is ignored and logged as a warning, without blocking the login.
 - **Applied on every login,** like the admin-group mapping (§5). The user row records where the quota came from (`quota_source {admin|claim}`). A changed value writes a `user.quota_change` audit event with the actor `system` and the source `claim`.
-- **The claim wins (proposed).** While a person's quota comes from the claim, the People section shows it as "Set by {provider}" and the edit dialog is read-only, so the page and the IdP never fight. If the claim later disappears, the person falls back to the default quota at the next login, and an admin can set a limit of their own again.
+- **The claim wins (proposed).** While a person's quota comes from the claim, the People page shows it as "Set by {provider}" and the edit dialog is read-only, so the page and the IdP never fight. If the claim later disappears, the person falls back to the default quota at the next login, and an admin can set a limit of their own again.
 - **Open:** whether an admin should be able to override a claim on the page. The proposal is no: the IdP stays the single source of truth for people it manages.
 
 ---
@@ -869,7 +872,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 14 | File storage (M1) | 2026-10-22: our own tus 1.0 endpoint; the server hashes the finished temp file once; names are `NodeName` (NFC, case-insensitive, 255 bytes); owner-only access until sharing (M4) behind one `NodeAccess` predicate; no quota until an admin sets one; audit table unpartitioned until M6 (§6–8, §18) |
 | 15 | Thumbnails and previews (M2) | 2026-10-23: our own Postgres job table; renditions keyed by blob hash; WebP thumbs at 256 and 640 px plus a 2048 px preview only when the browser can't show the original; HEIC via the image's system libvips; the grid polls until SignalR; the viewer reads an unaudited `/preview` endpoint (§6, §7, §10, §14) |
 | 16 | Observability | 2026-10-23: OpenTelemetry for traces, metrics and logs, off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set; standard `OTEL_*` variables only; trace context stored on jobs; strict no-PII attribute rules; optional Prometheus endpoint on a separate port (§22.1) |
-| 17 | Admin settings page | 2026-10-23: one page at `/admin` with sections that save separately; default quota off until set, per-person default / own limit / no limit; ML URLs in priority order with encrypted API keys and live health checks; ClamAV address stored and tested but not yet used; sign-in shown read-only; language is a per-person choice in the account menu (§4.3, §11, §17, §21, §23) |
+| 17 | Admin settings page | 2026-10-23: admin pages with sections that save separately (2026-10-24: split into People, Storage and Settings, with an admin rail that replaces the normal nav on those pages, as in Immich, §15.2); default quota off until set, per-person default / own limit / no limit; ML URLs in priority order with encrypted API keys and live health checks; ClamAV address stored and tested but not yet used; sign-in shown read-only; language is a per-person choice in the account menu (§4.3, §11, §17, §21, §23) |
 
 ## 26. Open questions
 

@@ -5,7 +5,6 @@ import { Icon } from "./Icon";
 import { ActionMenu, type MenuAction } from "./Menu";
 import { StorageMeter } from "./StorageMeter";
 
-
 export type NavRailProps = {
   active?: Place;
   onNavigate: (place: Place) => void;
@@ -59,35 +58,15 @@ export function NavRail({
         </button>
         }
       />
-      {places.map((place) => {
-        const on = place.id === active;
-        return (
-          <button
-            key={place.id}
-            type="button"
-            onClick={() => onNavigate(place.id)}
-            aria-current={on ? "page" : undefined}
-            className={cn(
-              "group flex w-full cursor-pointer flex-col items-center gap-1 pb-2 text-label-md rail-expanded:h-10 rail-expanded:flex-row rail-expanded:gap-3 rail-expanded:rounded-xl rail-expanded:px-4 rail-expanded:pb-0 rail-expanded:text-body-md rail-expanded:font-medium",
-              on
-                ? "text-on-surface rail-expanded:bg-secondary-container rail-expanded:font-semibold rail-expanded:text-on-secondary-container"
-                : "text-on-surface-variant hover:text-on-surface rail-expanded:hover:bg-on-surface/8",
-            )}
-          >
-            <span
-              className={cn(
-                "flex h-8 w-14 items-center justify-center rounded-full rail-expanded:h-auto rail-expanded:w-auto rail-expanded:bg-transparent",
-                on ? "bg-secondary-container text-on-secondary-container" : "group-hover:bg-on-surface/8 rail-expanded:group-hover:bg-transparent",
-              )}
-            >
-              <Icon name={place.icon} filled={on} />
-            </span>
-            <span className="max-w-full text-center leading-4 rail-expanded:truncate rail-expanded:text-left rail-expanded:leading-5">
-              {t(place.key)}
-            </span>
-          </button>
-        );
-      })}
+      {places.map((place) => (
+        <RailItem
+          key={place.id}
+          icon={place.icon}
+          label={t(place.key)}
+          active={place.id === active}
+          onClick={() => onNavigate(place.id)}
+        />
+      ))}
       <div className="min-h-4 flex-1" />
       <StorageMeter
         used={used}
@@ -95,5 +74,44 @@ export function NavRail({
         className="hidden border-t border-outline-variant px-4 pt-3 pb-2 rail-expanded:flex"
       />
     </nav>
+  );
+}
+
+/** One destination in a rail: icon over label at 88px, icon beside label when expanded. */
+export function RailItem({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "group flex w-full cursor-pointer flex-col items-center gap-1 pb-2 text-label-md rail-expanded:h-10 rail-expanded:flex-row rail-expanded:gap-3 rail-expanded:rounded-xl rail-expanded:px-4 rail-expanded:pb-0 rail-expanded:text-body-md rail-expanded:font-medium",
+        active
+          ? "text-on-surface rail-expanded:bg-secondary-container rail-expanded:font-semibold rail-expanded:text-on-secondary-container"
+          : "text-on-surface-variant hover:text-on-surface rail-expanded:hover:bg-on-surface/8",
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-8 w-14 items-center justify-center rounded-full rail-expanded:h-auto rail-expanded:w-auto rail-expanded:bg-transparent",
+          active ? "bg-secondary-container text-on-secondary-container" : "group-hover:bg-on-surface/8 rail-expanded:group-hover:bg-transparent",
+        )}
+      >
+        <Icon name={icon} filled={active} />
+      </span>
+      <span className="max-w-full text-center leading-4 rail-expanded:truncate rail-expanded:text-left rail-expanded:leading-5">
+        {label}
+      </span>
+    </button>
   );
 }

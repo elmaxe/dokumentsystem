@@ -16,77 +16,84 @@ const sections = [
 ] as const;
 type SectionId = (typeof sections)[number]["id"];
 
-/** Server settings for admins (docs/design.md §4.3). Each section saves on its own. */
-export function AdminPage() {
+/** The admin pages (docs/design.md §4.3). The admin rail in the app shell moves between them. */
+export function AdminPeoplePage() {
   const { t } = useTranslation();
-  const settings = useQuery(adminSettingsQuery);
-
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto px-4 pb-12 sm:px-6">
-      <div className="mx-auto flex max-w-300 gap-8 pt-2">
-        <nav aria-label={t("admin.title")} className="sticky top-2 hidden w-56 shrink-0 self-start lg:block">
-          <SectionLinks />
-        </nav>
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <h1 className="m-0 text-headline-sm lg:text-headline-md">{t("admin.title")}</h1>
-          <nav aria-label={t("admin.title")} className="-mx-4 overflow-x-auto px-4 lg:hidden">
-            <SectionLinks chips />
-          </nav>
-          {settings.isError && <Banner tone="error">{t("errors.generic")}</Banner>}
-          {settings.isPending && <Progress label={t("admin.title")} />}
-          {settings.data && (
-            <>
-              <StorageSection key={`s${settings.dataUpdatedAt}`} settings={settings.data} />
-              <PeopleSection />
-              <MlSection key={`m${settings.dataUpdatedAt}`} settings={settings.data} />
-              <ScannerSection key={`c${settings.dataUpdatedAt}`} settings={settings.data} />
-              <VersionsSection key={`v${settings.dataUpdatedAt}`} settings={settings.data} />
-              <SignInSection settings={settings.data} />
-            </>
-          )}
-        </div>
+    <AdminFrame title={t("admin.nav.people")}>
+      <PeopleSection />
+    </AdminFrame>
+  );
+}
+
+export function AdminStoragePage() {
+  const { t } = useTranslation();
+  return (
+    <AdminFrame title={t("admin.nav.storage")}>
+      {(settings) => <StorageSection key={settings.dataUpdatedAt} settings={settings.data} />}
+    </AdminFrame>
+  );
+}
+
+/** Server settings. Each section saves on its own. */
+export function AdminSettingsPage() {
+  const { t } = useTranslation();
+  return (
+    <AdminFrame title={t("admin.nav.settings")}>
+      {(settings) => (
+        <>
+          <MlSection key={`m${settings.dataUpdatedAt}`} settings={settings.data} />
+          <ScannerSection key={`c${settings.dataUpdatedAt}`} settings={settings.data} />
+          <VersionsSection key={`v${settings.dataUpdatedAt}`} settings={settings.data} />
+          <SignInSection settings={settings.data} />
+        </>
+      )}
+    </AdminFrame>
+  );
+}
+
+type LoadedSettings = { data: AdminSettings; dataUpdatedAt: number };
+
+/** Page title and body; a render function waits for the settings. */
+function AdminFrame({ title, children }: { title: string; children: ReactNode | ((settings: LoadedSettings) => ReactNode) }) {
+  const { t } = useTranslation();
+  const settings = useQuery({ ...adminSettingsQuery, enabled: typeof children === "function" });
+  return (
+    <main className="min-w-0 flex-1 overflow-y-auto px-4 pb-12 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-220 flex-col gap-4 pt-2 lg:mx-0">
+        <h1 className="m-0 text-headline-sm lg:text-headline-md">{title}</h1>
+        {typeof children !== "function" ? (
+          children
+        ) : settings.data ? (
+          children({ data: settings.data, dataUpdatedAt: settings.dataUpdatedAt })
+        ) : settings.isError ? (
+          <Banner tone="error">{t("errors.generic")}</Banner>
+        ) : (
+          <Progress label={title} />
+        )}
       </div>
     </main>
   );
 }
 
-function SectionLinks({ chips }: { chips?: boolean }) {
-  const { t } = useTranslation();
-  return (
-    <ul className={chips ? "m-0 flex list-none gap-2 p-0" : "m-0 flex list-none flex-col gap-1 p-0"}>
-      {sections.map(({ id, icon }) => (
-        <li key={id} className="shrink-0">
-          <a
-            href={`#admin-${id}`}
-            className={
-              chips
-                ? "inline-flex h-8 items-center rounded-sm border border-outline px-3 text-label-lg whitespace-nowrap text-on-surface-variant no-underline hover:bg-on-surface/8"
-                : "flex h-10 items-center gap-3 rounded-xl px-4 text-label-lg text-on-surface-variant no-underline hover:bg-on-surface/8 hover:text-on-surface"
-            }
-          >
-            {!chips && <Icon name={icon} size="sm" />}
-            {t(`admin.sections.${id}`)}
-          </a>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function Section({ id, intro, children }: { id: SectionId; intro?: string; children: ReactNode }) {
+/** A card on an admin page. On a page with one card the page title is its heading. */
+function Section({ id, intro, heading = true, children }: { id: SectionId; intro?: string; heading?: boolean; children: ReactNode }) {
   const { t } = useTranslation();
   const icon = sections.find((s) => s.id === id)!.icon;
   return (
     <section
       id={`admin-${id}`}
-      aria-labelledby={`admin-${id}-title`}
-      className="scroll-mt-4 rounded-lg bg-surface-container-low p-4 sm:p-6"
+      aria-labelledby={heading ? `admin-${id}-title` : undefined}
+      aria-label={heading ? undefined : t(`admin.sections.${id}`)}
+      className="rounded-lg bg-surface-container-low p-4 sm:p-6"
     >
-      <h2 id={`admin-${id}-title`} className="m-0 flex items-center gap-2 text-title-lg">
-        <Icon name={icon} className="text-primary" />
-        {t(`admin.sections.${id}`)}
-      </h2>
-      {intro && <p className="mt-1 mb-0 max-w-160 text-body-md text-on-surface-variant">{intro}</p>}
+      {heading && (
+        <h2 id={`admin-${id}-title`} className="m-0 mb-1 flex items-center gap-2 text-title-lg">
+          <Icon name={icon} className="text-primary" />
+          {t(`admin.sections.${id}`)}
+        </h2>
+      )}
+      {intro && <p className="m-0 max-w-160 text-body-md text-on-surface-variant">{intro}</p>}
       <div className="mt-5 flex flex-col gap-5">{children}</div>
     </section>
   );
@@ -173,7 +180,7 @@ function StorageSection({ settings }: { settings: AdminSettings }) {
   const size = (value: number) => formatBytes(value, i18n.language);
 
   return (
-    <Section id="storage" intro={t("admin.storage.intro")}>
+    <Section id="storage" heading={false} intro={t("admin.storage.intro")}>
       {report.data?.volumes.map((volume) => {
         const holdsOriginals = volume.holds.includes("originals");
         const used = volume.totalBytes - volume.freeBytes;
@@ -247,7 +254,7 @@ function PeopleSection() {
   const tones = [1, 3, 2, 0] as const;
 
   return (
-    <Section id="people" intro={t("admin.people.intro")}>
+    <Section id="people" heading={false} intro={t("admin.people.intro")}>
       {users.isPending && <Progress label={t("admin.sections.people")} />}
       <ul className="m-0 flex list-none flex-col divide-y divide-outline-variant p-0">
         {users.data?.map((user, index) => {

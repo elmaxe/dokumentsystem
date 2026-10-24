@@ -327,6 +327,14 @@ export const sv: Strings = {
   },
   admin: {
     title: "Administratörsinställningar",
+    nav: {
+      label: "Admin",
+      title: "Admin",
+      exit: "Tillbaka till filerna",
+      people: "Personer",
+      storage: "Lagring",
+      settings: "Inställningar",
+    },
     sections: {
       signIn: "Inloggning",
       ml: "Maskininlärning",
