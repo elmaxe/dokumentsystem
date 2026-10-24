@@ -229,14 +229,14 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   - Email, display name and role are refreshed on every login. Disabled users are refused, and their sessions stop working.
   - An optional **allow-list**: only users in the IdP group named by `OIDC_USER_GROUP` (e.g. `dokument-users`) may log in. Admins are always allowed.
   - The `dokument-admins` group → admin role. The mapping is re-evaluated on each login.
-  - An optional claim sets the quota tier.
+  - An optional claim sets the person's quota (§17.1).
 - **Rate limiting:** 20 login starts per minute per IP.
 - **Break-glass:** a CLI command in the container (`dokument admin reset-oidc` / `create-admin-token`) for when the IdP is broken.
 - **Local development:** Aspire runs Keycloak with a `dokument` realm. Its test users are alice (admin), bob (user) and carol (no groups); each password is the username.
 - **Built in M0:** login, sessions, CSRF and active devices. **Still to come:**
   - API keys and the break-glass CLI
   - auth audit events, with the audit table in M1
-  - the quota claim, with quotas in M1
+  - the quota claim (§17.1), right after the admin settings page
   - the mobile hand-off, in M5
 
 ---
@@ -708,6 +708,16 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **UX:** a storage meter in the nav, a breakdown page (by type, largest files, trash, old versions), and email plus in-app warnings at 80% and 95%.
 - **Admin view:** per-user usage, total disk usage, and the free space on the volume. Built in the admin page's Storage and People sections: the size of all originals (each blob once), and total and free space for the volume holding originals (plus the derived volume when it is separate).
 
+### 17.1 Quota from an OIDC claim (planned, next after the admin page)
+
+Households that manage people in their IdP can set each person's storage there instead of on the admin page.
+
+- **Configuration:** `OIDC_QUOTA_CLAIM` names the claim, read from the ID token or userinfo like the groups claim. It is a bootstrap setting like the other `OIDC_*` variables (§4.3). Unset means no claim is read and nothing changes.
+- **Values:** a byte count (`53687091200`), a decimal size (`50GB`, `1.5TB`, `500 MB`, case-insensitive, 1 GB = 10⁹ bytes as everywhere in the UI), or `unlimited`. A claim that can't be parsed is ignored and logged as a warning, without blocking the login.
+- **Applied on every login,** like the admin-group mapping (§5). The user row records where the quota came from (`quota_source {admin|claim}`). A changed value writes a `user.quota_change` audit event with the actor `system` and the source `claim`.
+- **The claim wins (proposed).** While a person's quota comes from the claim, the People section shows it as "Set by {provider}" and the edit dialog is read-only, so the page and the IdP never fight. If the claim later disappears, the person falls back to the default quota at the next login, and an admin can set a limit of their own again.
+- **Open:** whether an admin should be able to override a claim on the page. The proposal is no: the IdP stays the single source of truth for people it manages.
+
 ---
 
 ## 18. Audit log
@@ -863,3 +873,4 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 ## 26. Open questions
 
 1. **Video:** transcode to MP4 once, or generate HLS for large files? MP4-once is simpler and probably sufficient.
+2. **Quota claim precedence (§17.1):** should an admin be able to override a quota that comes from the OIDC claim? Proposed: no, the claim wins.
