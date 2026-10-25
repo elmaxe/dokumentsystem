@@ -37,6 +37,7 @@ public static class ServerRole
         builder.Services.AddHostedService<UploadCleanup>();
         builder.Services.AddHostedService<PurgeSchedule>();
         builder.Services.AddScoped<NodeDtoMapper>();
+        builder.Services.AddHttpContextAccessor();
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
             options.SerializerOptions.Converters.Add(
@@ -92,6 +93,7 @@ public static class ServerRole
         api.MapAuthEndpoints();
         api.MapFileEndpoints();
         api.MapTrashEndpoints();
+        api.MapStarredAndRecentEndpoints();
         api.MapTusEndpoints();
         api.MapAdminEndpoints();
         app.MapFallback("/api/{**path}", () => TypedResults.NotFound());
