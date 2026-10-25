@@ -19,6 +19,7 @@ public sealed class DriveService(
     AuditLog audit,
     PreviewService previews,
     SettingsStore settings,
+    RecentFiles recent,
     TimeProvider time
 )
 {
@@ -299,6 +300,7 @@ public sealed class DriveService(
             version.Id,
             new JsonObject { ["restoredFrom"] = old.Number }
         );
+        await recent.RecordAsync(actor.UserId, node.Id, RecentAction.Restored, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return version;
@@ -359,6 +361,7 @@ public sealed class DriveService(
         if (audited)
         {
             audit.Add(actor, AuditActions.FileDownload, node.Id, version.Id);
+            await recent.RecordAsync(actor.UserId, node.Id, RecentAction.Downloaded, ct);
             await db.SaveChangesAsync(ct);
         }
 
@@ -541,6 +544,7 @@ public sealed class DriveService(
             new JsonObject { ["size"] = file.Size, ["sha256"] = file.Hash.Hex }
         );
         await db.SaveChangesAsync(ct);
+        await recent.RecordAsync(actor.UserId, node.Id, RecentAction.Uploaded, ct);
         await tx.CommitAsync(ct);
         return new AddedFile(
             node,

@@ -30,7 +30,7 @@ const homeRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/",
   component: function MyFilesRoute() {
-    return <FilesPage folderId={null} />;
+    return <FilesPage source={{ place: "folder", folderId: null }} />;
   },
 });
 
@@ -39,17 +39,23 @@ const folderRoute = createRoute({
   path: "/folders/$folderId",
   component: function FolderRoute() {
     const { folderId } = folderRoute.useParams();
-    return <FilesPage key={folderId} folderId={folderId} />;
+    return <FilesPage key={folderId} source={{ place: "folder", folderId }} />;
   },
 });
 
 /** The viewer sits inside the app shell, so uploads keep running and the tray stays put while a file is open. */
+export type FileSearch = { from?: "starred" | "recent" };
+
 const fileRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/files/$fileId",
+  validateSearch: (search: Record<string, unknown>): FileSearch => ({
+    from: search.from === "starred" || search.from === "recent" ? search.from : undefined,
+  }),
   component: function FileRoute() {
     const { fileId } = fileRoute.useParams();
-    return <ViewerPage fileId={fileId} />;
+    const { from } = fileRoute.useSearch();
+    return <ViewerPage fileId={fileId} from={from} />;
   },
 });
 
@@ -57,11 +63,17 @@ const trashRoute = createRoute({ getParentRoute: () => authenticatedRoute, path:
 
 const settingsRoute = createRoute({ getParentRoute: () => authenticatedRoute, path: "/settings", component: SettingsPage });
 
-const placeRoutes = (["shared", "recent", "starred"] as const).map((place) =>
+const sharedRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/shared",
+  component: () => <PlacePage place="shared" />,
+});
+
+const placeRoutes = (["recent", "starred"] as const).map((place) =>
   createRoute({
     getParentRoute: () => authenticatedRoute,
     path: `/${place}`,
-    component: () => <PlacePage place={place} />,
+    component: () => <FilesPage key={place} source={{ place }} />,
   }),
 );
 
@@ -105,7 +117,7 @@ const signInRoute = createRoute({
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminSettingsRoute]), trashRoute, settingsRoute, ...placeRoutes]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminSettingsRoute]), trashRoute, settingsRoute, sharedRoute, ...placeRoutes]), signInRoute]),
     context: { queryClient },
   });
 }

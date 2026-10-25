@@ -76,6 +76,7 @@ function Tile({ item, selected, itemProps, menuActions, onAction, meta }: TilePr
             <span title={item.name} className="min-w-0 flex-1 truncate font-medium">
               {item.name}
             </span>
+            <FileFlags item={item} />
             {more}
           </>
         ) : (

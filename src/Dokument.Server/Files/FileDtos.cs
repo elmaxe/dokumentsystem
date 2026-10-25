@@ -9,6 +9,7 @@ namespace Dokument.Server.Files;
 /// <param name="Sha256">The current version's content hash, in hex. Null for folders.</param>
 /// <param name="Thumbnail">Whether <c>/nodes/{id}/thumbnail</c> has an image yet. Pending means the worker is on it; poll or wait.</param>
 /// <param name="Contents">How many files and folders a folder holds, at any depth. Null for files.</param>
+/// <param name="Starred">Whether the person asking starred it. Stars are each person's own.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -24,14 +25,16 @@ public sealed record NodeDto(
     Guid? CurrentVersionId,
     int? VersionNumber,
     ThumbnailState Thumbnail,
-    FolderCounts? Contents
+    FolderCounts? Contents,
+    bool Starred
 )
 {
     public static NodeDto From(
         Node node,
         IReadOnlyDictionary<Guid, string> ownerNames,
         IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails,
-        IReadOnlyDictionary<Guid, FolderContents> folders
+        IReadOnlyDictionary<Guid, FolderContents> folders,
+        IReadOnlySet<Guid> starred
     ) =>
         new(
             node.Id,
@@ -52,7 +55,8 @@ public sealed record NodeDto(
             node.CurrentVersion is { } version
                 ? thumbnails.GetValueOrDefault(version.BlobHash, ThumbnailState.None)
                 : ThumbnailState.None,
-            contents is null ? null : new FolderCounts(contents.Files, contents.Folders)
+            contents is null ? null : new FolderCounts(contents.Files, contents.Folders),
+            starred.Contains(node.Id)
         );
 }
 
@@ -159,3 +163,21 @@ public sealed record RestoredItem(NodeDto Node, bool MovedToRoot);
 public sealed record RestoreResponse(List<RestoredItem> Items);
 
 public sealed record EmptyTrashResponse(int Items);
+
+/// <param name="Path">The folders above the item, top first. Empty for the top of My files.</param>
+public sealed record StarredItem(NodeDto Node, List<PathEntry> Path);
+
+public sealed record StarredListing(List<StarredItem> Items);
+
+/// <param name="Path">The folders above the file, top first. Empty for the top of My files.</param>
+/// <param name="At">When the person last opened, downloaded, uploaded or restored it.</param>
+/// <param name="Action">Which of those it was.</param>
+public sealed record RecentItem(
+    NodeDto Node,
+    List<PathEntry> Path,
+    DateTimeOffset At,
+    RecentAction Action
+);
+
+/// <param name="Items">Newest first, at most 100.</param>
+public sealed record RecentListing(List<RecentItem> Items);

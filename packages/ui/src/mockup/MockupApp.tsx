@@ -215,7 +215,7 @@ export function MockupApp({
       case "star":
       case "unstar":
         setNodes((list) => list.map((n) => (ids.includes(n.id) ? { ...n, starred: action === "star" } : n)));
-        toast(action === "star" ? t("toasts.starred") : t("toasts.unstarred"));
+        toast(t(action === "star" ? "toasts.starred" : "toasts.unstarred", { count: ids.length }));
         break;
       case "details":
         setSelected(ids.slice(0, 1));

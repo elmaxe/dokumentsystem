@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.14** · Last updated: 2026-10-25
+> Status: **Draft v0.15** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -256,7 +256,6 @@ users(id, oidc_issuer, oidc_subject, email, display_name, role {user|admin},
 nodes(id, owner_id, parent_id NULL, kind {folder|file}, name, name_key,
       path ltree,                 -- ids (hex, no dashes) from the top down, for subtree queries
       current_version_id NULL,    -- files only
-      starred_by …,               -- (separate table)
       created_at, modified_at, trashed_at NULL, trashed_root_id NULL,
       UNIQUE NULLS NOT DISTINCT (owner_id, parent_id, name_key) WHERE trashed_at IS NULL)
 
@@ -282,6 +281,10 @@ content_pages(version_id, page_no, source {text_layer|ocr|transcript}, lang, tex
               ocr_engine, ocr_version)           -- BM25-indexed
 embeddings(version_id, page_no NULL, model, vector vchord) -- optional
 
+stars(user_id, node_id, starred_at, PRIMARY KEY (user_id, node_id))   -- each person's own (§15.2)
+recent_files(user_id, node_id, at, action {opened|downloaded|uploaded|restored},
+             PRIMARY KEY (user_id, node_id))     -- one row per person and file, overwritten; private, not audit
+
 shares(id, node_id, grantee_user_id, role {viewer|editor}, created_by, created_at, expires_at NULL)
 links(id, node_id, token_hash, role {viewer}, allow_download, password_hash NULL,
       expires_at NULL, created_by, created_at, revoked_at NULL)
@@ -305,7 +308,7 @@ Notes:
   - Re-uploading identical content to the same file does **not** create a new version.
 - **Name uniqueness within a folder:** NFC-normalized and case-insensitive (`name_key`). The top of each user's "My files" (parent NULL) counts as one folder, hence `NULLS NOT DISTINCT`. Conflicts are resolved like Drive: either "file (1).pdf" or "upload as new version", chosen by the user.
 - **Names** (`NodeName` in the domain) are trimmed, NFC, at most 255 UTF-8 bytes, never "." or "..", and contain no slashes or control characters, so `dokument export` can write any of them to disk.
-- **Renditions belong to the bytes, not versions or owners** (decisions 15 and 22): identical bytes are rendered once, even for two people, and a copy or a restored version has its thumbnail at once.
+- **Renditions belong to the bytes, not versions or owners** (decisions 15 and 23): identical bytes are rendered once, even for two people, and a copy or a restored version has its thumbnail at once.
 - **`path ltree`** makes subtree operations cheap: permission inheritance, "trash folder", "folder size", "search in folder".
 
 ---
@@ -331,13 +334,13 @@ Notes:
   4. Commit the DB transaction: the blob row (`ON CONFLICT (owner_id, hash) DO NOTHING`), the node or version, `ref_count + 1`, the quota and the audit event.
 - **Blob deletion** happens only in the purge job (§12): when `ref_count` drops to 0, the blob is deleted **after** the DB commit (outbox pattern).
 - **Integrity job:** a scheduled sweep finds orphaned blobs, missing blobs and checksum mismatches (bit rot), and reports to admins.
-- **Each person's files are in their own folder** (decision 22), named by their user id. Only the bytes they own are there, so the folder's size is their used storage (§17), and one person can be backed up, moved or removed on their own. Access is still decided in the database: every node has an `owner_id`, every request goes through `NodeAccess`, and downloads go by node id, never by hash.
+- **Each person's files are in their own folder** (decision 23), named by their user id. Only the bytes they own are there, so the folder's size is their used storage (§17), and one person can be backed up, moved or removed on their own. Access is still decided in the database: every node has an `owner_id`, every request goes through `NodeAccess`, and downloads go by node id, never by hash.
   - The cost: the same bytes from two people are stored twice. Copying a file someone shared with you, and later transferring ownership, copy the bytes into the new owner's folder (to a temp file, then renamed) instead of being instant.
 - **The pool stays unreadable on purpose.** Blobs have no names or extensions; names, types and the tree are in the DB. That is what makes renames and moves a single DB update, keeps writes atomic, and makes versions, trash and dedup plain rows. Readable files come from exports instead (§7.1).
 
 ### 7.1 Export and manifests
 
-Decided 2026-10-24 (decision 21) over a live mirror of hardlinks, real paths on disk (as in Nextcloud) and sidecar files next to each blob. This is the "if the app dies, my files are still mine" guarantee.
+Decided 2026-10-24 (decision 22) over a live mirror of hardlinks, real paths on disk (as in Nextcloud) and sidecar files next to each blob. This is the "if the app dies, my files are still mine" guarantee.
 
 - **Name manifest:** right after each scheduled DB dump (§19), the worker writes `manifest-{timestamp}.jsonl.gz` beside it in `/data/backups`, with the same retention as the dumps. It has one line per version that isn't purged: owner (id, email, display name), path of folder names from the top of My files, name, version number, whether it's current, trashed or kept forever, blob hash, size, MIME type and modified time. Written to a temp file, then renamed, so a half-written manifest never replaces a good one.
   - With the blobs and a manifest, the tree can be rebuilt with no Postgres at all. `dokument export --manifest <file>` does that, and the format is documented so a short script can too.
@@ -615,6 +618,13 @@ These are better in React DOM than through React Native Web.
   - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter. The phone bottom nav has no room for Trash, so it is in the account menu there.
   - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: machine learning, virus scanning, trash and versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
 - **Content area:** grid/list toggle, breadcrumbs, sorting, multi-select with a contextual action bar, right-click menu.
+- **Starred and Recent** (decision 21):
+  - **Stars are each person's own**, on files and folders. Star or unstar from the item menu, the selection's More menu, the details panel header and the viewer's menu; a snackbar offers Undo. Starred items show a small filled star after their name everywhere.
+  - **Starred** lists everything the person starred, from any folder, sorted like a folder, with a **Location** column that opens the parent folder and a "Show in folder" action.
+  - **Recent** lists files (not folders) by the person's own last activity, newest first, at most 100, with no sort controls: **opened** in the viewer, **downloaded**, **uploaded** (a new file or version) or **restored a version**. Renames and moves don't count. Columns: Location and "Your last activity" ("You opened today 11:47").
+  - Recent is stored in `recent_files`, one row per person and file. It is **private to that person** and is **not the audit log**: the viewer reports an open with `POST /nodes/{id}/opened`, which is never audited (§18); downloads and uploads are noted by the server as they happen.
+  - Trashed items (and everything inside a trashed folder) drop out of both pages. A star comes back on restore; deleting forever removes stars and recent rows with the node.
+  - A file opened from Starred or Recent steps through that page's files in the viewer, and closing returns there.
 - **Details panel:** info, sharing, versions, activity.
 - **Upload tray** (bottom-right) with per-file progress, pause/resume and retry.
 - **Real-time updates via SignalR:** new files, thumbnails ready, changes from other devices.
@@ -771,7 +781,7 @@ People who are managed in an IdP can get their storage from it instead of from t
   - auth: login, logout, session revoked, API key created
   - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`)
   - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), with the actor kind `system`
-  - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged.
+  - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged. (Each person's Recent page remembers their own opens in `recent_files`, which nobody else sees and which isn't part of the audit log, §15.2.)
   - sharing: share granted/changed/revoked, link created/accessed/revoked
   - admin: settings changed, quota changed, user disabled
 - **Partitioned by month** (from M6; M1 ships a plain table with indexes on `at` and `(target_node_id, at)`). An admin setting controls retention (default 1 year).
@@ -892,7 +902,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | Milestone | Scope |
 |---|---|
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
-| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, and the trash with the hourly purge that also enforces version retention. **Still to come:** starred and recent, folder uploads, live updates. |
+| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, and Starred and Recent. **Still to come:** folder uploads, live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media. **Still to come:** metadata, video posters and transcoding, Gotenberg, the admin queue page, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
@@ -912,7 +922,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 3 | Audit preview opens? | **No.** Downloads are audited, previews are not (§18). |
 | 4 | Duplicate uploads | **Tell the user**: a pre-upload check with Skip / Upload anyway / Open existing, limited to files the user can access (§8.3) |
 | 5 | Public links with upload ("file requests") | **Later** (roadmap) |
-| 6 | Storage layout | App-owned, content-addressed, one folder per person (§7, decision 22); readable copies come from exports (decision 21) |
+| 6 | Storage layout | App-owned, content-addressed, one folder per person (§7, decision 23); readable copies come from exports (decision 22) |
 | 7 | Sharing model | Personal folders shared to users; no team drives (§9) |
 | 8 | Virus scanning | Not in v1; hook for optional ClamAV (§21) |
 | 9 | WebDAV | Later |
@@ -927,8 +937,9 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 18 | Trash and retention | 2026-10-24: trash groups by `trashed_root_id`, listed by root on the Trash page; restore to My files when the folder is gone or trashed, numbering on name clashes; Undo after trashing; no browsing inside trashed folders yet; trash retention is an admin setting (default 30 days); the purge runs hourly in the server role and also enforces version retention; per-blob advisory lock shared with uploads; no manual per-version delete and no warning email yet (§12) |
 | 19 | Sizes and times in file lists | 2026-10-24: binary units (KiB, MiB, GiB, TiB, 1 KiB = 1024 B) everywhere, including quota inputs, with no setting; folders show the size of their live contents (current versions only) and their file and folder counts; list rows show thumbnails instead of type icons when one is ready; a per-person "Show seconds in times" switch on a new Settings page (`/settings`, linked from the account menu, which also holds the language choice), and full timestamps on hover (§16.4, §16.5, §17) |
 | 20 | Quota from an OIDC claim | 2026-10-24: `OIDC_QUOTA_CLAIM` sets each person's quota at every login from a byte count, a binary size (`GB` = `GiB` = 1024³) or `unlimited`; unreadable values are ignored with a warning; the claim wins and locks the admin dialog; a missing claim falls back to the default; changes are audited as `system` with the source `claim` (§17.1) |
-| 21 | Readable files on disk | 2026-10-24: keep the hash-named pool as the only store; no real paths on disk, sidecars or live mirror. A name manifest is written beside each DB dump, so the tree can be rebuilt without Postgres, and an export job (worker, into `/data/exports`, also the `export` CLI) writes readable copies, incrementally, optionally with old versions, on a schedule that starts off. Lands in M6 (§7.1, §19) |
-| 22 | Blobs per person | 2026-10-25: `blobs/{owner_id}/ab/cd/{sha256}`, keyed `(owner_id, hash)`, deduplicated per person only; renditions stay keyed by hash and go with the last copy; one blob lock per hash; copies across owners copy the bytes. No data migration, since nothing is in use yet (§6, §7, §12) |
+| 21 | Starred and Recent | 2026-10-25: stars are per person, on files and folders; Starred is sortable with a Location column; Recent is files only, newest first by the person's own last open, download, upload or version restore (not renames or moves), at most 100; Recent is a private per-person table, not the audit log, so preview opens stay unaudited (§6, §15.2, §18) |
+| 22 | Readable files on disk | 2026-10-24: keep the hash-named pool as the only store; no real paths on disk, sidecars or live mirror. A name manifest is written beside each DB dump, so the tree can be rebuilt without Postgres, and an export job (worker, into `/data/exports`, also the `export` CLI) writes readable copies, incrementally, optionally with old versions, on a schedule that starts off. Lands in M6 (§7.1, §19) |
+| 23 | Blobs per person | 2026-10-25: `blobs/{owner_id}/ab/cd/{sha256}`, keyed `(owner_id, hash)`, deduplicated per person only; renditions stay keyed by hash and go with the last copy; one blob lock per hash; copies across owners copy the bytes. No data migration, since nothing is in use yet (§6, §7, §12) |
 
 ## 26. Open questions
 

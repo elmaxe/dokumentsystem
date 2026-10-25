@@ -5,7 +5,9 @@ import type {
   NodeDetails,
   NodeDto,
   Problem,
+  RecentListing,
   RestoredItem,
+  StarredListing,
   StorageUsage,
   TrashListing,
   VersionDto,
@@ -72,6 +74,7 @@ export const toItem = (node: NodeDto): Item => ({
   owner: node.ownerName,
   thumbnail: node.thumbnail === "ready" ? thumbnailUrl(node.id, node.currentVersionId) : undefined,
   thumbnailPending: node.thumbnail === "pending",
+  starred: node.starred,
   node,
 });
 
@@ -110,6 +113,16 @@ export const storageQuery = queryOptions({
   queryFn: (): Promise<StorageUsage> => unwrap(api.GET("/api/v1/storage")),
 });
 
+export const starredQuery = queryOptions({
+  queryKey: ["starred"],
+  queryFn: (): Promise<StarredListing> => unwrap(api.GET("/api/v1/starred")),
+});
+
+export const recentQuery = queryOptions({
+  queryKey: ["recent"],
+  queryFn: (): Promise<RecentListing> => unwrap(api.GET("/api/v1/recent")),
+});
+
 export const trashQuery = queryOptions({
   queryKey: ["trash"],
   queryFn: (): Promise<TrashListing> => unwrap(api.GET("/api/v1/trash")),
@@ -122,7 +135,16 @@ export async function invalidateFolders(queryClient: QueryClient, folderIds: (st
       queryClient.invalidateQueries({ queryKey: ["folder", key] }),
     ),
     queryClient.invalidateQueries({ queryKey: ["storage"] }),
+    queryClient.invalidateQueries({ queryKey: ["starred"] }),
+    queryClient.invalidateQueries({ queryKey: ["recent"] }),
   ]);
+}
+
+/** Refetches what shows stars: every listing, the open file, and Starred itself. */
+export async function invalidateStars(queryClient: QueryClient) {
+  await Promise.all(
+    ["folder", "node", "starred", "recent"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
+  );
 }
 
 /** Refetches after moving things in or out of the trash: the trash, the storage meter and every folder listing. */
@@ -131,6 +153,8 @@ export async function invalidateTrash(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: ["trash"] }),
     queryClient.invalidateQueries({ queryKey: ["folder"] }),
     queryClient.invalidateQueries({ queryKey: ["storage"] }),
+    queryClient.invalidateQueries({ queryKey: ["starred"] }),
+    queryClient.invalidateQueries({ queryKey: ["recent"] }),
   ]);
 }
 
@@ -151,6 +175,10 @@ export const drive = {
       }),
     ),
   trash: (ids: string[]) => send(api.POST("/api/v1/nodes/trash", { body: { ids } })),
+  star: (ids: string[], starred: boolean) =>
+    send(api.POST(starred ? "/api/v1/nodes/star" : "/api/v1/nodes/unstar", { body: { ids } })),
+  /** Tells the server the person opened a file, for their Recent page. Not audited (§18). */
+  opened: (id: string) => send(api.POST("/api/v1/nodes/{id}/opened", { params: { path: { id } } })),
   restore: async (ids: string[]): Promise<RestoredItem[]> =>
     (await unwrap(api.POST("/api/v1/trash/restore", { body: { ids } }))).items,
   deleteForever: (ids: string[]) => send(api.POST("/api/v1/trash/delete", { body: { ids } })),
