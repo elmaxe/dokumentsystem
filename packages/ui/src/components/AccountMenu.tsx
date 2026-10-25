@@ -14,6 +14,8 @@ export type AccountMenuProps = {
   /** The language the UI is in now, shown next to "Same as browser". */
   currentLanguage: "sv" | "en";
   onLanguageChange: (language: LanguageChoice) => void;
+  /** The person's settings page. */
+  onSettings: () => void;
   /**
    * Trash, for narrow screens: the bottom nav has no room for it (§16.3). Hidden where the nav rail shows it.
    */
@@ -29,7 +31,7 @@ const item =
   "flex h-control cursor-pointer items-center gap-3 px-4 text-body-md outline-none select-none data-highlighted:bg-on-surface/8 data-[state=open]:bg-on-surface/8 pointer-coarse:h-touch pointer-coarse:text-body-lg";
 const separator = "my-2 h-px bg-outline-variant";
 
-/** The menu behind the avatar: who is signed in, their language, Trash on phones, admin settings and sign-out. */
+/** The menu behind the avatar: who is signed in, their language, settings, Trash on phones, admin settings and sign-out. */
 export function AccountMenu({
   trigger,
   name,
@@ -37,6 +39,7 @@ export function AccountMenu({
   language,
   currentLanguage,
   onLanguageChange,
+  onSettings,
   onTrash,
   onAdmin,
   onSignOut,
@@ -101,6 +104,10 @@ export function AccountMenu({
               </DropdownMenu.SubContent>
             </DropdownMenu.Portal>
           </DropdownMenu.Sub>
+          <DropdownMenu.Item onSelect={onSettings} className={item}>
+            <Icon name="settings" className="text-on-surface-variant" />
+            {t("account.settings")}
+          </DropdownMenu.Item>
           {onTrash && (
             <DropdownMenu.Item onSelect={onTrash} className={`${item} md:hidden`}>
               <Icon name="delete" className="text-on-surface-variant" />

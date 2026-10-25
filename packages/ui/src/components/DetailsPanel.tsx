@@ -1,9 +1,9 @@
-import { formatBytes, formatFileDate } from "@dokument/core";
 import { Tabs } from "radix-ui";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
-import { isFolder, isPaged, type FileItem } from "../lib/files";
+import { useFormat } from "../lib/display";
+import { contentsLabel, isFolder, isPaged, type FileItem } from "../lib/files";
 import { Avatar, type AvatarTone } from "./Avatar";
 import { Button, IconButton } from "./Button";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -55,12 +55,13 @@ export function DetailsPanel({
   versions,
   className,
 }: DetailsPanelProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const format = useFormat();
   const folder = isFolder(item);
   const tabs: DetailsTab[] = folder
     ? ["info", "sharing", "activity"]
     : ["info", "sharing", "versions", "activity"];
-  const date = (iso: string) => formatFileDate(iso, i18n.language);
+  const date = format.fullDate;
 
   return (
     <aside
@@ -112,7 +113,12 @@ export function DetailsPanel({
               <Row label={t("details.type")}>{t(`kinds.${item.kind}`)}</Row>
               {item.size !== undefined && (
                 <Row label={t("details.size")}>
-                  <span className="tabular">{formatBytes(item.size, i18n.language)}</span>
+                  <span className="tabular">{format.bytes(item.size)}</span>
+                </Row>
+              )}
+              {item.contents && (
+                <Row label={t("details.contains")}>
+                  <span className="tabular">{contentsLabel(t, item.contents)}</span>
                 </Row>
               )}
               <Row label={t("details.location")}>{details.location}</Row>

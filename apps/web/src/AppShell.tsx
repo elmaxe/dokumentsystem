@@ -1,4 +1,4 @@
-import { pickLanguage, type Language } from "@dokument/i18n";
+import { pickLanguage } from "@dokument/i18n";
 import {
   AccountMenu,
   ActionMenu,
@@ -7,6 +7,7 @@ import {
   adminPlaces,
   Avatar,
   BottomNav,
+  DisplaySettingsProvider,
   Icon,
   IconButton,
   NavRail,
@@ -20,7 +21,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { api, logout, sessionQuery } from "./api";
+import { logout, sessionQuery } from "./api";
+import { useAccountSettings } from "./settings/account";
 import { NameDialog } from "./files/dialogs";
 import { drive, errorMessage, folderQuery, invalidateFolders, nameKey, storageQuery } from "./files/drive";
 import { UploadProvider } from "./files/uploads";
@@ -59,7 +61,8 @@ function Shell() {
   const adminPlace = adminPlaces.find((item) => pathname.startsWith(`/admin/${item.id}`))?.id;
   const toAdmin = (id: AdminPlace) => void navigate({ to: `/admin/${id}` });
   const exitAdmin = () => void navigate({ to: "/" });
-  const inFiles = place === "files" && !inAdmin;
+  const inSettings = pathname.startsWith("/settings");
+  const inFiles = place === "files" && !inAdmin && !inSettings;
   const listing = useQuery({ ...folderQuery(inFiles ? folderId : null) });
   const folderName = listing.data?.folder?.name ?? t("nav.myFiles");
   const [trayCollapsed, setTrayCollapsed] = useState(false);
@@ -109,7 +112,8 @@ function Shell() {
   }
 
   const name = session.data?.user.displayName ?? "";
-  const picked = (session.data?.user.language ?? null) as Language | null;
+  const account = useAccountSettings();
+  const picked = account.language;
 
   // The saved language wins over the browser's (§23); "Same as browser" clears it.
   useEffect(() => {
@@ -119,22 +123,14 @@ function Shell() {
     if (i18n.language !== language) void i18n.changeLanguage(language);
   }, [session.data, picked, i18n]);
 
-  async function setLanguage(choice: "browser" | Language) {
-    const { data } = await api.PUT("/api/v1/me/language", { body: { language: choice === "browser" ? null : choice } });
-    if (!data) {
-      toast(t("account.languageFailed"));
-      return;
-    }
-    queryClient.setQueryData(sessionQuery.queryKey, (current) => (current ? { ...current, user: data } : current));
-  }
-
   return (
+    <DisplaySettingsProvider value={{ showSeconds: account.showSeconds }}>
     <div className="flex h-dvh min-h-0 bg-surface text-on-surface">
       {inAdmin ? (
         <AdminRail active={adminPlace} onNavigate={toAdmin} onExit={exitAdmin} className="max-md:hidden" />
       ) : (
         <NavRail
-          active={place}
+          active={inSettings ? undefined : place}
           onNavigate={(id) => void navigate({ to: placePaths[id] })}
           newActions={newActions}
           onNewAction={onNew}
@@ -154,7 +150,8 @@ function Shell() {
             email={session.data?.user.email}
             language={picked ?? "browser"}
             currentLanguage={i18n.language === "sv" ? "sv" : "en"}
-            onLanguageChange={(choice) => void setLanguage(choice)}
+            onLanguageChange={(choice) => void account.setLanguage(choice)}
+            onSettings={() => void navigate({ to: "/settings" })}
             onTrash={() => void navigate({ to: "/trash" })}
             onAdmin={session.data?.user.role === "admin" ? () => void navigate({ to: "/admin/people" }) : undefined}
             onSignOut={() => void signOut()}
@@ -184,7 +181,7 @@ function Shell() {
           <AdminBottomNav active={adminPlace} onNavigate={toAdmin} className="shrink-0 md:hidden" />
         ) : (
           <BottomNav
-            active={place === "files" || place === "shared" || place === "recent" ? place : undefined}
+            active={!inSettings && (place === "files" || place === "shared" || place === "recent") ? place : undefined}
             onNavigate={(id) => (id === "search" ? toast(t("common.notYet")) : void navigate({ to: placePaths[id] }))}
             className="shrink-0 md:hidden"
           />
@@ -259,5 +256,6 @@ function Shell() {
         }}
       />
     </div>
+    </DisplaySettingsProvider>
   );
 }

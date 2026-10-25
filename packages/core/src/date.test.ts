@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatFileDate } from "./date";
+import { formatFileDate, formatFullDate } from "./date";
 
 const now = new Date(2026, 9, 22, 15, 0);
 
@@ -17,5 +17,23 @@ describe("formatFileDate", () => {
 
   it("keeps relative days lower case inside a sentence", () => {
     expect(formatFileDate(new Date(2026, 9, 22, 9, 14), "en", { now, inSentence: true })).toBe("today 09:14");
+  });
+
+  it("shows seconds when asked", () => {
+    expect(formatFileDate(new Date(2026, 9, 22, 9, 14, 7), "en", { now, seconds: true })).toBe("Today 09:14:07");
+    expect(formatFileDate(new Date(2026, 9, 22, 9, 14, 7), "sv", { now, seconds: true })).toBe("I dag 09:14:07");
+  });
+});
+
+describe("formatFullDate", () => {
+  const date = new Date(2026, 9, 23, 17, 40, 12);
+
+  it("gives the day and the time", () => {
+    expect(formatFullDate(date, "en")).toMatch(/^23 October 2026.*17:40$/);
+    expect(formatFullDate(date, "sv")).toMatch(/^23 oktober 2026.*17:40$/);
+  });
+
+  it("adds seconds when asked", () => {
+    expect(formatFullDate(date, "en", { seconds: true })).toMatch(/17:40:12$/);
   });
 });

@@ -100,7 +100,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "The viewer (§14). Images zoom with the toolbar or a double-click and pan by dragging; PDFs render with pdf.js one page at a time (Page Up/Down); text shows the first 1 MB. Arrow keys or a swipe move to the next file, Esc closes. The arrows here step through every state.",
+          "The viewer (§14). Images zoom with the toolbar or a double-click and pan by dragging; PDFs render with pdf.js one page at a time (Page Up/Down); text shows the first 1 MiB. Arrow keys or a swipe move to the next file, Esc closes. The arrows here step through every state.",
       },
     },
   },
