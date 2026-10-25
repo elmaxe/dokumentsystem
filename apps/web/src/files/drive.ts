@@ -1,6 +1,8 @@
 import type {
   DuplicateCheckResult,
+  FolderConflictPolicy,
   FolderListing,
+  FolderTreeEntry,
   NameConflictPolicy,
   NodeDetails,
   NodeDto,
@@ -185,6 +187,14 @@ export const drive = {
   emptyTrash: async () => (await unwrap(api.POST("/api/v1/trash/empty"))).items,
   checkDuplicates: async (files: { name: string; size: number; sha256: string }[]): Promise<DuplicateCheckResult[]> =>
     (await unwrap(api.POST("/api/v1/uploads/check", { body: { files } }))).files,
+  /** Makes a folder upload's folders in one go (§8.1); throws nameTaken or quotaExceeded before making any. */
+  createFolderTree: async (
+    folderId: string | null,
+    paths: string[],
+    onConflict: FolderConflictPolicy,
+    totalBytes: number,
+  ): Promise<FolderTreeEntry[]> =>
+    (await unwrap(api.POST("/api/v1/folders/tree", { body: { folderId, paths, onConflict, totalBytes } }))).folders,
   copyFromContent: (
     folderId: string | null,
     name: string,

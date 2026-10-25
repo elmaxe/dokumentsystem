@@ -31,6 +31,12 @@ public static class FileEndpoints
             );
         files.MapGet("/nodes/{id:guid}", GetNode).WithName("GetNode");
         files.MapPost("/folders", CreateFolder).WithName("CreateFolder");
+        files
+            .MapPost("/folders/tree", CreateFolderTree)
+            .WithName("CreateFolderTree")
+            .WithDescription(
+                "Folder uploads: makes all the folders first, in one go, then the files are uploaded into them."
+            );
         files.MapPost("/nodes/{id:guid}/rename", Rename).WithName("RenameNode");
         files.MapPost("/nodes/{id:guid}/move", Move).WithName("MoveNode");
         files
@@ -133,6 +139,44 @@ public static class FileEndpoints
         return TypedResults.Created(
             $"/api/v1/nodes/{folder.Id}",
             await mapper.MapAsync(folder, ct)
+        );
+    }
+
+    private static async Task<Results<Ok<FolderTreeResponse>, ProblemHttpResult>> CreateFolderTree(
+        FolderTreeRequest request,
+        HttpContext context,
+        DriveService drive,
+        CancellationToken ct
+    )
+    {
+        if (request.Paths.Count is 0 or > 10_000)
+        {
+            return TypedResults.Problem(
+                "Send between 1 and 10 000 folder paths.",
+                statusCode: StatusCodes.Status400BadRequest
+            );
+        }
+
+        var folders = await drive.CreateFolderTreeAsync(
+            context.Actor(),
+            request.FolderId,
+            request.Paths,
+            request.OnConflict,
+            request.TotalBytes,
+            ct
+        );
+        return TypedResults.Ok(
+            new FolderTreeResponse(
+                folders
+                    .Select(f => new FolderTreeEntry(
+                        f.Path,
+                        f.Folder.Id,
+                        f.Folder.Name.Value,
+                        f.Created,
+                        f.ExistingNames
+                    ))
+                    .ToList()
+            )
         );
     }
 

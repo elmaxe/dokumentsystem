@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { sampleUploads } from "../mockup/data";
+import { sampleFolderGroups, sampleFolderUploads, sampleUploads } from "../mockup/data";
 import { UploadTray } from "./UploadTray";
 
 
@@ -24,4 +24,21 @@ export const Collapsed: Story = { args: { collapsed: true } };
 
 export const Finished: Story = {
   args: { items: sampleUploads.filter((u) => u.state === "done" || u.state === "duplicate"), onClose: () => {} },
+};
+
+/** A folder upload is one row with its files added up (§8.1). Expand it to see what failed or is still going. */
+export const FolderUpload: Story = {
+  args: { items: [...sampleFolderUploads.filter((u) => u.group === "kvitton"), sampleUploads[0]!], groups: sampleFolderGroups },
+};
+
+export const FolderUploadFinished: Story = {
+  args: {
+    items: sampleFolderUploads.filter((u) => u.state === "done" || u.id === "f3"),
+    groups: sampleFolderGroups,
+    onClose: () => {},
+  },
+};
+
+export const FolderBeingPrepared: Story = {
+  args: { items: [], groups: [{ id: "foton", name: "Foton", folder: "Mina filer", preparing: true }] },
 };

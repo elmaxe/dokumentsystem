@@ -232,6 +232,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/folders/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Folder uploads: makes all the folders first, in one go, then the files are uploaded into them. */
+        post: operations["CreateFolderTree"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/rename": {
         parameters: {
             query?: never;
@@ -870,6 +887,11 @@ export interface components {
             /** Format: int32 */
             items: number;
         };
+        /**
+         * @default fail
+         * @enum {unknown}
+         */
+        FolderConflictPolicy: "fail" | "merge" | "keepBoth";
         FolderCounts: {
             /** Format: int32 */
             files: number;
@@ -880,6 +902,28 @@ export interface components {
             folder: null | components["schemas"]["NodeDto"];
             path: components["schemas"]["PathEntry"][];
             items: components["schemas"]["NodeDto"][];
+        };
+        FolderTreeEntry: {
+            path: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            created: boolean;
+            existingNames: string[];
+        };
+        FolderTreeRequest: {
+            /** Format: uuid */
+            folderId: null | string;
+            paths: string[];
+            onConflict?: components["schemas"]["FolderConflictPolicy"];
+            /**
+             * Format: int64
+             * @default 0
+             */
+            totalBytes: number;
+        };
+        FolderTreeResponse: {
+            folders: components["schemas"]["FolderTreeEntry"][];
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -1475,6 +1519,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+        };
+    };
+    CreateFolderTree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FolderTreeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderTreeResponse"];
                 };
             };
         };
