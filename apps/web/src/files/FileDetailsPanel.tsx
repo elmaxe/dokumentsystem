@@ -12,11 +12,21 @@ type Props = {
   onTabChange: (tab: DetailsTab) => void;
   onClose: () => void;
   onUploadVersion?: () => void;
+  onStarChange?: (starred: boolean) => void;
   className?: string;
 };
 
 /** The details panel for one file or folder: info, and for files the version history with its actions (§16.4). */
-export function FileDetailsPanel({ item, folderPath, tab, onTabChange, onClose, onUploadVersion, className }: Props) {
+export function FileDetailsPanel({
+  item,
+  folderPath,
+  tab,
+  onTabChange,
+  onClose,
+  onUploadVersion,
+  onStarChange,
+  className,
+}: Props) {
   const { t } = useTranslation();
   const toast = useSnackbar();
   const queryClient = useQueryClient();
@@ -75,6 +85,7 @@ export function FileDetailsPanel({ item, folderPath, tab, onTabChange, onClose, 
       onTabChange={onTabChange}
       onClose={onClose}
       onManageAccess={() => toast(t("common.notYet"))}
+      onStarChange={onStarChange}
       versions={{
         canDelete: false,
         versions: versions.data ?? [],

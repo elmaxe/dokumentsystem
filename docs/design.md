@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.12** · Last updated: 2026-10-24
+> Status: **Draft v0.13** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -253,7 +253,6 @@ users(id, oidc_issuer, oidc_subject, email, display_name, role {user|admin},
 nodes(id, owner_id, parent_id NULL, kind {folder|file}, name, name_key,
       path ltree,                 -- ids (hex, no dashes) from the top down, for subtree queries
       current_version_id NULL,    -- files only
-      starred_by …,               -- (separate table)
       created_at, modified_at, trashed_at NULL, trashed_root_id NULL,
       UNIQUE NULLS NOT DISTINCT (owner_id, parent_id, name_key) WHERE trashed_at IS NULL)
 
@@ -277,6 +276,10 @@ metadata(version_id, kind {exif|xmp|id3|pdf_info|ffprobe…}, data jsonb)
 content_pages(version_id, page_no, source {text_layer|ocr|transcript}, lang, text,
               ocr_engine, ocr_version)           -- BM25-indexed
 embeddings(version_id, page_no NULL, model, vector vchord) -- optional
+
+stars(user_id, node_id, starred_at, PRIMARY KEY (user_id, node_id))   -- each person's own (§15.2)
+recent_files(user_id, node_id, at, action {opened|downloaded|uploaded|restored},
+             PRIMARY KEY (user_id, node_id))     -- one row per person and file, overwritten; private, not audit
 
 shares(id, node_id, grantee_user_id, role {viewer|editor}, created_by, created_at, expires_at NULL)
 links(id, node_id, token_hash, role {viewer}, allow_download, password_hash NULL,
@@ -593,6 +596,13 @@ These are better in React DOM than through React Native Web.
   - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter. The phone bottom nav has no room for Trash, so it is in the account menu there.
   - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: machine learning, virus scanning, trash and versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
 - **Content area:** grid/list toggle, breadcrumbs, sorting, multi-select with a contextual action bar, right-click menu.
+- **Starred and Recent** (decision 20):
+  - **Stars are each person's own**, on files and folders. Star or unstar from the item menu, the selection's More menu, the details panel header and the viewer's menu; a snackbar offers Undo. Starred items show a small filled star after their name everywhere.
+  - **Starred** lists everything the person starred, from any folder, sorted like a folder, with a **Location** column that opens the parent folder and a "Show in folder" action.
+  - **Recent** lists files (not folders) by the person's own last activity, newest first, at most 100, with no sort controls: **opened** in the viewer, **downloaded**, **uploaded** (a new file or version) or **restored a version**. Renames and moves don't count. Columns: Location and "Your last activity" ("You opened today 11:47").
+  - Recent is stored in `recent_files`, one row per person and file. It is **private to that person** and is **not the audit log**: the viewer reports an open with `POST /nodes/{id}/opened`, which is never audited (§18); downloads and uploads are noted by the server as they happen.
+  - Trashed items (and everything inside a trashed folder) drop out of both pages. A star comes back on restore; deleting forever removes stars and recent rows with the node.
+  - A file opened from Starred or Recent steps through that page's files in the viewer, and closing returns there.
 - **Details panel:** info, sharing, versions, activity.
 - **Upload tray** (bottom-right) with per-file progress, pause/resume and retry.
 - **Real-time updates via SignalR:** new files, thumbnails ready, changes from other devices.
@@ -743,7 +753,7 @@ Households that manage people in their IdP can set each person's storage there i
   - auth: login, logout, session revoked, API key created
   - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`)
   - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), with the actor kind `system`
-  - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged.
+  - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged. (Each person's Recent page remembers their own opens in `recent_files`, which nobody else sees and which isn't part of the audit log, §15.2.)
   - sharing: share granted/changed/revoked, link created/accessed/revoked
   - admin: settings changed, quota changed, user disabled
 - **Partitioned by month** (from M6; M1 ships a plain table with indexes on `at` and `(target_node_id, at)`). An admin setting controls retention (default 1 year).
@@ -863,7 +873,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | Milestone | Scope |
 |---|---|
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
-| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, and the trash with the hourly purge that also enforces version retention. **Still to come:** starred and recent, folder uploads, live updates. |
+| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, and Starred and Recent. **Still to come:** folder uploads, live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media. **Still to come:** metadata, video posters and transcoding, Gotenberg, the admin queue page, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
@@ -897,6 +907,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 17 | Admin settings page | 2026-10-23: admin pages with sections that save separately (2026-10-24: split into People, Storage and Settings, with an admin rail that replaces the normal nav on those pages, as in Immich, §15.2); default quota off until set, per-person default / own limit / no limit; ML URLs in priority order with encrypted API keys and live health checks; ClamAV address stored and tested but not yet used; sign-in shown read-only; language is a per-person choice in the account menu (§4.3, §11, §17, §21, §23) |
 | 18 | Trash and retention | 2026-10-24: trash groups by `trashed_root_id`, listed by root on the Trash page; restore to My files when the folder is gone or trashed, numbering on name clashes; Undo after trashing; no browsing inside trashed folders yet; trash retention is an admin setting (default 30 days); the purge runs hourly in the server role and also enforces version retention; per-blob advisory lock shared with uploads; no manual per-version delete and no warning email yet (§12) |
 | 19 | Sizes and times in file lists | 2026-10-24: binary units (KiB, MiB, GiB, TiB, 1 KiB = 1024 B) everywhere, including quota inputs, with no setting; folders show the size of their live contents (current versions only) and their file and folder counts; list rows show thumbnails instead of type icons when one is ready; a per-person "Show seconds in times" switch on a new Settings page (`/settings`, linked from the account menu, which also holds the language choice), and full timestamps on hover (§16.4, §16.5, §17) |
+| 20 | Starred and Recent | 2026-10-25: stars are per person, on files and folders; Starred is sortable with a Location column; Recent is files only, newest first by the person's own last open, download, upload or version restore (not renames or moves), at most 100; Recent is a private per-person table, not the audit log, so preview opens stay unaudited (§6, §15.2, §18) |
 
 ## 26. Open questions
 
