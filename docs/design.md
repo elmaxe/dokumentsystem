@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.13** · Last updated: 2026-10-24
+> Status: **Draft v0.14** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -216,6 +216,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   | `OIDC_USER_GROUP` | unset (anyone at the IdP may log in) | Allow-list group |
   | `OIDC_ADMIN_GROUP` | `dokument-admins` | Members get the admin role |
   | `OIDC_PROVIDER_NAME` | unset | Shown on the button: "Sign in with …" |
+  | `OIDC_QUOTA_CLAIM` | unset (quotas are set on the admin page) | A claim that sets each person's storage at login (§17.1) |
 
 - **`PUBLIC_URL`** sets the scheme, host and path base that the app sees itself at, behind the reverse proxy. It drives the redirect URI and the cookie's Secure flag.
 - **Sessions:** after a successful OIDC login, the server issues **its own session**. The IdP's tokens are discarded.
@@ -248,6 +249,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 ```
 users(id, oidc_issuer, oidc_subject, email, display_name, role {user|admin},
       quota_bytes NULL→default, quota_unlimited,   -- own limit, the default, or no limit (§17)
+      quota_source {admin|claim},                   -- who set it (§17.1)
       used_bytes, reserved_bytes, locale NULL→browser {sv|en}, created_at, last_login_at, disabled_at,
       UNIQUE (oidc_issuer, oidc_subject))
 
@@ -303,7 +305,7 @@ Notes:
   - Re-uploading identical content to the same file does **not** create a new version.
 - **Name uniqueness within a folder:** NFC-normalized and case-insensitive (`name_key`). The top of each user's "My files" (parent NULL) counts as one folder, hence `NULLS NOT DISTINCT`. Conflicts are resolved like Drive: either "file (1).pdf" or "upload as new version", chosen by the user.
 - **Names** (`NodeName` in the domain) are trimmed, NFC, at most 255 UTF-8 bytes, never "." or "..", and contain no slashes or control characters, so `dokument export` can write any of them to disk.
-- **Renditions belong to the bytes, not versions or owners** (decisions 15 and 20): identical bytes are rendered once, even for two people, and a copy or a restored version has its thumbnail at once.
+- **Renditions belong to the bytes, not versions or owners** (decisions 15 and 22): identical bytes are rendered once, even for two people, and a copy or a restored version has its thumbnail at once.
 - **`path ltree`** makes subtree operations cheap: permission inheritance, "trash folder", "folder size", "search in folder".
 
 ---
@@ -329,13 +331,13 @@ Notes:
   4. Commit the DB transaction: the blob row (`ON CONFLICT (owner_id, hash) DO NOTHING`), the node or version, `ref_count + 1`, the quota and the audit event.
 - **Blob deletion** happens only in the purge job (§12): when `ref_count` drops to 0, the blob is deleted **after** the DB commit (outbox pattern).
 - **Integrity job:** a scheduled sweep finds orphaned blobs, missing blobs and checksum mismatches (bit rot), and reports to admins.
-- **Each person's files are in their own folder** (decision 20), named by their user id. Only the bytes they own are there, so the folder's size is their used storage (§17), and one person can be backed up, moved or removed on their own. Access is still decided in the database: every node has an `owner_id`, every request goes through `NodeAccess`, and downloads go by node id, never by hash.
+- **Each person's files are in their own folder** (decision 22), named by their user id. Only the bytes they own are there, so the folder's size is their used storage (§17), and one person can be backed up, moved or removed on their own. Access is still decided in the database: every node has an `owner_id`, every request goes through `NodeAccess`, and downloads go by node id, never by hash.
   - The cost: the same bytes from two people are stored twice. Copying a file someone shared with you, and later transferring ownership, copy the bytes into the new owner's folder (to a temp file, then renamed) instead of being instant.
 - **The pool stays unreadable on purpose.** Blobs have no names or extensions; names, types and the tree are in the DB. That is what makes renames and moves a single DB update, keeps writes atomic, and makes versions, trash and dedup plain rows. Readable files come from exports instead (§7.1).
 
 ### 7.1 Export and manifests
 
-Decided 2026-10-24 (decision 19) over a live mirror of hardlinks, real paths on disk (as in Nextcloud) and sidecar files next to each blob. This is the "if the app dies, my files are still mine" guarantee.
+Decided 2026-10-24 (decision 21) over a live mirror of hardlinks, real paths on disk (as in Nextcloud) and sidecar files next to each blob. This is the "if the app dies, my files are still mine" guarantee.
 
 - **Name manifest:** right after each scheduled DB dump (§19), the worker writes `manifest-{timestamp}.jsonl.gz` beside it in `/data/backups`, with the same retention as the dumps. It has one line per version that isn't purged: owner (id, email, display name), path of folder names from the top of My files, name, version number, whether it's current, trashed or kept forever, blob hash, size, MIME type and modified time. Written to a temp file, then renamed, so a half-written manifest never replaces a good one.
   - With the blobs and a manifest, the tree can be rebuilt with no Postgres at all. `dokument export --manifest <file>` does that, and the format is documented so a short script can too.
@@ -577,7 +579,7 @@ Built in M1 (decision 18).
 | Text / code / Markdown | CodeMirror (read-only) / rendered Markdown | Rendered text |
 | Other | Metadata + download | Download / "open in…" |
 
-- **Built in M2 (web):** a full-screen viewer at `/files/{id}` for images (zoom steps from 50 % to 400 %, double-click, drag to pan), PDFs (pdf.js with range requests, one page at a time fitted to the width, Page Up/Down), text (the first 1 MB, as plain text; later a read-only CodeMirror 6 view with syntax highlighting, line numbers, folding and search for code, JSON, YAML and logs, plus rendered Markdown), and audio and video the browser can play. Everything else shows "No preview" with Download. Arrow keys or a swipe move between the files in the folder; Esc closes. PDF page thumbnails, search in the document and the OCR overlay come later.
+- **Built in M2 (web):** a full-screen viewer at `/files/{id}` for images (zoom steps from 50 % to 400 %, double-click, drag to pan), PDFs (pdf.js with range requests, one page at a time fitted to the width, Page Up/Down), text (the first 1 MiB, as plain text; later a read-only CodeMirror 6 view with syntax highlighting, line numbers, folding and search for code, JSON, YAML and logs, plus rendered Markdown), and audio and video the browser can play. Everything else shows "No preview" with Download. Arrow keys or a swipe move between the files in the folder; Esc closes. PDF page thumbnails, search in the document and the OCR overlay come later.
 - **`GET /nodes/{id}/preview` serves what the viewer shows** and is **not audited** (§18): the WebP preview if there is one, otherwise the original bytes inline, with range support. Markup (HTML, XML, SVG) is served as `text/plain`, with `nosniff` and a `sandbox` CSP, so a preview can never run in our origin. `GET /nodes/{id}/content` stays the audited download. Anyone who can view a file can read its bytes through the preview, so the audit log records downloads, not every way the bytes could leave.
 - **"Download original" is always available** to anyone with viewer rights (except via no-download links), and returns exact bytes.
 - Folders can be downloaded as a **streamed zip** (built on the fly, never staged on disk).
@@ -709,6 +711,9 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **FileTypeIcon:** a Material Symbol in the `file-*` colour per MIME group. Also the thumbnail fallback. Folders stay neutral.
 - **FileGrid:** folders first, then file tiles with 4:3 thumbnails. Documents (PDF, Office, text) show the top of page 1; photos are cropped to fill. A shimmer shows while a thumbnail is pending, and the thumbnail is swapped in when it is ready: for now the listing is polled (every 2 s, then every 10 s) while anything is pending, and SignalR replaces that with live updates. Video tiles show a duration badge.
 - **FileList:** a sortable name / owner / modified / size table. Under 600 px of container width, the columns fold into a second line. Pages can swap the columns after the name: the Trash page shows original location / deleted / size.
+  - A file with a ready thumbnail shows it in place of the type icon: 32 px, 40 px on phones, with pages showing their top as in the grid. Folders and files without a preview keep the icon, in a box of the same size so names line up; a pending thumbnail shimmers.
+  - **Folders show their size:** the current version of every live file below them, at any depth. Old versions and trashed files don't count, so it isn't the same number as quota usage (§17). The listing API returns it as the folder's `size` plus `contents` (file and folder counts) from one ltree query per listing. An empty folder shows "—", and hovering a folder's size shows what it holds ("1,204 files, 38 folders").
+  - Hovering a date shows the full timestamp ("23 October 2026, 17:40").
 - **ActionBar:** the selection count plus Share, Download, Move, Trash and More.
 - **UploadTray:** one row per tus upload, in one of the states hashing, uploading, paused, done, duplicate ("Remove this copy") or failed (Retry), each with an icon and words.
 - **DuplicateDialog:** the §8.3 prompt. A batch offers Skip duplicates / Upload all / Review; a single file offers Skip / Upload anyway / Open existing.
@@ -726,7 +731,10 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **Icons:** Material Symbols Rounded (Apache-2.0), outlined by default and filled when active or selected.
 - Keyboard navigation everywhere: arrow keys in the grid, Space to select, Enter to open, Delete to trash. Focus is shown by a visible 2 px focus ring. Every icon button has a label.
 - **Clickable mockup:** `packages/ui` holds the components in Storybook (`pnpm --filter @dokument/ui dev`), with toolbar switches for light/dark, sv/en and phone to desktop widths. The **Screens** stories are one app on fake data: the file browser, viewer, search results and admin settings, with selection, sharing, uploads and the duplicate prompt working locally.
-- Dates in lists come from `formatFileDate` in `packages/core`: "Today 09:14", "Yesterday", "12 Mar", then "21 Jun 2025". English uses British day-month order and a 24-hour clock.
+- Dates in lists come from `formatFileDate` in `packages/core`: "Today 09:14", "Yesterday", "12 Mar", then "21 Jun 2025". English uses British day-month order and a 24-hour clock. Tooltips and the details panel use `formatFullDate` ("23 October 2026, 17:40").
+- **Settings page** (`/settings`, "Settings" in the account menu): the person's own settings, with the normal nav, saved as soon as they change. Sections so far: Language (the same choice as the account menu's quick switch) and Date and time.
+- **Show seconds in times** is a per-person switch on the Settings page, off by default and saved on the account (`users.show_seconds`, `PUT /api/v1/me/preferences`) so it follows them across devices. When it is on, every time shown gets seconds ("Today 09:14:07", "23 October 2026, 17:40:12"). Components read it through `useFormat()` in `packages/ui`.
+- **Sizes are binary everywhere** (decision 19): 1 KiB = 1024 B, labelled B, KiB, MiB, GiB and TiB, through `formatBytes` in `packages/core`. Inputs use the same units: quotas are entered in GiB. There is no setting, so every screen, the API docs and the admin pages agree.
 
 ---
 
@@ -735,18 +743,24 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **Admin settings:** a default quota (no limit until an admin sets one), and per person either the default, a limit of their own, or no limit. Changing someone's quota writes a `user.quota_change` audit event. The default applies at reservation time, so lowering it never deletes anything; it only stops new uploads.
 - **Counted:** originals of all versions owned by the user, including trash, with blobs deduplicated per user. **Not counted:** renditions and thumbnails.
 - **Enforcement:** reserve at upload start and settle at completion (§8). `used_bytes` is updated in the same transaction. A nightly reconciliation job recomputes it and logs any drift.
-- **UX:** a storage meter in the nav, which also says how much of the storage emptying the trash would free ("1.4 GB of it in the trash"), a breakdown page (by type, largest files, trash, old versions), and email plus in-app warnings at 80% and 95%.
+- **UX:** a storage meter in the nav, which also says how much of the storage emptying the trash would free ("1.4 GiB of it in the trash"), a breakdown page (by type, largest files, trash, old versions), and email plus in-app warnings at 80% and 95%.
 - **Admin view:** per-user usage, total disk usage, and the free space on the volume. Built on the admin Storage and People pages: the size of all originals (each blob once), and total and free space for the volume holding originals (plus the derived volume when it is separate).
 
-### 17.1 Quota from an OIDC claim (planned, next after the admin page)
+### 17.1 Quota from an OIDC claim
 
-Households that manage people in their IdP can set each person's storage there instead of on the admin page.
+People who are managed in an IdP can get their storage from it instead of from the admin page.
 
-- **Configuration:** `OIDC_QUOTA_CLAIM` names the claim, read from the ID token or userinfo like the groups claim. It is a bootstrap setting like the other `OIDC_*` variables (§4.3). Unset means no claim is read and nothing changes.
-- **Values:** a byte count (`53687091200`), a decimal size (`50GB`, `1.5TB`, `500 MB`, case-insensitive, 1 GB = 10⁹ bytes as everywhere in the UI), or `unlimited`. A claim that can't be parsed is ignored and logged as a warning, without blocking the login.
-- **Applied on every login,** like the admin-group mapping (§5). The user row records where the quota came from (`quota_source {admin|claim}`). A changed value writes a `user.quota_change` audit event with the actor `system` and the source `claim`.
-- **The claim wins (proposed).** While a person's quota comes from the claim, the People page shows it as "Set by {provider}" and the edit dialog is read-only, so the page and the IdP never fight. If the claim later disappears, the person falls back to the default quota at the next login, and an admin can set a limit of their own again.
-- **Open:** whether an admin should be able to override a claim on the page. The proposal is no: the IdP stays the single source of truth for people it manages.
+- **Configuration:** `OIDC_QUOTA_CLAIM` names the claim, read from the ID token or userinfo like the groups claim (§5). It is a bootstrap setting like the other `OIDC_*` variables (§4.3). Unset means no claim is read and nothing changes. The admin page's Sign-in section shows which claim is read.
+- **Values** (a string or a JSON number):
+  - a byte count: `53687091200`
+  - a size: `50GB`, `50 GiB`, `1.5TB`, `500m`, case-insensitive, with the units B, K, M, G and T, each optionally followed by B or iB
+  - `unlimited`
+- **Sizes are binary**, like everywhere in the UI: `GB` and `GiB` both mean 1024³ bytes, so `50GB` shows as exactly 50 GiB on the People page. IdP admins type `GB` far more often than `GiB`, and reading it as 10⁹ would show an odd 46.6 GiB.
+- **A value that can't be read** (zero, negative, fractional bytes, an unknown unit, or anything else) is ignored and logged as a warning. The login goes ahead and the person keeps the quota they had.
+- **Applied on every login,** like the admin-group mapping (§5). `users.quota_source` records whether the quota came from an admin or the claim. A change writes a `user.quota_change` audit event with the actor kind `system` and `"source": "claim"` in its details; changes made on the admin page carry `"source": "admin"`. A login that changes nothing writes nothing.
+- **The claim wins** (decided 2026-10-24). While a person's quota comes from the claim, the People page says "Set by {provider}" (or "Set by your sign-in provider" without `OIDC_PROVIDER_NAME`) and the edit dialog is read-only with a note to change it at the IdP. The API refuses the change too.
+- **When the claim goes away:** if the IdP stops sending it for someone, they fall back to the default quota at their next login and admins can set a limit again. If `OIDC_QUOTA_CLAIM` itself is removed, nothing changes at login, but the People page treats those quotas as the admin's again, so they can be edited.
+- **Dev setup:** the Aspire AppHost sets `OIDC_QUOTA_CLAIM=dokument_quota`, and the dev Keycloak gives bob `50GB` through a user attribute mapped into userinfo.
 
 ---
 
@@ -868,7 +882,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 ## 23. Internationalization
 
 - **sv and en from day one:** UI, emails and date/number formats.
-- **Each person picks their language** in the account menu: Same as browser (the default), Svenska or English. The choice is saved on the account (`users.locale`), so it follows them across devices and emails can use it. The sign-in page, before anyone is known, follows the browser.
+- **Each person picks their language** in the account menu or on the Settings page (§16.5): Same as browser (the default), Svenska or English. The choice is saved on the account (`users.locale`), so it follows them across devices and emails can use it. The sign-in page, before anyone is known, follows the browser. Whether times show seconds is saved the same way (§16.5).
 - OCR languages are configurable (default `swe+eng`). The search stemmer is chosen per detected page language.
 
 ---
@@ -898,7 +912,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 3 | Audit preview opens? | **No.** Downloads are audited, previews are not (§18). |
 | 4 | Duplicate uploads | **Tell the user**: a pre-upload check with Skip / Upload anyway / Open existing, limited to files the user can access (§8.3) |
 | 5 | Public links with upload ("file requests") | **Later** (roadmap) |
-| 6 | Storage layout | App-owned, content-addressed (§7); readable copies come from exports (decision 19) |
+| 6 | Storage layout | App-owned, content-addressed, one folder per person (§7, decision 22); readable copies come from exports (decision 21) |
 | 7 | Sharing model | Personal folders shared to users; no team drives (§9) |
 | 8 | Virus scanning | Not in v1; hook for optional ClamAV (§21) |
 | 9 | WebDAV | Later |
@@ -911,10 +925,11 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 16 | Observability | 2026-10-23: OpenTelemetry for traces, metrics and logs, off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set; standard `OTEL_*` variables only; trace context stored on jobs; strict no-PII attribute rules; optional Prometheus endpoint on a separate port. On by default under the Aspire AppHost in development. Prometheus on `METRICS_PORT` uses the beta OpenTelemetry exporter (§22.1) |
 | 17 | Admin settings page | 2026-10-23: admin pages with sections that save separately (2026-10-24: split into People, Storage and Settings, with an admin rail that replaces the normal nav on those pages, as in Immich, §15.2); default quota off until set, per-person default / own limit / no limit; ML URLs in priority order with encrypted API keys and live health checks; ClamAV address stored and tested but not yet used; sign-in shown read-only; language is a per-person choice in the account menu (§4.3, §11, §17, §21, §23) |
 | 18 | Trash and retention | 2026-10-24: trash groups by `trashed_root_id`, listed by root on the Trash page; restore to My files when the folder is gone or trashed, numbering on name clashes; Undo after trashing; no browsing inside trashed folders yet; trash retention is an admin setting (default 30 days); the purge runs hourly in the server role and also enforces version retention; per-blob advisory lock shared with uploads; no manual per-version delete and no warning email yet (§12) |
-| 19 | Readable files on disk | 2026-10-24: keep the hash-named pool as the only store; no real paths on disk, sidecars or live mirror. A name manifest is written beside each DB dump, so the tree can be rebuilt without Postgres, and an export job (worker, into `/data/exports`, also the `export` CLI) writes readable copies, incrementally, optionally with old versions, on a schedule that starts off. Lands in M6 (§7.1, §19) |
-| 20 | Blobs per person | 2026-10-25: `blobs/{owner_id}/ab/cd/{sha256}`, keyed `(owner_id, hash)`, deduplicated per person only; renditions stay keyed by hash and go with the last copy; one blob lock per hash; copies across owners copy the bytes. No data migration, since nothing is in use yet (§6, §7, §12) |
+| 19 | Sizes and times in file lists | 2026-10-24: binary units (KiB, MiB, GiB, TiB, 1 KiB = 1024 B) everywhere, including quota inputs, with no setting; folders show the size of their live contents (current versions only) and their file and folder counts; list rows show thumbnails instead of type icons when one is ready; a per-person "Show seconds in times" switch on a new Settings page (`/settings`, linked from the account menu, which also holds the language choice), and full timestamps on hover (§16.4, §16.5, §17) |
+| 20 | Quota from an OIDC claim | 2026-10-24: `OIDC_QUOTA_CLAIM` sets each person's quota at every login from a byte count, a binary size (`GB` = `GiB` = 1024³) or `unlimited`; unreadable values are ignored with a warning; the claim wins and locks the admin dialog; a missing claim falls back to the default; changes are audited as `system` with the source `claim` (§17.1) |
+| 21 | Readable files on disk | 2026-10-24: keep the hash-named pool as the only store; no real paths on disk, sidecars or live mirror. A name manifest is written beside each DB dump, so the tree can be rebuilt without Postgres, and an export job (worker, into `/data/exports`, also the `export` CLI) writes readable copies, incrementally, optionally with old versions, on a schedule that starts off. Lands in M6 (§7.1, §19) |
+| 22 | Blobs per person | 2026-10-25: `blobs/{owner_id}/ab/cd/{sha256}`, keyed `(owner_id, hash)`, deduplicated per person only; renditions stay keyed by hash and go with the last copy; one blob lock per hash; copies across owners copy the bytes. No data migration, since nothing is in use yet (§6, §7, §12) |
 
 ## 26. Open questions
 
 1. **Video:** transcode to MP4 once, or generate HLS for large files? MP4-once is simpler and probably sufficient.
-2. **Quota claim precedence (§17.1):** should an admin be able to override a quota that comes from the OIDC claim? Proposed: no, the claim wins.

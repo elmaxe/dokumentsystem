@@ -1,5 +1,4 @@
 import { contentUrl } from "@dokument/api";
-import { formatFileDate } from "@dokument/core";
 import {
   ActionBar,
   Breadcrumbs,
@@ -15,6 +14,7 @@ import {
   type MenuAction,
   type Sort,
   type SortKey,
+  useFormat,
 } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -56,6 +56,7 @@ function store(key: string, value: string) {
 /** My files: one folder's contents, with selection, the action bar, menus and the details panel (§15.2). */
 export function FilesPage({ folderId }: { folderId: string | null }) {
   const { t, i18n } = useTranslation();
+  const format = useFormat();
   const toast = useSnackbar();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -143,7 +144,7 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
   ];
 
   const meta = (item: Item) =>
-    t("files.modifiedOn", { date: formatFileDate(item.modified, i18n.language, { inSentence: true }) });
+    t("files.modifiedOn", { date: format.date(item.modified, { inSentence: true }) });
   const sortKeys: SortKey[] = ["name", "modified", "size", "owner"];
   const viewProps = {
     items,

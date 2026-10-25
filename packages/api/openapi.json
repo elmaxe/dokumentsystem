@@ -66,6 +66,37 @@
         }
       }
     },
+    "/api/v1/me/preferences": {
+      "put": {
+        "tags": [
+          "Auth"
+        ],
+        "description": "Display settings that follow the person to every device.",
+        "operationId": "SetMyPreferences",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPreferencesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/config": {
       "get": {
         "tags": [
@@ -1354,6 +1385,7 @@
           "role",
           "usedBytes",
           "quota",
+          "quotaSource",
           "effectiveQuotaBytes",
           "lastLoginAt",
           "disabled"
@@ -1382,6 +1414,9 @@
           },
           "quota": {
             "$ref": "#/components/schemas/QuotaDto"
+          },
+          "quotaSource": {
+            "$ref": "#/components/schemas/QuotaSource"
           },
           "effectiveQuotaBytes": {
             "type": [
@@ -1601,6 +1636,23 @@
           }
         }
       },
+      "FolderCounts": {
+        "required": [
+          "files",
+          "folders"
+        ],
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "folders": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "FolderListing": {
         "required": [
           "folder",
@@ -1811,7 +1863,8 @@
           "modifiedAt",
           "currentVersionId",
           "versionNumber",
-          "thumbnail"
+          "thumbnail",
+          "contents"
         ],
         "type": "object",
         "properties": {
@@ -1882,6 +1935,16 @@
           },
           "thumbnail": {
             "$ref": "#/components/schemas/ThumbnailState"
+          },
+          "contents": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FolderCounts"
+              }
+            ]
           }
         }
       },
@@ -1965,6 +2028,12 @@
             "format": "int64"
           }
         }
+      },
+      "QuotaSource": {
+        "enum": [
+          "admin",
+          "claim"
+        ]
       },
       "RenameRequest": {
         "required": [
@@ -2092,13 +2161,25 @@
           }
         }
       },
+      "SetPreferencesRequest": {
+        "required": [
+          "showSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "showSeconds": {
+            "type": "boolean"
+          }
+        }
+      },
       "SignInInfo": {
         "required": [
           "enabled",
           "providerName",
           "issuer",
           "userGroup",
-          "adminGroup"
+          "adminGroup",
+          "quotaClaim"
         ],
         "type": "object",
         "properties": {
@@ -2125,6 +2206,12 @@
           },
           "adminGroup": {
             "type": "string"
+          },
+          "quotaClaim": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2367,7 +2454,8 @@
           "displayName",
           "email",
           "role",
-          "language"
+          "language",
+          "showSeconds"
         ],
         "type": "object",
         "properties": {
@@ -2392,6 +2480,9 @@
               "null",
               "string"
             ]
+          },
+          "showSeconds": {
+            "type": "boolean"
           }
         }
       },

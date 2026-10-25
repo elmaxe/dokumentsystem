@@ -345,6 +345,56 @@ public sealed class FileTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Folders_report_the_size_of_what_they_hold()
+    {
+        await using var app = await DokumentApp.StartAsync(postgres);
+        using var alice = await SignInAsync(app, Alice);
+        var kvitton = await CreateFolderAsync(alice, null, "Kvitton");
+        var year = await CreateFolderAsync(alice, kvitton.Id, "2025");
+        await CreateFolderAsync(alice, null, "Empty");
+        var receipt = await UploadAsync(
+            alice,
+            "ikea.pdf",
+            RandomNumberGenerator.GetBytes(1000),
+            year.Id
+        );
+        await UploadAsync(
+            alice,
+            "ikea.pdf",
+            RandomNumberGenerator.GetBytes(2000),
+            year.Id,
+            nodeId: receipt
+        );
+        var note = await UploadAsync(
+            alice,
+            "note.txt",
+            RandomNumberGenerator.GetBytes(10),
+            kvitton.Id
+        );
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            (
+                await alice.PostAsJsonAsync("/api/v1/nodes/trash", new NodeIdsRequest([note]))
+            ).StatusCode
+        );
+
+        // Only current versions of live files count: not the first version, not the trashed note.
+        var top = await ListAsync(alice, null);
+        var folder = top.Items.Single(i => i.Name == "Kvitton");
+        Assert.Equal(2000, folder.Size);
+        Assert.Equal(new FolderCounts(1, 1), folder.Contents);
+        var empty = top.Items.Single(i => i.Name == "Empty");
+        Assert.Equal(0, empty.Size);
+        Assert.Equal(new FolderCounts(0, 0), empty.Contents);
+
+        var inside = await ListAsync(alice, kvitton.Id);
+        Assert.Equal(2000, inside.Folder!.Size);
+        var sub = Assert.Single(inside.Items);
+        Assert.Equal(2000, sub.Size);
+        Assert.Equal(new FolderCounts(1, 0), sub.Contents);
+    }
+
+    [Fact]
     public async Task Other_users_files_are_invisible()
     {
         await using var app = await DokumentApp.StartAsync(postgres);

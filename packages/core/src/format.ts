@@ -1,7 +1,8 @@
-const units = ["B", "kB", "MB", "GB", "TB"] as const;
+const units = ["B", "KiB", "MiB", "GiB", "TiB"] as const;
 
 /**
- * Formats a byte count for display, in decimal units like Drive ("1,4 MB" in Swedish, "1.4 MB" in English).
+ * Formats a byte count for display in binary units, everywhere in the product (§16.5): 1 KiB = 1024 B
+ * ("1,4 MiB" in Swedish, "1.4 MiB" in English).
  * Uses one decimal below 10 and none above, so sizes line up in lists.
  */
 export function formatBytes(bytes: number, locale: string): string {
@@ -11,8 +12,8 @@ export function formatBytes(bytes: number, locale: string): string {
 
   let value = bytes;
   let unit = 0;
-  while (value >= 1000 && unit < units.length - 1) {
-    value /= 1000;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
     unit++;
   }
 

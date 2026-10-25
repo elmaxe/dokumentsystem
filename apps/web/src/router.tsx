@@ -7,6 +7,7 @@ import { FilesPage } from "./files/FilesPage";
 import { TrashPage } from "./files/TrashPage";
 import { ViewerPage } from "./files/ViewerPage";
 import { PlacePage } from "./PlacePage";
+import { SettingsPage } from "./settings/SettingsPage";
 import { SignInPage } from "./SignInPage";
 
 const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: Outlet });
@@ -53,6 +54,8 @@ const fileRoute = createRoute({
 });
 
 const trashRoute = createRoute({ getParentRoute: () => authenticatedRoute, path: "/trash", component: TrashPage });
+
+const settingsRoute = createRoute({ getParentRoute: () => authenticatedRoute, path: "/settings", component: SettingsPage });
 
 const placeRoutes = (["shared", "recent", "starred"] as const).map((place) =>
   createRoute({
@@ -102,7 +105,7 @@ const signInRoute = createRoute({
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminSettingsRoute]), trashRoute, ...placeRoutes]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminSettingsRoute]), trashRoute, settingsRoute, ...placeRoutes]), signInRoute]),
     context: { queryClient },
   });
 }

@@ -92,7 +92,7 @@ export const Crumbs: Story = {
   ),
 };
 
-/** The avatar menu: language for this person, admin settings for admins, and sign-out. */
+/** The avatar menu: language and a link to settings for this person, admin settings for admins, and sign-out. */
 export const Account: Story = {
   name: "Account menu",
   render: function Render() {
@@ -105,6 +105,7 @@ export const Account: Story = {
           language={language}
           currentLanguage="en"
           onLanguageChange={setLanguage}
+          onSettings={() => {}}
           onAdmin={() => {}}
           onSignOut={() => {}}
           trigger={

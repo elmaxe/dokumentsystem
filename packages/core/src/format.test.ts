@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { formatBytes } from "./format";
 
-const nbsp = "\u00a0";
+const nbsp = " ";
 
 describe("formatBytes", () => {
   it.each([
     [0, "en", `0${nbsp}B`],
-    [999, "en", `999${nbsp}B`],
-    [1_400_000, "en", `1.4${nbsp}MB`],
-    [1_400_000, "sv", `1,4${nbsp}MB`],
-    [52_000_000, "sv", `52${nbsp}MB`],
-    [3_200_000_000_000, "en", `3.2${nbsp}TB`],
+    [1023, "en", `1,023${nbsp}B`],
+    [1024, "en", `1.0${nbsp}KiB`],
+    [1_468_006, "en", `1.4${nbsp}MiB`],
+    [1_468_006, "sv", `1,4${nbsp}MiB`],
+    [52 * 1024 ** 2, "sv", `52${nbsp}MiB`],
+    [50 * 1024 ** 3, "en", `50${nbsp}GiB`],
+    [3.2 * 1024 ** 4, "en", `3.2${nbsp}TiB`],
   ])("formats %d bytes in %s", (bytes, locale, expected) => {
     expect(formatBytes(bytes, locale)).toBe(expected);
   });

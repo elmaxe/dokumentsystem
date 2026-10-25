@@ -37,6 +37,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Display settings that follow the person to every device. */
+        put: operations["SetMyPreferences"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/config": {
         parameters: {
             query?: never;
@@ -711,6 +728,7 @@ export interface components {
             /** Format: int64 */
             usedBytes: number;
             quota: components["schemas"]["QuotaDto"];
+            quotaSource: components["schemas"]["QuotaSource"];
             /** Format: int64 */
             effectiveQuotaBytes: null | number;
             /** Format: date-time */
@@ -767,6 +785,12 @@ export interface components {
         EmptyTrashResponse: {
             /** Format: int32 */
             items: number;
+        };
+        FolderCounts: {
+            /** Format: int32 */
+            files: number;
+            /** Format: int32 */
+            folders: number;
         };
         FolderListing: {
             folder: null | components["schemas"]["NodeDto"];
@@ -839,6 +863,7 @@ export interface components {
             /** Format: int32 */
             versionNumber: null | number;
             thumbnail: components["schemas"]["ThumbnailState"];
+            contents: null | components["schemas"]["FolderCounts"];
         };
         NodeIdsRequest: {
             ids: string[];
@@ -860,6 +885,8 @@ export interface components {
             /** Format: int64 */
             bytes: null | number;
         };
+        /** @enum {unknown} */
+        QuotaSource: "admin" | "claim";
         RenameRequest: {
             name: string;
         };
@@ -893,12 +920,16 @@ export interface components {
         SetLanguageRequest: {
             language: null | string;
         };
+        SetPreferencesRequest: {
+            showSeconds: boolean;
+        };
         SignInInfo: {
             enabled: boolean;
             providerName: null | string;
             issuer: null | string;
             userGroup: null | string;
             adminGroup: string;
+            quotaClaim: null | string;
         };
         StorageReport: {
             /** Format: int64 */
@@ -974,6 +1005,7 @@ export interface components {
             email: null | string;
             role: components["schemas"]["UserRole"];
             language: null | string;
+            showSeconds: boolean;
         };
         /** @enum {unknown} */
         UserQuotaKind: "default" | "limit" | "unlimited";
@@ -1073,6 +1105,30 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    SetMyPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPreferencesRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProfile"];
                 };
             };
         };
