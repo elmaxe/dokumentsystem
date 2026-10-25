@@ -629,6 +629,38 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/processing": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Where the worker is with the file's current version: thumbnail, metadata and text. Admins also get each failed step's job and error.",
+        "operationId": "GetProcessing",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileProcessing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/versions/{versionId}/restore": {
       "post": {
         "tags": [
@@ -1733,10 +1765,259 @@
           }
         }
       }
+    },
+    "/api/v1/admin/jobs/queues": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminGetJobQueues",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobQueueDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/jobs/queues/{type}/paused": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Paused queues start no new jobs; running ones finish.",
+        "operationId": "AdminPauseJobQueue",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseQueueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobQueueDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/jobs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Running jobs longest-running first, queued ones in the order they will run, failed ones latest first.",
+        "operationId": "AdminListJobs",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "running"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/jobs/{id}/retry": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminRetryJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/jobs/retry-failed": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Every failed job, or those of one type, with fresh attempts.",
+        "operationId": "AdminRetryFailedJobs",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobQueueDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/jobs/{id}": {
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Forgets a failed job without running it again.",
+        "operationId": "AdminClearJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ActiveStepDto": {
+        "required": [
+          "step",
+          "running"
+        ],
+        "type": "object",
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "running": {
+            "type": "boolean"
+          }
+        }
+      },
       "AdminSettingsDto": {
         "required": [
           "storage",
@@ -2031,6 +2312,20 @@
           }
         }
       },
+      "FileProcessing": {
+        "required": [
+          "steps"
+        ],
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProcessingStepDto"
+            }
+          }
+        }
+      },
       "FolderConflictPolicy": {
         "enum": [
           "fail",
@@ -2208,6 +2503,212 @@
           }
         }
       },
+      "JobDto": {
+        "required": [
+          "id",
+          "type",
+          "status",
+          "priority",
+          "attempts",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "runAfter",
+          "error",
+          "size",
+          "mimeType",
+          "files"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/JobPriority"
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "runAfter": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "size": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobFileDto"
+            }
+          }
+        }
+      },
+      "JobFileDto": {
+        "required": [
+          "nodeId",
+          "name",
+          "ownerId",
+          "ownerName",
+          "use",
+          "versionNumber",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ownerName": {
+            "type": "string"
+          },
+          "use": {
+            "$ref": "#/components/schemas/JobFileUse"
+          },
+          "versionNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          }
+        }
+      },
+      "JobFileUse": {
+        "enum": [
+          "current",
+          "trashed",
+          "olderVersion"
+        ]
+      },
+      "JobKind": {
+        "enum": [
+          "thumbnail",
+          "metadata",
+          "text"
+        ]
+      },
+      "JobList": {
+        "required": [
+          "items",
+          "more"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobDto"
+            }
+          },
+          "more": {
+            "type": "boolean"
+          }
+        }
+      },
+      "JobPriority": {
+        "enum": [
+          "background",
+          "interactive"
+        ]
+      },
+      "JobQueueDto": {
+        "required": [
+          "type",
+          "running",
+          "waiting",
+          "failed",
+          "doneLastWeek",
+          "paused"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "running": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waiting": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "doneLastWeek": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "paused": {
+            "type": "boolean"
+          }
+        }
+      },
+      "JobStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed"
+        ]
+      },
       "KeepForeverRequest": {
         "required": [
           "keepForever"
@@ -2372,7 +2873,8 @@
           "versionNumber",
           "thumbnail",
           "contents",
-          "starred"
+          "starred",
+          "processing"
         ],
         "type": "object",
         "properties": {
@@ -2456,6 +2958,12 @@
           },
           "starred": {
             "type": "boolean"
+          },
+          "processing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActiveStepDto"
+            }
           }
         }
       },
@@ -2530,6 +3038,17 @@
           }
         }
       },
+      "PauseQueueRequest": {
+        "required": [
+          "paused"
+        ],
+        "type": "object",
+        "properties": {
+          "paused": {
+            "type": "boolean"
+          }
+        }
+      },
       "ProbeResult": {
         "required": [
           "reachable",
@@ -2546,6 +3065,60 @@
               "null",
               "string"
             ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProcessingStepDto": {
+        "required": [
+          "step",
+          "state",
+          "at",
+          "ahead",
+          "jobId",
+          "attempts",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "state": {
+            "$ref": "#/components/schemas/StepState"
+          },
+          "at": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "ahead": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "attempts": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           },
           "error": {
             "type": [
@@ -2969,6 +3542,20 @@
             }
           }
         }
+      },
+      "StepState": {
+        "enum": [
+          "notStarted",
+          "waiting",
+          "paused",
+          "running",
+          "done",
+          "nothingFound",
+          "skipped",
+          "unsupported",
+          "unreadable",
+          "failed"
+        ]
       },
       "StorageReport": {
         "required": [

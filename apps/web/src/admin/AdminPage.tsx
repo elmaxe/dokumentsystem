@@ -66,7 +66,7 @@ export function AdminSettingsPage() {
 type LoadedSettings = { data: AdminSettings; dataUpdatedAt: number };
 
 /** Page title and body; a render function waits for the settings. */
-function AdminFrame({ title, children }: { title: string; children: ReactNode | ((settings: LoadedSettings) => ReactNode) }) {
+export function AdminFrame({ title, children }: { title: string; children: ReactNode | ((settings: LoadedSettings) => ReactNode) }) {
   const { t } = useTranslation();
   const settings = useQuery({ ...adminSettingsQuery, enabled: typeof children === "function" });
   return (

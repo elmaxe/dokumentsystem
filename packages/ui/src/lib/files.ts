@@ -1,4 +1,5 @@
 import type { TFunction } from "i18next";
+import type { ActiveProcessingStep } from "./processing";
 
 /** The MIME groups that get their own icon and colour (docs/design.md §16.2). */
 export type FileKind =
@@ -35,6 +36,8 @@ export type FileItem = {
   starred?: boolean;
   /** Just appeared because of a change made elsewhere: briefly outlined so it's noticed (§15.4). */
   arrived?: boolean;
+  /** Steps the worker still has to do; while there are any the file shows a "Processing" badge (§16.4). */
+  processing?: ActiveProcessingStep[];
 };
 
 export type FolderContents = { files: number; folders: number };

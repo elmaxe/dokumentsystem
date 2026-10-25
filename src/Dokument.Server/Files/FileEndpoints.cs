@@ -3,6 +3,7 @@ using Dokument.Application.Files;
 using Dokument.Domain.Files;
 using Dokument.Domain.Previews;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Settings;
@@ -58,6 +59,12 @@ public static class FileEndpoints
                 "What the viewer shows: a WebP for images browsers can't display or that are huge, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18)."
             );
         files.MapGet("/nodes/{id:guid}/versions", ListVersions).WithName("ListVersions");
+        files
+            .MapGet("/nodes/{id:guid}/processing", GetProcessing)
+            .WithName("GetProcessing")
+            .WithDescription(
+                "Where the worker is with the file's current version: thumbnail, metadata and text. Admins also get each failed step's job and error."
+            );
         files
             .MapPost("/nodes/{id:guid}/versions/{versionId:guid}/restore", RestoreVersion)
             .WithName("RestoreVersion");
@@ -119,6 +126,22 @@ public static class FileEndpoints
                 await mapper.MapAsync(node, ct),
                 await PathOfAsync(drive, node, includeSelf: false, ct)
             )
+        );
+    }
+
+    private static async Task<Ok<FileProcessing>> GetProcessing(
+        Guid id,
+        HttpContext context,
+        DriveService drive,
+        JobMonitor jobs,
+        CancellationToken ct
+    )
+    {
+        var node = await drive.GetFileAsync(context.Actor(), id, ct);
+        var steps = await jobs.StepsAsync(node.CurrentVersion!.BlobHash, ct);
+        var admin = context.User.IsInRole("admin");
+        return TypedResults.Ok(
+            new FileProcessing(steps.Select(s => ProcessingStepDto.From(s, admin)).ToList())
         );
     }
 

@@ -8,6 +8,7 @@ import { useCoarsePointer } from "../lib/usePointer";
 import { IconButton } from "./Button";
 import { Checkbox } from "./Checkbox";
 import { FileFlags } from "./FileFlags";
+import { ProcessingIcon } from "./Processing";
 import type { FileViewProps } from "./FileGrid";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
@@ -188,6 +189,7 @@ export function FileList<T extends FileItem>({
                           .join(" · ")}
                       </span>
                     </div>
+                    {!!item.processing?.length && <ProcessingIcon steps={item.processing} />}
                     <FileFlags item={item} />
                   </div>
                 </td>

@@ -1,5 +1,6 @@
 import type {
   DuplicateCheckResult,
+  FileProcessing,
   FolderConflictPolicy,
   FolderListing,
   FolderTreeEntry,
@@ -78,15 +79,20 @@ export const toItem = (node: NodeDto): Item => ({
   thumbnail: node.thumbnail === "ready" ? thumbnailUrl(node.id, node.currentVersionId) : undefined,
   thumbnailPending: node.thumbnail === "pending",
   starred: node.starred,
+  processing: node.processing,
   node,
 });
 
 /**
- * Thumbnails being made appear on their own (§16.4): the worker's live notice brings them. Without a live connection
- * the listing is polled instead, every 2 s at first, then every 10 s for slow ones.
+ * Whether a node's listing should be polled because the worker still has something to do for it (§10.1, §16.4).
+ * A finished thumbnail arrives as a live notice, so it's polled for only without a live connection; the other
+ * steps don't send notices yet, so they're always polled for.
  */
-const pollWhilePending = (pending: boolean, updates: number) =>
-  pending && !isLiveConnected() ? (updates < 30 ? 2_000 : 10_000) : false;
+const busy = (node: NodeDto) =>
+  node.processing.some((s) => s.step !== "thumbnail") || (node.thumbnail === "pending" && !isLiveConnected());
+
+/** Polled while the worker is busy with something on screen: every 2 s at first, then every 10 s for slow ones. */
+const pollWhilePending = (pending: boolean, updates: number) => (pending ? (updates < 30 ? 2_000 : 10_000) : false);
 
 export const folderQuery = (folderId: string | null) =>
   queryOptions({
@@ -94,10 +100,7 @@ export const folderQuery = (folderId: string | null) =>
     queryFn: (): Promise<FolderListing> =>
       unwrap(api.GET("/api/v1/nodes", { params: { query: folderId ? { folderId } : {} } })),
     refetchInterval: (query) =>
-      pollWhilePending(
-        query.state.data?.items.some((item) => item.thumbnail === "pending") ?? false,
-        query.state.dataUpdateCount,
-      ),
+      pollWhilePending(query.state.data?.items.some(busy) ?? false, query.state.dataUpdateCount),
   });
 
 export const nodeQuery = (id: string) =>
@@ -105,7 +108,20 @@ export const nodeQuery = (id: string) =>
     queryKey: ["node", id],
     queryFn: (): Promise<NodeDetails> => unwrap(api.GET("/api/v1/nodes/{id}", { params: { path: { id } } })),
     refetchInterval: (query) =>
-      pollWhilePending(query.state.data?.node.thumbnail === "pending", query.state.dataUpdateCount),
+      pollWhilePending(!!query.state.data && busy(query.state.data.node), query.state.dataUpdateCount),
+  });
+
+/** A file's processing steps for the details panel, polled while a step is still to do (only thumbnails send notices). */
+export const processingQuery = (id: string, versionId: string | null) =>
+  queryOptions({
+    queryKey: ["processing", id, versionId],
+    queryFn: (): Promise<FileProcessing> =>
+      unwrap(api.GET("/api/v1/nodes/{id}/processing", { params: { path: { id } } })),
+    refetchInterval: (query) =>
+      pollWhilePending(
+        query.state.data?.steps.some((s) => ["waiting", "paused", "running"].includes(s.state)) ?? false,
+        query.state.dataUpdateCount,
+      ),
   });
 
 export const versionsQuery = (id: string) =>
