@@ -1,4 +1,4 @@
-import { formatBytes } from "@dokument/core";
+import { findHits, formatBytes, splitHighlights } from "@dokument/core";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
@@ -19,6 +19,20 @@ export type PreviewSource =
   | { type: "preparing" }
   | { type: "none" };
 
+/** A hit's box on a page, as `[x, y, width, height]` fractions of the page. */
+export type MarkBox = readonly number[];
+
+/** Search hits to mark in the preview, when the file was opened from search results (docs/design.md §13.3). */
+export type ViewerMarks = {
+  query: string;
+  terms: readonly string[];
+  /** Pages with hits, from 1. Boxes are for recognized text; a text layer is searched by the viewer itself. */
+  pages: readonly { pageNo: number; boxes: readonly MarkBox[] }[];
+  /** The page to open on: the best hit. */
+  startPage?: number;
+  onClear: () => void;
+};
+
 export type FileViewerProps = {
   item: FileItem;
   preview: PreviewSource;
@@ -35,6 +49,9 @@ export type FileViewerProps = {
   onDetailsChange?: (open: boolean) => void;
   /** The details panel, shown beside the preview when open. */
   details?: ReactNode;
+  marks?: ViewerMarks;
+  /** "Result 3 of 23", when the siblings are search results. */
+  position?: string;
   /** A note under the top bar, such as a newer version having arrived (§15.4). */
   banner?: ReactNode;
 };
@@ -53,10 +70,18 @@ export function FileViewer({
   detailsOpen,
   onDetailsChange,
   details,
+  marks,
+  position,
   banner,
 }: FileViewerProps) {
   const { t } = useTranslation();
   const swipe = useRef<{ x: number; y: number } | null>(null);
+  const markedPages = marks?.pages.map((p) => p.pageNo).sort((a, b) => a - b) ?? [];
+  const [page, setPage] = useState(marks?.startPage ?? markedPages[0] ?? 1);
+  const pageIndex = markedPages.indexOf(page);
+  const previousMarked = markedPages.filter((p) => p < page).at(-1);
+  const nextMarked = markedPages.find((p) => p > page);
+  const boxesOn = (pageNo: number) => marks?.pages.find((p) => p.pageNo === pageNo)?.boxes ?? [];
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -92,6 +117,38 @@ export function FileViewer({
         <h1 className="m-0 min-w-0 flex-1 truncate text-title-md" title={item.name}>
           {item.name}
         </h1>
+        {marks && (
+          <div
+            role="group"
+            aria-label={t("viewer.matches", { query: marks.query })}
+            className="flex h-10 shrink-0 items-center gap-1 rounded-xl bg-surface-container-high pr-1 pl-3 max-sm:gap-0 max-sm:pl-1"
+          >
+            <Icon name="search" size="sm" className="text-on-surface-variant max-sm:hidden" />
+            <span className="max-w-40 truncate px-1 max-md:hidden">{marks.query}</span>
+            {preview.type === "pdf" && markedPages.length > 0 && (
+              <>
+                <span className="tabular px-1 text-label-lg text-on-surface-variant max-sm:sr-only" title={pageIndex < 0 ? t("viewer.noMatchesHere") : undefined}>
+                  {t("viewer.matchPosition", { current: pageIndex < 0 ? "–" : pageIndex + 1, total: markedPages.length })}
+                </span>
+                <IconButton
+                  icon="keyboard_arrow_up"
+                  label={t("viewer.previousMatch")}
+                  size="sm"
+                  disabled={previousMarked === undefined}
+                  onClick={() => previousMarked && setPage(previousMarked)}
+                />
+                <IconButton
+                  icon="keyboard_arrow_down"
+                  label={t("viewer.nextMatch")}
+                  size="sm"
+                  disabled={nextMarked === undefined}
+                  onClick={() => nextMarked && setPage(nextMarked)}
+                />
+              </>
+            )}
+            <IconButton icon="close" label={t("viewer.stopMarking")} size="sm" onClick={marks.onClear} />
+          </div>
+        )}
         {onShare && (
           <>
             <Button variant="tonal" icon="person_add" onClick={onShare} className="max-md:hidden">
@@ -131,13 +188,21 @@ export function FileViewer({
           }}
         >
           {preview.type === "image" ? (
-            <ImagePreview key={preview.src} src={preview.src} alt={item.name} fallback={noPreview(true)} />
+            <ImagePreview key={preview.src} src={preview.src} alt={item.name} boxes={boxesOn(1)} fallback={noPreview(true)} />
           ) : preview.type === "pdf" ? (
             <Suspense fallback={<Loading />}>
-              <PdfPreview key={preview.src} src={preview.src} fallback={noPreview(true)} />
+              <PdfPreview
+                key={preview.src}
+                src={preview.src}
+                page={page}
+                onPageChange={setPage}
+                terms={marks?.terms}
+                boxes={boxesOn(page)}
+                fallback={noPreview(true)}
+              />
             </Suspense>
           ) : preview.type === "text" ? (
-            <TextPreview key={preview.src} src={preview.src} fallback={noPreview(true)} />
+            <TextPreview key={preview.src} src={preview.src} terms={marks?.terms} fallback={noPreview(true)} />
           ) : preview.type === "video" ? (
             <MediaPreview key={preview.src} type="video" src={preview.src} fallback={noPreview(true)} />
           ) : preview.type === "audio" ? (
@@ -169,6 +234,11 @@ export function FileViewer({
               onClick={onNext}
               className="absolute top-1/2 right-2 -translate-y-1/2 bg-surface-container shadow-elevation-1 max-sm:hidden"
             />
+          )}
+          {position && (
+            <span className="tabular pointer-events-none absolute bottom-6 left-4 text-body-sm text-on-surface-variant max-md:hidden">
+              {position}
+            </span>
           )}
         </div>
         {detailsOpen && details}
@@ -254,7 +324,23 @@ function useDragToPan() {
   };
 }
 
-function ImagePreview({ src, alt, fallback }: { src: string; alt: string; fallback: ReactNode }) {
+/** Hits on a page, drawn over it like a highlighter. */
+export function MarkOverlay({ boxes }: { boxes: readonly MarkBox[] }) {
+  return (
+    <span aria-hidden className="pointer-events-none absolute inset-0">
+      {boxes.map(([x = 0, y = 0, w = 0, h = 0], i) => (
+        <span
+          key={i}
+          data-mark
+          className="absolute rounded-xs bg-warning-container outline-2 outline-warning mix-blend-multiply"
+          style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: `${w * 100}%`, height: `${h * 100}%` }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function ImagePreview({ src, alt, boxes, fallback }: { src: string; alt: string; boxes: readonly MarkBox[]; fallback: ReactNode }) {
   const [zoom, setZoom] = useState(1);
   const [state, setState] = useState<"loading" | "loaded" | "failed">("loading");
   const [fit, setFit] = useState<{ width: number; height: number } | null>(null);
@@ -286,16 +372,21 @@ function ImagePreview({ src, alt, fallback }: { src: string; alt: string; fallba
         onDoubleClick={() => setZoom(zoom === 1 ? 2 : 1)}
       >
         {state === "loading" && <Loading />}
-        <img
-          ref={image}
-          src={src}
-          alt={alt}
-          draggable={false}
-          onLoad={() => setState("loaded")}
-          onError={() => setState("failed")}
+        <span
           style={fit ? { width: fit.width * zoom, height: fit.height * zoom } : undefined}
-          className={cn("m-auto max-w-none shrink-0 rounded-sm shadow-elevation-2 select-none", !fit && "invisible absolute")}
-        />
+          className={cn("relative m-auto shrink-0", !fit && "invisible absolute")}
+        >
+          <img
+            ref={image}
+            src={src}
+            alt={alt}
+            draggable={false}
+            onLoad={() => setState("loaded")}
+            onError={() => setState("failed")}
+            className="size-full max-w-none rounded-sm shadow-elevation-2 select-none"
+          />
+          {fit && boxes.length > 0 && <MarkOverlay boxes={boxes} />}
+        </span>
       </div>
       <ViewerToolbar>
         <ZoomControls zoom={zoom} onZoom={setZoom} disabled={state !== "loaded"} />
@@ -307,7 +398,7 @@ function ImagePreview({ src, alt, fallback }: { src: string; alt: string; fallba
 /** Text files are shown up to this many bytes; the rest is a download away. */
 const textLimit = 1024 * 1024;
 
-function TextPreview({ src, fallback }: { src: string; fallback: ReactNode }) {
+function TextPreview({ src, terms, fallback }: { src: string; terms?: readonly string[]; fallback: ReactNode }) {
   const { t, i18n } = useTranslation();
   const [text, setText] = useState<{ body: string; truncated: boolean } | "failed" | null>(null);
 
@@ -330,7 +421,10 @@ function TextPreview({ src, fallback }: { src: string; fallback: ReactNode }) {
   if (text === "failed") return <Centered>{fallback}</Centered>;
   if (!text) return <Loading />;
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-8">
+    <div
+      ref={(element) => element?.querySelector("mark")?.scrollIntoView({ block: "center" })}
+      className="min-h-0 flex-1 overflow-auto p-4 sm:p-8"
+    >
       <div className="mx-auto max-w-5xl rounded-md bg-surface-container-lowest shadow-elevation-1">
         {text.truncated && (
           <p className="m-0 flex items-center gap-2 border-b border-outline-variant px-4 py-2 text-body-sm text-on-surface-variant">
@@ -338,7 +432,13 @@ function TextPreview({ src, fallback }: { src: string; fallback: ReactNode }) {
             {t("viewer.truncated", { size: formatBytes(textLimit, i18n.language) })}
           </p>
         )}
-        <pre className="m-0 overflow-x-auto p-4 font-mono text-body-sm break-words whitespace-pre-wrap">{text.body}</pre>
+        <pre className="m-0 overflow-x-auto p-4 font-mono text-body-sm break-words whitespace-pre-wrap">
+          {terms?.length
+            ? splitHighlights(text.body, findHits(text.body, terms)).map((part, i) =>
+                part.hit ? <mark key={i}>{part.text}</mark> : part.text,
+              )
+            : text.body}
+        </pre>
       </div>
     </div>
   );

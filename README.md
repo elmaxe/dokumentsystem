@@ -27,6 +27,16 @@ dotnet run --project src/Dokument.AppHost
 
 The Aspire dashboard opens with Postgres (built from `docker/postgres`), Keycloak, the server, a worker and the Vite dev server. Local files go to `.data/`. Open http://localhost:5173 and sign in as `alice`/`alice` (admin), `bob`/`bob` or `carol`/`carol`. pgAdmin is at http://localhost:5050, and the API reference (Scalar) is at `/scalar` on the server; the dashboard links both.
 
+The worker runs from the app's Docker image (its `runtime` stage, without the web UI), so exiftool, Tesseract and libvips come with it and nothing more needs installing. Aspire rebuilds the image on each start, which takes a minute or two after a change to the worker code.
+
+To debug the worker, run it as a project instead with `dotnet run --project src/Dokument.AppHost -- --WorkerOnHost=true`. It then needs the tools on your machine:
+
+- Debian or Ubuntu: `sudo apt install libimage-exiftool-perl tesseract-ocr tesseract-ocr-swe tesseract-ocr-eng`
+- macOS: `brew install exiftool tesseract tesseract-lang`
+- Windows: `winget install OliverBetz.ExifTool UB-Mannheim.TesseractOCR`, and tick Swedish under additional languages in the Tesseract installer. That installer doesn't add Tesseract to PATH, so either add `C:\Program Files\Tesseract-OCR` to PATH or set `Worker__TesseractCommand` to the full path of `tesseract.exe`. `Worker__ExifToolCommand` does the same for exiftool.
+
+Without the tools the worker still runs. It logs a warning and skips what the missing tool would have read, then reads those files on the first start after the tool is installed.
+
 The integration tests run against our Postgres image, so build it once first: `docker build -t dokumentsystem-postgres:ci docker/postgres`.
 
 | Task | Command |

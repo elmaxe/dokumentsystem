@@ -51,6 +51,20 @@ public static class DokumentTelemetry
         description: "Thumbnails and previews generated."
     );
 
+    /// <summary>Pages and images whose text was recognized (§10.2).</summary>
+    public static readonly Counter<long> OcrPages = Meter.CreateCounter<long>(
+        "dokument.ocr.pages",
+        unit: "{page}",
+        description: "Pages and images whose text was recognized."
+    );
+
+    /// <summary>How long a search took, in the server (§13).</summary>
+    public static readonly Histogram<double> SearchDuration = Meter.CreateHistogram<double>(
+        "dokument.search.duration",
+        unit: "s",
+        description: "How long a search took."
+    );
+
     /// <summary>Clients connected for live updates (§15.4).</summary>
     public static readonly UpDownCounter<long> LiveConnections = Meter.CreateUpDownCounter<long>(
         "dokument.live.connections",

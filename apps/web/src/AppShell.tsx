@@ -30,6 +30,8 @@ import { drive, errorMessage, folderQuery, invalidateFolders, nameKey, storageQu
 import { canPickFolders, fromDrop, fromFolderInput } from "./files/folderPicking";
 import { UploadProvider } from "./files/uploads";
 import { useUploads } from "./files/uploadsContext";
+import { SearchBox } from "./search/SearchBox";
+import { validateSearchParams } from "./search/search";
 
 const placePaths: Record<Place, string> = {
   files: "/",
@@ -59,6 +61,7 @@ function Shell() {
   const offline = useLiveOffline();
   const storage = useQuery(storageQuery);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const locationSearch = useRouterState({ select: (state) => state.location.search });
   const { folderId = null } = useParams({ strict: false }) as { folderId?: string };
   const place = (Object.entries(placePaths).find(([, path]) => path !== "/" && pathname.startsWith(path))?.[0] ??
     "files") as Place;
@@ -67,7 +70,8 @@ function Shell() {
   const toAdmin = (id: AdminPlace) => void navigate({ to: `/admin/${id}` });
   const exitAdmin = () => void navigate({ to: "/" });
   const inSettings = pathname.startsWith("/settings");
-  const inFiles = place === "files" && !inAdmin && !inSettings;
+  const inSearch = pathname === "/search";
+  const inFiles = place === "files" && !inAdmin && !inSettings && !inSearch;
   const listing = useQuery({ ...folderQuery(inFiles ? folderId : null) });
   const folderName = listing.data?.folder?.name ?? t("nav.myFiles");
   const [trayCollapsed, setTrayCollapsed] = useState(false);
@@ -154,7 +158,7 @@ function Shell() {
         <AdminRail active={adminPlace} onNavigate={toAdmin} onExit={exitAdmin} className="max-md:hidden" />
       ) : (
         <NavRail
-          active={inSettings ? undefined : place}
+          active={inSettings || inSearch ? undefined : place}
           onNavigate={(id) => void navigate({ to: placePaths[id] })}
           newActions={newActions}
           onNewAction={onNew}
@@ -168,6 +172,14 @@ function Shell() {
         <header className="flex h-topbar shrink-0 items-center gap-2 px-4 sm:px-6">
           {inAdmin && (
             <IconButton icon="arrow_back" label={t("admin.nav.exit")} onClick={exitAdmin} className="-ml-2 md:hidden" />
+          )}
+          {!inAdmin && !inSettings && (
+            <SearchBox
+              params={inSearch ? validateSearchParams(locationSearch as Record<string, unknown>) : undefined}
+              folderId={inFiles ? folderId : null}
+              onBack={inSearch ? () => void navigate({ to: "/" }) : undefined}
+              className="max-w-180 min-w-0 flex-1"
+            />
           )}
           <AccountMenu
             name={name}
@@ -210,8 +222,13 @@ function Shell() {
           <AdminBottomNav active={adminPlace} onNavigate={toAdmin} className="shrink-0 md:hidden" />
         ) : (
           <BottomNav
-            active={!inSettings && (place === "files" || place === "shared" || place === "recent") ? place : undefined}
-            onNavigate={(id) => (id === "search" ? toast(t("common.notYet")) : void navigate({ to: placePaths[id] }))}
+            active={
+              inSearch ? "search" : !inSettings && (place === "files" || place === "shared" || place === "recent") ? place : undefined
+            }
+            onNavigate={(id) => {
+              if (id !== "search") return void navigate({ to: placePaths[id] });
+              void navigate({ to: "/search" }).then(() => document.querySelector<HTMLInputElement>("header input[type=search]")?.focus());
+            }}
             className="shrink-0 md:hidden"
           />
         )}

@@ -1,14 +1,24 @@
 import type { AdminSettings, AdminUser, ProbeResult } from "@dokument/api";
 import { formatBytes } from "@dokument/core";
-import { Avatar, Banner, Button, Dialog, Icon, IconButton, Progress, TextField, useSnackbar } from "@dokument/ui";
+import { Avatar, Banner, Button, Dialog, Icon, IconButton, Progress, Switch, TextField, useSnackbar } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { admin, adminSettingsQuery, adminUsersQuery, mlStatusQuery, parseGib, storageReportQuery, toGib } from "./adminApi";
+import {
+  admin,
+  adminSettingsQuery,
+  adminUsersQuery,
+  mlStatusQuery,
+  parseGib,
+  storageReportQuery,
+  textProgressQuery,
+  toGib,
+} from "./adminApi";
 
 const sections = [
   { id: "storage", icon: "hard_drive" },
   { id: "people", icon: "group" },
+  { id: "textRecognition", icon: "document_scanner" },
   { id: "ml", icon: "neurology" },
   { id: "scanning", icon: "shield" },
   { id: "versions", icon: "history" },
@@ -42,6 +52,7 @@ export function AdminSettingsPage() {
     <AdminFrame title={t("admin.nav.settings")}>
       {(settings) => (
         <>
+          <TextRecognitionSection settings={settings.data} />
           <MlSection key={`m${settings.dataUpdatedAt}`} settings={settings.data} />
           <ScannerSection key={`c${settings.dataUpdatedAt}`} settings={settings.data} />
           <VersionsSection key={`v${settings.dataUpdatedAt}`} settings={settings.data} />
@@ -585,6 +596,72 @@ function ProbeBanner({
     <Banner tone="success">{okText(result)}</Banner>
   ) : (
     <Banner tone="error">{failText(result.error ?? "")}</Banner>
+  );
+}
+
+/** Search and text recognition (§13.2): whether scans and photos are read, and how far the worker has come. */
+function TextRecognitionSection({ settings }: { settings: AdminSettings }) {
+  const { t, i18n } = useTranslation();
+  const toast = useSnackbar();
+  const queryClient = useQueryClient();
+  const progress = useQuery(textProgressQuery);
+  const { busy, save } = useSave();
+  const enabled = settings.textRecognition.enabled;
+  const id = useId();
+  const number = (n: number) => n.toLocaleString(i18n.language);
+
+  const reread = async () => {
+    try {
+      queryClient.setQueryData(textProgressQuery.queryKey, await admin.rereadText());
+      toast(t("admin.textRecognition.rereadStarted"));
+    } catch {
+      toast(t("errors.generic"));
+    }
+  };
+
+  return (
+    <Section id="textRecognition" intro={t("admin.textRecognition.intro")}>
+      <div className="flex items-center gap-4">
+        <label htmlFor={id} className="flex min-w-0 flex-1 cursor-pointer flex-col">
+          <span className="text-title-sm">{t("admin.textRecognition.label")}</span>
+          <span className="text-body-sm text-on-surface-variant">{t("admin.textRecognition.languages")}</span>
+        </label>
+        <Switch
+          id={id}
+          checked={enabled}
+          onCheckedChange={(checked) => !busy && void save(() => admin.putTextRecognition(checked))}
+        />
+      </div>
+      {progress.data && (
+        <div className="flex flex-col gap-2 rounded-md bg-surface-container p-4 text-body-md">
+          <span className="flex items-center gap-2 text-title-sm">
+            <Icon name="check_circle" filled className="text-success" size={20} />
+            {t("admin.textRecognition.read", { count: progress.data.read })}
+          </span>
+          {progress.data.waiting + progress.data.running > 0 && (
+            <span className="tabular flex items-center gap-2 text-on-surface-variant">
+              <Icon name="hourglass_top" size={20} />
+              {t("admin.textRecognition.queue", { waiting: number(progress.data.waiting), running: number(progress.data.running) })}
+            </span>
+          )}
+          {progress.data.failed > 0 && (
+            <span className="flex items-center gap-2 text-on-surface-variant">
+              <Icon name="error" size={20} className="text-error" />
+              {t("admin.textRecognition.failed", { count: progress.data.failed })}
+            </span>
+          )}
+          <span className="flex items-start gap-2 text-body-sm text-on-surface-variant">
+            <Icon name="info" size={20} />
+            {enabled ? t("admin.textRecognition.engine") : t("admin.textRecognition.offNote")}
+          </span>
+        </div>
+      )}
+      <div className="flex justify-end">
+        <Button variant="outlined" icon="refresh" onClick={() => void reread()}>
+          {t("admin.textRecognition.reread")}
+        </Button>
+      </div>
+    </Section>
   );
 }
 

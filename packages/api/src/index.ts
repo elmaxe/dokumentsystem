@@ -38,6 +38,16 @@ export type MlEndpointStatus = components["schemas"]["MlEndpointStatus"];
 export type MlEndpointUpdate = components["schemas"]["MlEndpointUpdate"];
 export type ProbeResult = components["schemas"]["ProbeResult"];
 export type Quota = components["schemas"]["QuotaDto"];
+export type SearchResponse = components["schemas"]["SearchResponse"];
+export type SearchResult = components["schemas"]["SearchResultDto"];
+export type SearchSort = components["schemas"]["SearchSort"];
+export type MatchSource = components["schemas"]["MatchSource"];
+export type Snippet = components["schemas"]["SnippetDto"];
+export type SuggestResponse = components["schemas"]["SuggestResponse"];
+export type Suggestion = components["schemas"]["SuggestionDto"];
+export type MatchesResponse = components["schemas"]["MatchesResponse"];
+export type PageMatch = components["schemas"]["PageMatchDto"];
+export type TextProgress = components["schemas"]["TextProgress"];
 
 /** The tus endpoint for resumable uploads (docs/design.md §8.1). */
 export const uploadsPath = "/api/v1/uploads";

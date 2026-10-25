@@ -83,7 +83,7 @@ internal sealed partial class JobRunner(
     {
         await using var scope = scopes.CreateAsyncScope();
         var queue = scope.ServiceProvider.GetRequiredService<JobQueue>();
-        var timeout = options.Value.JobTimeout;
+        var timeout = registration.Timeout ?? options.Value.JobTimeout;
         var job = await queue.ClaimAsync(
             registration.Type,
             workerId,

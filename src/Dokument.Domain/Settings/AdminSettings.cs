@@ -51,3 +51,12 @@ public sealed record ScannerSettings(ClamdAddress? Address)
 {
     public static readonly ScannerSettings Default = new((ClamdAddress?)null);
 }
+
+/// <summary>
+/// Whether the worker reads text in scans and photos (§10.2, §13). Text in PDFs and Office files is always read; this
+/// only governs recognition, which is the slow part. On by default.
+/// </summary>
+public sealed record TextRecognitionSettings(bool Enabled)
+{
+    public static readonly TextRecognitionSettings Default = new(true);
+}

@@ -7,6 +7,8 @@ import { FilesPage } from "./files/FilesPage";
 import { TrashPage } from "./files/TrashPage";
 import { ViewerPage } from "./files/ViewerPage";
 import { PlacePage } from "./PlacePage";
+import { validateSearchParams } from "./search/search";
+import { SearchPage } from "./search/SearchPage";
 import { SettingsPage } from "./settings/SettingsPage";
 import { SignInPage } from "./SignInPage";
 
@@ -43,19 +45,34 @@ const folderRoute = createRoute({
   },
 });
 
-/** The viewer sits inside the app shell, so uploads keep running and the tray stays put while a file is open. */
-export type FileSearch = { from?: "starred" | "recent" };
+/**
+ * The viewer sits inside the app shell, so uploads keep running and the tray stays put while a file is open. Opened
+ * from search, `q` marks the hits and `page` is the page to open on.
+ */
+export type FileSearch = { from?: "starred" | "recent" | "search"; q?: string; page?: number };
 
 const fileRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/files/$fileId",
   validateSearch: (search: Record<string, unknown>): FileSearch => ({
-    from: search.from === "starred" || search.from === "recent" ? search.from : undefined,
+    from: search.from === "starred" || search.from === "recent" || search.from === "search" ? search.from : undefined,
+    q: typeof search.q === "string" && search.q ? search.q : undefined,
+    page: typeof search.page === "number" && search.page >= 1 ? Math.floor(search.page) : undefined,
   }),
   component: function FileRoute() {
     const { fileId } = fileRoute.useParams();
-    const { from } = fileRoute.useSearch();
-    return <ViewerPage fileId={fileId} from={from} />;
+    const { from, q, page } = fileRoute.useSearch();
+    return <ViewerPage fileId={fileId} from={from} q={q} page={page} />;
+  },
+});
+
+export const searchRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/search",
+  validateSearch: validateSearchParams,
+  component: function SearchRoute() {
+    const params = searchRoute.useSearch();
+    return <SearchPage params={params} />;
   },
 });
 
@@ -119,7 +136,7 @@ const signInRoute = createRoute({
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminSettingsRoute]), trashRoute, settingsRoute, sharedRoute, ...placeRoutes]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminSettingsRoute]), trashRoute, settingsRoute, sharedRoute, searchRoute, ...placeRoutes]), signInRoute]),
     context: { queryClient },
   });
 }

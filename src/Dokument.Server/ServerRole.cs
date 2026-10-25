@@ -118,6 +118,7 @@ public static class ServerRole
         api.MapFileEndpoints();
         api.MapTrashEndpoints();
         api.MapStarredAndRecentEndpoints();
+        api.MapSearchEndpoints();
         api.MapTusEndpoints();
         api.MapAdminEndpoints();
         app.MapHub<LiveHub>(LiveHub.Path).RequireAuthorization();

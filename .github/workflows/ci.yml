@@ -32,9 +32,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # The runner image ships a .NET 10 SDK, which global.json accepts. Installing the pinned one is best-effort, so an
+      # outage of Microsoft's download servers doesn't fail CI; the next step fails if no matching SDK is there.
       - uses: actions/setup-dotnet@v5
+        continue-on-error: true
         with:
           global-json-file: global.json
+      - run: dotnet --version
       - run: dotnet tool restore
       - run: dotnet csharpier check .
       - run: dotnet build --configuration Release
@@ -46,6 +50,9 @@ jobs:
           tags: dokumentsystem-postgres:ci
           load: true
           cache-from: type=gha,scope=postgres
+      # The worker reads metadata with exiftool and text in scans with Tesseract (docs/design.md §13.2).
+      - name: Install exiftool and Tesseract
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libimage-exiftool-perl tesseract-ocr tesseract-ocr-swe tesseract-ocr-eng fonts-dejavu-core
       - run: dotnet test --configuration Release --no-build
       - name: Migrations match the model
         run: dotnet ef migrations has-pending-model-changes -p src/Dokument.Infrastructure -s src/Dokument.Host --configuration Release --no-build

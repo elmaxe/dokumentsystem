@@ -29,6 +29,7 @@ import {
   toItem,
 } from "./drive";
 import { FileDetailsPanel } from "./FileDetailsPanel";
+import { lastSearchResults, matchesQuery } from "../search/search";
 
 /** Images every browser shows from the original. Others (HEIC, TIFF, SVG) wait for the worker's WebP preview. */
 const webImage = /^image\/(jpeg|png|webp|gif|avif)$/;
@@ -46,8 +47,19 @@ type Pin = { fileId: string; versionId: string; fetchedAt: number };
 /**
  * A file opened from the grid or list (§14): full screen, with its siblings a key or swipe away. Opened from Starred
  * or Recent, the siblings are that page's files and closing goes back there; otherwise they're the file's folder.
+ * Opened from search, the siblings are the results, and the hits for `q` are marked, starting on `page`.
  */
-export function ViewerPage({ fileId, from }: { fileId: string; from?: "starred" | "recent" }) {
+export function ViewerPage({
+  fileId,
+  from,
+  q,
+  page,
+}: {
+  fileId: string;
+  from?: "starred" | "recent" | "search";
+  q?: string;
+  page?: number;
+}) {
   const { t, i18n } = useTranslation();
   const toast = useSnackbar();
   const navigate = useNavigate();
@@ -57,6 +69,8 @@ export function ViewerPage({ fileId, from }: { fileId: string; from?: "starred" 
   const listing = useQuery({ ...folderQuery(parentId), enabled: details.isSuccess && !from });
   const starred = useQuery({ ...starredQuery, enabled: from === "starred" });
   const recent = useQuery({ ...recentQuery, enabled: from === "recent" });
+  const results = from === "search" ? lastSearchResults() : null;
+  const matches = useQuery({ ...matchesQuery(fileId, q ?? ""), enabled: !!q });
   const [panel, setPanel] = useState<{ open: boolean; tab: DetailsTab }>({ open: false, tab: "info" });
   const format = useFormat();
   const current = details.data?.node.currentVersionId ?? null;
@@ -91,11 +105,13 @@ export function ViewerPage({ fileId, from }: { fileId: string; from?: "starred" 
   }, [fileId]);
 
   const close = () =>
-    void (from
-      ? navigate({ to: `/${from}` })
+    void (from === "search"
+      ? navigate({ to: "/search", search: results?.params ?? { q } })
+      : from
+        ? navigate({ to: `/${from}` })
       : parentId
         ? navigate({ to: "/folders/$folderId", params: { folderId: parentId } })
-        : navigate({ to: "/" }));
+          : navigate({ to: "/" }));
 
   if (details.isError && !(gone && details.data)) {
     return (
@@ -110,7 +126,9 @@ export function ViewerPage({ fileId, from }: { fileId: string; from?: "starred" 
   const siblings =
     from === "recent"
       ? (recent.data?.items ?? []).map((r) => toItem(r.node))
-      : sortItems(
+      : from === "search"
+        ? (results?.nodes ?? []).map(toItem)
+        : sortItems(
           (from === "starred" ? (starred.data?.items ?? []).map((s) => s.node) : (listing.data?.items ?? []))
             .filter((n) => n.kind === "file")
             .map(toItem),
@@ -120,7 +138,7 @@ export function ViewerPage({ fileId, from }: { fileId: string; from?: "starred" 
   const index = siblings.findIndex((s) => s.id === fileId);
   const go = (offset: number) => {
     const next = siblings[index + offset];
-    if (next) void navigate({ to: "/files/$fileId", params: { fileId: next.id }, search: { from }, replace: true });
+    if (next) void navigate({ to: "/files/$fileId", params: { fileId: next.id }, search: { from, q }, replace: true });
   };
   const setStar = async (on: boolean) => {
     try {
@@ -132,10 +150,24 @@ export function ViewerPage({ fileId, from }: { fileId: string; from?: "starred" 
     await invalidateStars(queryClient);
   };
 
+  // Wait for the hits before showing a file opened from search, so it opens on the right page with them marked.
+  if (q && matches.isPending) return <div className="fixed inset-0 z-40 bg-surface-container-highest" />;
+  const marks =
+    q && matches.data
+      ? {
+          query: q,
+          terms: matches.data.terms,
+          pages: matches.data.pages,
+          startPage: page ?? matches.data.pages[0]?.pageNo,
+          onClear: () =>
+            void navigate({ to: "/files/$fileId", params: { fileId }, search: { from }, replace: true }),
+        }
+      : undefined;
+
   return (
     <div className="fixed inset-0 z-40">
       <FileViewer
-        key={`${item.id}-${shownVersion}`}
+        key={`${item.id}-${shownVersion}-${q ?? ""}`}
         item={item}
         preview={previewOf(details.data.node, shownVersion)}
         onClose={close}
@@ -175,6 +207,12 @@ export function ViewerPage({ fileId, from }: { fileId: string; from?: "starred" 
             : { id: "star", icon: "star", label: t("actions.star") },
         ]}
         onAction={(id) => void setStar(id === "star")}
+        marks={marks}
+        position={
+          from === "search" && index >= 0 && siblings.length > 1
+            ? t("viewer.resultPosition", { current: index + 1, total: siblings.length })
+            : undefined
+        }
         onPrevious={index > 0 ? () => go(-1) : undefined}
         onNext={index >= 0 && index < siblings.length - 1 ? () => go(1) : undefined}
         detailsOpen={panel.open}

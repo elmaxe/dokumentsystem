@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.17** · Last updated: 2026-10-25
+> Status: **Draft v0.21** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -187,15 +187,15 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 ### 4.3 Configuration
 
 - **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
-- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17 and 18): the default quota, trash and version retention, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
+- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17, 18 and 24): the default quota, trash and version retention, text recognition on or off, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
   - quota defaults
   - trash and version retention
   - SMTP
   - backup schedule
   - ML URLs
   - Gotenberg URL
-  - job concurrency (until the admin queue page exists: `Worker__ThumbnailConcurrency`, default 2)
-  - OCR languages
+  - job concurrency (until the admin queue page exists: `Worker__ThumbnailConcurrency`, default 2; `Worker__MetadataConcurrency`, default 2; `Worker__TextConcurrency`, default 1)
+  - OCR languages (until then `Worker__OcrLanguages`, default `swe+eng`)
 
 ---
 
@@ -275,11 +275,21 @@ blob_previews(blob_hash PK, status {ready|unsupported|failed}, pipeline_version,
 renditions(blob_hash, kind {thumb_s|thumb_m|preview|preview_pdf|video_web|poster|…},
            storage_key, mime_type, width, height, created_at, PRIMARY KEY (blob_hash, kind))
 
-metadata(version_id, kind {exif|xmp|id3|pdf_info|ffprobe…}, data jsonb)
+blob_metadata(blob_hash PK, pipeline_version, taken_at NULL, camera NULL, duration_seconds NULL,
+              tags jsonb, readable, updated_at)  -- exiftool's searchable tags and the filter values (§10.3)
+blob_contents(blob_hash PK, status {ready|empty|unsupported|failed}, pipeline_version, page_count NULL,
+              ocr_skipped, ocr_engine NULL, updated_at)   -- what the text stage made of a blob
+content_pages(id, blob_hash, page_no, source {text|ocr|metadata|transcript}, text,
+              words jsonb NULL,                  -- OCR word boxes, [[x, y, w, h, "word"], …] as page fractions
+              UNIQUE (blob_hash, page_no))       -- BM25-indexed; page 0 is the metadata text
+embeddings(blob_hash, page_no NULL, model, vector vchord) -- optional (M7)
 
-content_pages(version_id, page_no, source {text_layer|ocr|transcript}, lang, text,
-              ocr_engine, ocr_version)           -- BM25-indexed
-embeddings(version_id, page_no NULL, model, vector vchord) -- optional
+-- Planned (decision 26, §13.4), not built yet:
+blob_tags(blob_hash, tag, source {rule|ml}, rule_id NULL, confidence NULL, created_at,
+          PRIMARY KEY (blob_hash, tag))          -- automatic tags belong to the bytes, like text
+node_tags(node_id, tag, added_by, added_at, PRIMARY KEY (node_id, tag))   -- tags people add (source user)
+node_tag_removals(node_id, tag, removed_by, removed_at)   -- an automatic tag someone took off this file
+tag_rules(id, tag, words, enabled, created_by, created_at) -- "kvitto, receipt, faktura" → receipt
 
 stars(user_id, node_id, starred_at, PRIMARY KEY (user_id, node_id))   -- each person's own (§15.2)
 recent_files(user_id, node_id, at, action {opened|downloaded|uploaded|restored},
@@ -308,7 +318,7 @@ Notes:
   - Re-uploading identical content to the same file does **not** create a new version.
 - **Name uniqueness within a folder:** NFC-normalized and case-insensitive (`name_key`). The top of each user's "My files" (parent NULL) counts as one folder, hence `NULLS NOT DISTINCT`. Conflicts are resolved like Drive: either "file (1).pdf" or "upload as new version", chosen by the user.
 - **Names** (`NodeName` in the domain) are trimmed, NFC, at most 255 UTF-8 bytes, never "." or "..", and contain no slashes or control characters, so `dokument export` can write any of them to disk.
-- **Renditions belong to the bytes, not versions or owners** (decisions 15 and 23): identical bytes are rendered once, even for two people, and a copy or a restored version has its thumbnail at once.
+- **Renditions belong to the bytes, not versions or owners** (decisions 15 and 23): identical bytes are rendered once, even for two people, and a copy or a restored version has its thumbnail at once. **Extracted text, metadata and automatic tags do too** (decision 24), so a copy is searchable at once.
 - **`path ltree`** makes subtree operations cheap: permission inheritance, "trash folder", "folder size", "search in folder".
 
 ---
@@ -448,30 +458,33 @@ On disk, identical bytes are always stored once per person (§6, §7). On top of
 - **`pipeline_version` per stage:** bumping it (e.g. a better thumbnailer) lets an admin choose "re-run stage X for all".
 - **Concurrency per job type**, configurable in the UI. Defaults are NAS-friendly, e.g. thumbnails 2, video 1, OCR 1.
 - **Priorities:** interactive work (a user just uploaded) before bulk imports and rescans.
-- **Backfill:** when the worker starts, it queues the thumbnail stage at background priority for every blob without results from the current `pipeline_version`. That covers files from before a stage existed and pipeline upgrades.
+- **Backfill:** when the worker starts, it queues the thumbnail, metadata and text stages at background priority for every blob without results from the current `pipeline_version`. That covers files from before a stage existed and pipeline upgrades.
+- **Timeouts per job type:** the default 5 minutes, except the text stage, which gets 30 minutes because a long scanned PDF is read page by page.
 - **Admin UI:** queue sizes, running and failed jobs with errors, "retry failed", "regenerate missing", pause/resume per queue.
 
 ### 10.2 Stages
 
 ```
-upload complete
-   └─► detect   (MIME by magic bytes, not extension)
-        └─► metadata   (exiftool / ffprobe / PdfPig info → metadata table)
-             ├─► thumbnail (+ preview renditions)
-             ├─► text-extract  (text layer: PDF, Office, plain text)
-             │      └─► ocr   (only if no/insufficient text layer)  → ML or local Tesseract
-             ├─► transcode (video/audio only if not browser-playable)
-             ├─► embed     (optional, ML)
-             └─► transcribe (optional, ML; audio/video → searchable text)
+upload complete (or the backfill)
+   ├─► thumbnail (+ preview renditions)                       built (M2)
+   ├─► metadata   (exiftool → blob_metadata, content page 0)  built (M3)
+   ├─► text       (text layer: PDF, Office, ODF, plain text)  built (M3)
+   │      └─► ocr (pages and images with no text layer)       Tesseract now, ML in M7
+   │             └─► tag rules (keyword rules → blob_tags)    planned (§13.4)
+   ├─► transcode (video/audio only if not browser-playable)
+   ├─► embed     (optional, ML)
+   └─► transcribe (optional, ML, M7; audio/video → timed transcript pages)
 ```
+
+The stages are independent jobs per blob, queued together when an upload finishes; each detects the format from the bytes itself.
 
 ### 10.3 Tooling per format
 
 | Format | Metadata | Thumbnail / preview | Text |
 |---|---|---|---|
-| JPEG/PNG/WebP/GIF/HEIC/AVIF/TIFF/SVG (RAW later) | exiftool | **NetVips** (libvips + libheif) → WebP thumbs, plus a WebP preview when the browser can't show the original | OCR (ML) |
-| PDF | PdfPig / exiftool | **PDFium** renders page 1 for the thumbs; the viewer renders pages with pdf.js | PdfPig text layer → OCR when there is none |
-| DOCX/XLSX/PPTX/ODF/RTF | OpenXML SDK / exiftool | **Gotenberg** (LibreOffice) → PDF rendition → PDFium | OpenXML/ODF text extraction; fall back to text from the PDF rendition |
+| JPEG/PNG/WebP/GIF/HEIC/AVIF/TIFF/SVG (RAW later) | exiftool | **NetVips** (libvips + libheif) → WebP thumbs, plus a WebP preview when the browser can't show the original | OCR (Tesseract, ML in M7) |
+| PDF | exiftool | **PDFium** renders page 1 for the thumbs; the viewer renders pages with pdf.js | PDFium text layer per page → OCR of pages without one |
+| DOCX/XLSX/PPTX/ODF/RTF | exiftool | **Gotenberg** (LibreOffice) → PDF rendition → PDFium | The document XML read straight from the zip (one page per slide); RTF and fallbacks from the PDF rendition later |
 | Video | ffprobe | ffmpeg poster frame; **web-playable rendition only if needed** (H.264/AAC MP4, or HLS for large files). Hardware acceleration: VAAPI/QSV/NVENC. | Transcript (ML, optional) |
 | Audio | ffprobe / ID3 | Embedded cover art, or a generic icon | Transcript (ML, optional) |
 | Text/Markdown/code/CSV/JSON | — | Rendered first lines as thumb (optional) | Raw text (size-capped) |
@@ -483,6 +496,23 @@ upload complete
 - A `preview` WebP of at most 2048 px is added for images browsers can't show (HEIC, TIFF, SVG) and for anything over 4096 px. Other images are viewed from the original.
 - A PDF's page 1 is rendered on white at 1280 px on the long edge and scaled down for the thumbs. Its page count and page size are stored.
 - The Docker image uses Ubuntu's libvips with the libde265 plugin, because the libvips bundled in NetVips.Native can't decode HEVC, the codec in iPhone HEIC photos. Development builds use the bundled one, so HEIC thumbnails only work in the image (or with `-p:UseSystemLibvips=true` and a system libvips).
+
+**Metadata stage, as built (M3):**
+- `exiftool -json -n -fast` on the original, with a 1-minute timeout. The searchable tags (title, subject, description, keywords, author/creator/artist, album, genre, company, comments, camera make and model, lens) become content page 0, so "fujifilm" or a PDF's author finds the file; their values are capped at 4000 characters each.
+- The camera ("FUJIFILM X-T30", without repeating the brand), the date taken (with the camera's UTC offset when it recorded one, otherwise the camera's clock as if it were UTC) and the duration are columns of `blob_metadata`, for the `camera:` and `taken:` filters. The kept tags are stored as JSON for the details panel later.
+- GPS is read but not searchable yet: place search needs offline geodata.
+
+**Text stage, as built (M3):**
+- The format comes from the bytes: `%PDF-`, a zip (`PK`), text by MIME type with no NUL bytes, or an image libvips can load from the same allowlist as thumbnails.
+- **PDF:** PDFium's text per page, up to 2000 pages and 200,000 characters a page. A page with fewer than 16 letters is a scan: it is rendered in grey at 300 dpi (at most 3500 px) and recognized, up to 200 pages per file.
+- **Office and OpenDocument:** the XML is read from the zip with a 64 MiB uncompressed budget, so a zip bomb can't fill memory: Word paragraphs, one page per PowerPoint slide, Excel sheet names, shared and inline strings, and ODF `content.xml`. DTDs are refused.
+- **Plain text:** the first 2 MB, as UTF-8 or Latin-1.
+- **Images** of at least 200 px are turned upright from EXIF and recognized.
+- **Tesseract** (`swe+eng`, `--psm 1`, one thread; page segmentation with orientation detection, so sideways or upside-down photos and scans are read the right way up, with word boxes still in the image's own coordinates) reads PNGs from stdin and returns TSV; words under 55 % confidence are dropped, and fewer than 3 words count as no text unless one word of 4+ letters is at least 85 % sure (a title or a sign). When a photo gives fewer than 3 words, it gets a second look inverted with a white margin, which finds light text on dark or busy backgrounds and text up against the edge; the pass with more words wins. Words keep their boxes as page fractions, for marking hits in the viewer (§14). The engine and its version are stored, so the ML `/ocr` endpoint (M7) can replace it behind the same `ITextRecognizer` interface and re-read only what it would improve.
+- **In development the worker runs in the image.** The Aspire AppHost builds the image's `runtime` stage (the app without the web UI) and runs the worker from it, so exiftool, Tesseract and libvips match production on any machine. `--WorkerOnHost=true` runs it as a project instead, for debugging.
+- **A missing tool doesn't fail jobs.** When the worker runs outside the image (`--WorkerOnHost`) and exiftool or Tesseract isn't installed, it logs one warning. Metadata jobs then store nothing, and text jobs keep a PDF's text layer and mark scans and photos as skipped. The next worker start queues those files again once the tool runs. The commands are `Worker:ExifToolCommand` and `Worker:TesseractCommand`, a name on PATH or a full path.
+- With text recognition turned off (an admin switch, default on), scans and photos are recorded as skipped; turning it on queues them at background priority. "Read all files again" re-queues every blob.
+- The stage replaces a blob's pages in one transaction, so a search never sees half a document.
 
 Licensing note: NetVips/libvips (LGPL), PDFium (BSD/Apache), PdfPig (Apache) and ffmpeg (LGPL build) are all fine. We avoid ImageSharp (split license) and MuPDF, which is AGPL; MuPDF would be acceptable since we are AGPL, but it isn't needed.
 
@@ -520,7 +550,7 @@ Modeled on Immich's `immich-machine-learning`.
   - `POST /transcribe` (later): Whisper (faster-whisper) → timed segments.
   - `GET /health` and `GET /models`.
 - **Results are stored with `engine` + `model` + `version`**, so changing the model triggers re-processing.
-- **No-ML fallback:** the worker image includes **Tesseract** (`swe` + `eng`) for basic OCR. A NAS without an ML service still gets searchable scans.
+- **No-ML fallback:** the worker image includes **Tesseract** (`swe` + `eng`) for basic OCR, built in M3 (§10.3). A server without an ML service still gets searchable scans.
 
 ---
 
@@ -565,16 +595,40 @@ Built in M1 (decision 18).
 
 ### 13.2 What is indexed
 
-- `nodes`: `name` (with n-gram/fuzzy tokenization for partial filename matches).
-- `content_pages`: `text`, using a Swedish or English stemmer depending on the detected language, plus a language-agnostic field.
-- Filterable fields: owner, mime group (document, image, video, audio, …), modified date, size, folder subtree (`path`), starred, shared-with-me.
+Built in M3 (decision 26). Two BM25 indexes, created in the migration with pg_search 0.20's tokenizer casts:
+
+- **`nodes.name`:** split into words by the `simple` tokenizer (so "IKEA-kvitto.pdf" is three words) and into 3-grams, for partial matches such as "4471" in "IMG_4471.jpg".
+- **`content_pages.text`:** the same text indexed three times, Swedish-stemmed, English-stemmed and unstemmed, and every query searches all three. This beats guessing a language per page, which is unreliable on short receipts and mixed-language documents.
+- **Text is keyed by blob** (§6). A query joins pages to files through each file's current version, so old versions and trashed files never match, and a copy is searchable at once.
+- **Filters** are SQL on the candidates, not index fields: type (MIME group), modified date, folder subtree (`path`), starred, camera and date taken (`blob_metadata`). Owner and shared-with-me join with sharing (M4).
+- Trashed nodes aren't removed from the index; the join leaves them out.
 
 ### 13.3 Query
 
-- Free text plus chips/operators, e.g. `type:pdf owner:me in:"Kvitton" after:2025-01-01 "exakt fras"`.
-- Results are **files, not pages**. Each shows its best-matching page with a highlighted snippet. Clicking opens the viewer on that page with the hits highlighted (we have OCR bounding boxes).
-- **Hybrid search (optional):** BM25 results and vector results are merged with reciprocal rank fusion. Examples: "kvitto från IKEA" finds the receipt even when the OCR is poor, and "beach sunset" finds photos.
-- **Scope:** search *always* applies the same effective-permission predicate as browsing (§9).
+- **The search bar** suggests names as someone types (`GET /search/suggest`, no text, ~6 rows). Enter opens the search page, `/search?q=…`, with its filters in the URL so a search can be bookmarked.
+- **The query language:** words, `"exact phrases"`, `-excluded` words and the operators `type:` (pdf, doc, sheet, slides, image, video, audio, text, archive, folder), `in:` (folders with that name, and everything below), `after:` and `before:` (modified), `camera:`, `taken:` (a year, month or day) and `is:starred`. Unknown operators are searched as words. The chips on the search page (Type, Modified, In, Starred, and a Relevance / Last modified sort) set the same filters. Queries are capped at 20 words.
+- **Matching:** every word must match, in the name, the text or the metadata. In text a word matches its Swedish or English stem or, from 5 letters, one typo; in names a word matches whole (boosted), as a prefix, with one typo from 5 letters, or by its 3-grams. Phrases match the unstemmed text in order.
+- **Ranking:** the name's BM25 score, weighted ×2, plus the best page's. At most 1000 candidates are ranked; that is plenty for a person's own files.
+- **Results are files, not pages** (`GET /search`). Each has its best page: the page number ("Page 2 of 5", "Slide 3 of 12"), how many pages matched, where the hit was (name, text, a scan or photo's recognized text, or the file's details), and a snippet. The snippet is about 220 characters of plain text around the most hits, with the hits as `[start, end)` offsets, never HTML, so file content can't inject markup.
+- **Marking hits** uses one rule on the server and in the clients (`Highlighter` in C#, `matchesTerm` in `@dokument/core`): the word itself, the word plus an ending of up to 4 letters (from 4 letters: "kvitto" marks "kvittot"), or one typo from 5 letters. It approximates the stemmers closely enough that what is marked is what matched.
+- **Opening a result** opens the viewer on the best page with the hits marked. `GET /nodes/{id}/matches?q=` lists the file's pages that match, with OCR word boxes for recognized pages; text pages are marked by the viewer from the PDF's own text layer. A stepper in the viewer's header moves between pages with hits, and the arrows step through the results.
+- **While files are still being read,** the page says "Still reading text in N files" and polls (every 3 s, then 15 s) until they're done.
+- **No results with filters** says how many there would be without them and offers to show them.
+- **Privacy:** queries are never logged, audited or sent to telemetry (§22.1), and recent searches aren't stored on the server.
+- **Hybrid search (optional, M7):** BM25 results and vector results are merged with reciprocal rank fusion. Examples: "kvitto från IKEA" finds the receipt even when the OCR is poor, and "beach sunset" finds photos.
+- **Scope:** search *always* applies the same effective-permission predicate as browsing (§9): the candidates are joined with `NodeAccess`, so only files the person could open are found or counted, and `/matches` answers 404 for anyone else's file.
+- **Sound and speech:** audio tags (title, artist, album, comment) are searchable now through the metadata stage. Spoken words wait for transcription in M7: Whisper segments become `transcript` pages with times, and opening a hit plays from there.
+
+### 13.4 Tags (planned)
+
+Prepared in M3, built as its own piece after it (decision 26).
+
+- **A tag is a word on a file**, such as "receipt". Tags are **shared**: everyone who can see the file sees its tags (not per person, unlike stars).
+- **Sources:** `user` (someone added it), `rule` (an admin's keyword rule matched the text) and `ml` (the ML service, M7). The source is shown, so an automatic tag reads as one.
+- **Automatic tags belong to the bytes** (`blob_tags`), like text: identical files get the same automatic tags once. Tags people add belong to the file (`node_tags`).
+- **Automatic tags are removable:** removing one from a file is recorded per file (`node_tag_removals`) and sticks when the rules run again.
+- **Keyword rules** run right after the text stage: a rule is a tag plus words ("kvitto, kvittot, receipt → receipt"), matched with the search rule above on the text and metadata. Admins manage them; editing a rule re-runs it at background priority. The text stage's output stays the input, so rules never re-read files.
+- **Search:** a `tag:` operator and a Tags chip, through a `tags` field on the name index or a join; results show a file's tags.
 
 ---
 
@@ -590,7 +644,8 @@ Built in M1 (decision 18).
 | Text / code / Markdown | CodeMirror (read-only) / rendered Markdown | Rendered text |
 | Other | Metadata + download | Download / "open in…" |
 
-- **Built in M2 (web):** a full-screen viewer at `/files/{id}` for images (zoom steps from 50 % to 400 %, double-click, drag to pan), PDFs (pdf.js with range requests, one page at a time fitted to the width, Page Up/Down), text (the first 1 MiB, as plain text; later a read-only CodeMirror 6 view with syntax highlighting, line numbers, folding and search for code, JSON, YAML and logs, plus rendered Markdown), and audio and video the browser can play. Everything else shows "No preview" with Download. Arrow keys or a swipe move between the files in the folder; Esc closes. PDF page thumbnails, search in the document and the OCR overlay come later.
+- **Built in M2 (web):** a full-screen viewer at `/files/{id}` for images (zoom steps from 50 % to 400 %, double-click, drag to pan), PDFs (pdf.js with range requests, one page at a time fitted to the width, Page Up/Down), text (the first 1 MiB, as plain text; later a read-only CodeMirror 6 view with syntax highlighting, line numbers, folding and search for code, JSON, YAML and logs, plus rendered Markdown), and audio and video the browser can play. Everything else shows "No preview" with Download. Arrow keys or a swipe move between the files in the folder; Esc closes. PDF page thumbnails and free search in the document come later.
+- **Built in M3 (web):** opened from search, the viewer marks the hits like a highlighter: on PDF text pages from pdf.js' text layer (positions measured in the page's font), on scanned pages and photos at the recognized word boxes, and in text files inline. It opens on the best page, and a header stepper ("1 of 3") moves between pages with hits; closing the marks keeps the file open.
 - **`GET /nodes/{id}/preview` serves what the viewer shows** and is **not audited** (§18): the WebP preview if there is one, otherwise the original bytes inline, with range support. Markup (HTML, XML, SVG) is served as `text/plain`, with `nosniff` and a `sandbox` CSP, so a preview can never run in our origin. `GET /nodes/{id}/content` stays the audited download. Anyone who can view a file can read its bytes through the preview, so the audit log records downloads, not every way the bytes could leave.
 - **"Download original" is always available** to anyone with viewer rights (except via no-download links), and returns exact bytes.
 - Folders can be downloaded as a **streamed zip** (built on the fly, never staged on disk).
@@ -624,8 +679,9 @@ These are better in React DOM than through React Native Web.
 
 - **Layout:** a left nav rail, a top search bar and a content area. On mobile it collapses to a bottom nav.
   - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter. The phone bottom nav has no room for Trash, so it is in the account menu there.
-  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: machine learning, virus scanning, trash and versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
+  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: search and text recognition, machine learning, virus scanning, trash and versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
 - **Content area:** grid/list toggle, breadcrumbs, sorting, multi-select with a contextual action bar, right-click menu.
+- **Search** (M3, §13.3): the search bar sits in the top bar on every page except admin and settings, with name suggestions as you type and "Narrow it down" chips (PDFs, Images, In this folder). `/search` shows the results; on phones the bottom nav's Search opens it and focuses the bar, which then has a back arrow. The admin page's "Search and text recognition" section has the text recognition switch, progress (files read, waiting, in progress, failed) and "Read all files again".
 - **Starred and Recent** (decision 21):
   - **Stars are each person's own**, on files and folders. Star or unstar from the item menu, the selection's More menu, the details panel header and the viewer's menu; a snackbar offers Undo. Starred items show a small filled star after their name everywhere.
   - **Starred** lists everything the person starred, from any folder, sorted like a folder, with a **Location** column that opens the parent folder and a "Show in folder" action.
@@ -754,6 +810,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 
 - **Button** (filled / tonal / outlined / text / danger) and **IconButton**. At most one filled button per view.
 - **Chip:** search filters that mirror the operators ("Type: PDF" for `type:pdf`).
+- **SearchBar** with **SearchSuggestions** (a combobox: "Search for …" first, then names with their location, arrow keys and Enter), **SearchResult** (thumbnail, name with marked hits, the snippet, then location · date · page · "Found in a scan" badge) and **Highlighted** (text with `<mark>` from offsets or terms, never parsed as markup).
 - **FileTypeIcon:** a Material Symbol in the `file-*` colour per MIME group. Also the thumbnail fallback. Folders stay neutral.
 - **FileGrid:** folders first, then file tiles with 4:3 thumbnails. Documents (PDF, Office, text) show the top of page 1; photos are cropped to fill. A shimmer shows while a thumbnail is pending, and the thumbnail is swapped in when it is ready, through a live update (§15.4). While the live connection is down, the listing is polled instead (every 2 s, then every 10 s) as long as anything is pending. Video tiles show a duration badge.
 - **FileList:** a sortable name / owner / modified / size table. Under 600 px of container width, the columns fold into a second line. Pages can swap the columns after the name: the Trash page shows original location / deleted / size.
@@ -766,7 +823,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **ShareDialog:** add people, then people with access (inherited grants are labelled and cannot be lowered), then the public link with expiry, password and download chips. A bottom sheet on phones.
 - **VersionHistory:** the Versions tab of the details panel. It marks the current and "Keep forever" versions and warns "Removed in N days" per the retention policy.
 - **StorageMeter:** a warning at 80 % and a critical state at 95 %, in words as well as colour.
-- **FileViewer:** the §14 viewer: a header with the file's name, Share, Download, details and More; the preview; a floating toolbar for pages and zoom; previous/next arrows on wide screens and swipes on phones. States: loading, preparing (the worker is still making the preview), no preview, and failed, each with Download.
+- **FileViewer:** the §14 viewer: a header with the file's name, Share, Download, details and More; the preview; a floating toolbar for pages and zoom; previous/next arrows on wide screens and swipes on phones. States: loading, preparing (the worker is still making the preview), no preview, and failed, each with Download. Opened from search it takes the hits to mark (§14) and shows "Result 3 of 23".
 - **NavRail**, **BottomNav**, **EmptyState** (also the drag-and-drop target that names the destination folder).
 
 ### 16.5 Content and accessibility
@@ -900,7 +957,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
     - uploads: `upload create`, `upload append`, `upload finish` and `upload hash`, with `dokument.upload.id`, the size and, once done, `dokument.node.id`
     - the job runner: one `job <type>` span per run with `job.type`, `job.id`, `job.attempt` and `job.outcome` (`succeeded`, `failed`, `timed_out`, `released`)
     - rendering: `thumbnail render` with the blob size and preview status
-    - later: text extraction, OCR and indexing
+    - text extraction and OCR run inside the `job text` and `job metadata` spans; no file names or text are recorded
   - Server spans carry `dokument.user.id` for signed-in requests.
   - **Jobs carry the trace across the queue.** Enqueueing stores the current `traceparent` on the `jobs` row (`trace_parent`, nullable), and the job's span links to it. An upload's `upload finish` span then leads to its thumbnail job, even though the worker runs it later. The job is its own trace, not a child, so a slow queue doesn't stretch the upload's trace.
   - Calls to the ML service and Gotenberg propagate W3C `traceparent`. The ML service uses the Python OpenTelemetry SDK with the same `OTEL_*` variables.
@@ -913,7 +970,8 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
     - `dokument.live.connections` (open live connections on this server) and `dokument.live.notices` (counter of notices forwarded)
     - `dokument.renditions.generated` (counter by `dokument.rendition.kind`), `dokument.storage.bytes` (by `dokument.storage.kind`: originals and derived)
     - The gauges (job counts and lag, active uploads, storage) describe the whole install, so the worker samples them from Postgres every 30 s and walks the derived volume every 10 minutes, only while metrics are exported. With several workers each reports the same values under its own `service.instance.id`, so dashboards should take the max.
-    - later: search query duration, OCR pages, ML endpoint up/down
+    - `dokument.search.duration` (histogram, seconds, no labels) and `dokument.ocr.pages` (counter)
+    - later: ML endpoint up/down
   - **Prometheus scraping** is optional for people who run Prometheus without a collector: `METRICS_PORT` turns on a `/metrics` endpoint on its own port, on every interface, so it is never reachable through the public port or reverse proxy. It is the OpenTelemetry Prometheus exporter, which is still a beta package. Don't publish that port to the internet.
 - **Logs:** Serilog stays the logging API. When OTLP is on, the Serilog OpenTelemetry sink exports the same structured events with their trace and span ids, next to the console output. We resolve its endpoint, protocol and headers from the same `OTEL_*` variables as the SDK (including `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`) and give it the same resource, so logs line up with traces and metrics. The admin UI's log level applies to both.
 - **Privacy rules for every signal:**
@@ -921,7 +979,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
   - URLs are recorded as route templates without query strings.
   - Users and nodes appear only as their opaque ids (`dokument.user.id`, `dokument.node.id`), and only on spans, never as metric labels, which stay low-cardinality.
   - The OTLP endpoint is the admin's choice; we never send telemetry anywhere by default.
-- **Built (v0.10):** everything in this section that has something to instrument. Propagation to the ML service and Gotenberg comes for free with the HttpClient instrumentation when those clients exist; the ML service's own Python SDK setup, search and OCR metrics, and the ML up/down gauge come with those features.
+- **Built (v0.10):** everything in this section that has something to instrument. Propagation to the ML service and Gotenberg comes for free with the HttpClient instrumentation when those clients exist; the ML service's own Python SDK setup and the ML up/down gauge come with those features. Search and OCR metrics came with M3.
 - **Web app:** no browser telemetry in v1. The server's spans start at the API request. Browser tracing (OTLP over HTTP, relayed by the server) can come later if it proves useful.
 
 ---
@@ -941,11 +999,11 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
 | **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, folder uploads and live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media. **Still to come:** metadata, video posters and transcoding, Gotenberg, the admin queue page, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
-| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
+| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). **Next, as its own piece:** tags with keyword rules (§13.4). |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
-| **M7: ML** | ML service (OCR+, embeddings, hybrid search), remote ML URLs with fallback, transcription |
+| **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback, transcription of audio and video into searchable, timed text |
 | **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders) |
 
 ---
@@ -979,6 +1037,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 23 | Blobs per person | 2026-10-25: `blobs/{owner_id}/ab/cd/{sha256}`, keyed `(owner_id, hash)`, deduplicated per person only; renditions stay keyed by hash and go with the last copy; one blob lock per hash; copies across owners copy the bytes. No data migration, since nothing is in use yet (§6, §7, §12) |
 | 24 | Folder uploads | 2026-10-25: one `POST /api/v1/folders/tree` makes all the folders first; a taken top-folder name asks Merge (default) / Keep both / Cancel, and merged folders reuse subfolders with the same names; the whole folder's size is checked against the quota before anything is made; hashing and the duplicate check run in batches so uploading starts early, with one duplicate and one name-clash question per folder; one tray row per folder; OS junk files skipped silently (§8.1) |
 | 25 | Live updates | 2026-10-25: one SignalR hub; notices sent with `pg_notify` inside the changing transaction and forwarded by a `LISTEN`ing server; thin notices (topics and an origin, no ids or names) that make clients refetch; owner's clients only until sharing; per-tab client id to skip echoes; refetch everything after a reconnect; viewer banners instead of swapping the open file; ended sessions sign their clients out; the thumbnail poll stays only as a fallback (§15.4) |
+| 26 | Search (M3) | 2026-10-25: pg_search BM25 over names (words + 3-grams) and page text indexed Swedish-stemmed, English-stemmed and unstemmed together, no language detection; text, metadata and automatic tags keyed by blob; Tesseract (`swe+eng`) in the worker for scans and photos, at background priority with an admin switch (default on), replaced by the ML service in M7; exiftool metadata searchable now, with `camera:` and `taken:`; snippets as text + offsets, one marking rule shared by server and clients; queries never logged. Tags planned as shared per file, sources user / rule / ml, automatic ones per blob and removable per file. Transcription waits for M7 (§6, §10, §13, §14) |
 
 ## 26. Open questions
 

@@ -37,14 +37,16 @@ COPY src src
 RUN dotnet publish src/Dokument.Host -c Release -a $TARGETARCH --no-restore -o /app \
       -p:Version=$VERSION -p:OpenApiGenerateDocuments=false -p:UseSystemLibvips=true
 
-FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION}
+# The app without the web UI: what Aspire runs as the dev worker (`--target runtime`), so it has the same tools.
+FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 # libvips for thumbnails (docs/design.md §10.3), with libde265 so HEIC photos decode. PDFium ships with the app.
+# exiftool reads metadata and Tesseract recognizes text in scans, in Swedish and English (§13.2).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libvips42t64 libheif-plugin-libde265 \
+        libimage-exiftool-perl tesseract-ocr tesseract-ocr-swe tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=server /app ./
-COPY --from=web /repo/apps/web/dist ./wwwroot/
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     ROLE=server
 EXPOSE 8080
@@ -52,6 +54,9 @@ EXPOSE 8080
 USER $APP_UID
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD ["dotnet", "/app/dokument.dll", "healthcheck"]
 ENTRYPOINT ["dotnet", "/app/dokument.dll"]
+
+FROM runtime
+COPY --from=web /repo/apps/web/dist ./wwwroot/
 
 LABEL org.opencontainers.image.title="dokumentsystem" \
       org.opencontainers.image.source="https://github.com/elmaxe/dokumentsystem" \

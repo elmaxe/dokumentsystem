@@ -76,7 +76,9 @@ public sealed class PreviewTests(PostgresFixture postgres)
         Assert.Contains(previews, p => p.PageCount == 2 && p.Status == PreviewStatus.Ready);
         Assert.Contains(previews, p => p.Status == PreviewStatus.Unsupported);
         Assert.All(
-            await db.Jobs.ToListAsync(TestContext.Current.CancellationToken),
+            await db
+                .Jobs.Where(j => j.Type == JobType.Thumbnail)
+                .ToListAsync(TestContext.Current.CancellationToken),
             j => Assert.Equal(JobStatus.Done, j.Status)
         );
     }
@@ -143,7 +145,13 @@ public sealed class PreviewTests(PostgresFixture postgres)
 
         await using var scope = app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<DokumentDbContext>();
-        Assert.Equal(1, await db.Jobs.CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(
+            1,
+            await db.Jobs.CountAsync(
+                j => j.Type == JobType.Thumbnail,
+                TestContext.Current.CancellationToken
+            )
+        );
         Assert.NotEqual(first, copied.Id);
     }
 
@@ -211,7 +219,7 @@ public sealed class PreviewTests(PostgresFixture postgres)
             TestContext.Current.CancellationToken
         );
         var job = await db.Jobs.SingleAsync(
-            j => j.Subject == version.BlobHash.Hex,
+            j => j.Subject == version.BlobHash.Hex && j.Type == JobType.Thumbnail,
             TestContext.Current.CancellationToken
         );
         Assert.True(ActivityContext.TryParse(job.TraceParent, null, out var queuedBy));

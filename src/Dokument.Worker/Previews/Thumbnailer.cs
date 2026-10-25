@@ -231,7 +231,7 @@ public sealed class Thumbnailer
     }
 
     /// <summary>Renders a page onto white, as a reader would, and copies the pixels out. Call while holding the PDFium gate.</summary>
-    private static byte[] RenderPage(nint page, int width, int height)
+    internal static byte[] RenderPage(nint page, int width, int height)
     {
         var bitmap = Pdfium.FPDFBitmap_Create(width, height, alpha: 0);
         if (bitmap == 0)

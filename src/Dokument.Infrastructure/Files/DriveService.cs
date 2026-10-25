@@ -7,6 +7,7 @@ using Dokument.Domain.Jobs;
 using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
+using Dokument.Infrastructure.Search;
 using Dokument.Infrastructure.Settings;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -19,6 +20,7 @@ public sealed class DriveService(
     BlobStore blobs,
     AuditLog audit,
     PreviewService previews,
+    ContentService content,
     SettingsStore settings,
     RecentFiles recent,
     LiveChanges live,
@@ -769,6 +771,7 @@ public sealed class DriveService(
             .Blobs.Where(b => b.OwnerId == node.OwnerId && b.Hash == hash)
             .ExecuteUpdateAsync(s => s.SetProperty(b => b.RefCount, b => b.RefCount + 1), ct);
         await previews.RequestAsync(hash, JobPriority.Interactive, ct);
+        await content.RequestAsync(hash, JobPriority.Interactive, ct);
         return version;
     }
 

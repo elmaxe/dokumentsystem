@@ -10,6 +10,7 @@ public sealed record AdminSettingsDto(
     TrashSettingsDto Trash,
     MlSettingsDto Ml,
     ScannerSettingsDto Scanner,
+    TextRecognitionDto TextRecognition,
     SignInInfo SignIn
 );
 
@@ -30,6 +31,9 @@ public sealed record UpdateMlSettingsRequest(List<MlEndpointUpdate> Endpoints);
 /// <param name="ApiKey">A new key, or null for none.</param>
 /// <param name="KeepApiKey">Keep the key already saved for this URL instead; <c>ApiKey</c> is then ignored.</param>
 public sealed record MlEndpointUpdate(string Url, string? ApiKey, bool KeepApiKey);
+
+/// <param name="Enabled">Whether scans and photos are read for search (§13). Text in PDFs and Office files is always read.</param>
+public sealed record TextRecognitionDto(bool Enabled);
 
 /// <param name="Address">Null or empty turns scanning off.</param>
 public sealed record ScannerSettingsDto(string? Address);

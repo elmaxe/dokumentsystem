@@ -82,4 +82,11 @@ public static class SettingKeys
                 : null
         )
     );
+
+    public static readonly SettingKey<TextRecognitionSettings> TextRecognition = new(
+        "text_recognition",
+        TextRecognitionSettings.Default,
+        s => new JsonObject { ["enabled"] = s.Enabled },
+        json => new TextRecognitionSettings(json.GetProperty("enabled").GetBoolean())
+    );
 }

@@ -6,6 +6,7 @@ using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
+using Dokument.Infrastructure.Search;
 using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Storage;
 using Dokument.Server.Auth;
@@ -34,6 +35,21 @@ public static class AdminEndpoints
         admin.MapPut("/settings/ml", PutMl).WithName("AdminPutMlSettings");
         admin.MapPut("/settings/scanner", PutScanner).WithName("AdminPutScannerSettings");
         admin
+            .MapPut("/settings/text-recognition", PutTextRecognition)
+            .WithName("AdminPutTextRecognitionSettings")
+            .WithDescription(
+                "Turning it on reads again, in the background, the files skipped while it was off."
+            );
+        admin
+            .MapGet("/text-recognition/progress", GetTextProgress)
+            .WithName("AdminGetTextProgress");
+        admin
+            .MapPost("/text-recognition/reread", RereadAll)
+            .WithName("AdminRereadAllText")
+            .WithDescription(
+                "Reads the text of every stored file again, in the background, after new files are done."
+            );
+        admin
             .MapGet("/ml/status", GetMlStatus)
             .WithName("AdminGetMlStatus")
             .WithDescription("Checks every saved ML service now.");
@@ -56,6 +72,7 @@ public static class AdminEndpoints
         var trash = await settings.GetAsync(SettingKeys.Trash, ct);
         var ml = await settings.GetAsync(SettingKeys.Ml, ct);
         var scanner = await settings.GetAsync(SettingKeys.Scanner, ct);
+        var textRecognition = await settings.GetAsync(SettingKeys.TextRecognition, ct);
         return TypedResults.Ok(
             new AdminSettingsDto(
                 new StorageSettingsDto(storage.DefaultQuota.Bytes),
@@ -63,6 +80,7 @@ public static class AdminEndpoints
                 new TrashSettingsDto(trash.KeepDays),
                 MlDto(ml),
                 new ScannerSettingsDto(scanner.Address?.ToString()),
+                new TextRecognitionDto(textRecognition.Enabled),
                 new SignInInfo(
                     oidc.Enabled,
                     oidc.ProviderName,
@@ -132,6 +150,45 @@ public static class AdminEndpoints
 
         await settings.SetAsync(SettingKeys.Trash, value, context.Actor(), ct);
         return TypedResults.Ok(request);
+    }
+
+    private static async Task<Ok<TextRecognitionDto>> PutTextRecognition(
+        TextRecognitionDto request,
+        HttpContext context,
+        SettingsStore settings,
+        ContentService content,
+        TimeProvider time,
+        CancellationToken ct
+    )
+    {
+        var was = await settings.GetAsync(SettingKeys.TextRecognition, ct);
+        await settings.SetAsync(
+            SettingKeys.TextRecognition,
+            new TextRecognitionSettings(request.Enabled),
+            context.Actor(),
+            ct
+        );
+        if (request.Enabled && !was.Enabled)
+        {
+            await content.EnqueueSkippedAsync(time.GetUtcNow(), ct);
+        }
+
+        return TypedResults.Ok(request);
+    }
+
+    private static async Task<Ok<TextProgress>> GetTextProgress(
+        ContentService content,
+        CancellationToken ct
+    ) => TypedResults.Ok(await content.ProgressAsync(ct));
+
+    private static async Task<Ok<TextProgress>> RereadAll(
+        ContentService content,
+        TimeProvider time,
+        CancellationToken ct
+    )
+    {
+        await content.EnqueueAllAsync(time.GetUtcNow(), ct);
+        return TypedResults.Ok(await content.ProgressAsync(ct));
     }
 
     private static async Task<Results<Ok<MlSettingsDto>, ValidationProblem>> PutMl(

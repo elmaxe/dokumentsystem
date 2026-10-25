@@ -9,6 +9,12 @@ public sealed record JobType
     /// <summary>Thumbnails and preview renditions for one blob (§10.2).</summary>
     public static readonly JobType Thumbnail = new("thumbnail");
 
+    /// <summary>Metadata such as the camera, the date taken or a song's artist, for one blob (§10.2).</summary>
+    public static readonly JobType Metadata = new("metadata");
+
+    /// <summary>Searchable text for one blob: the text layer, then recognition for scans and photos (§10.2, §13.2).</summary>
+    public static readonly JobType Text = new("text");
+
     private JobType(string name) => Name = name;
 
     public string Name { get; }

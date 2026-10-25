@@ -655,6 +655,122 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("renditions", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Search.BlobContent", b =>
+                {
+                    b.Property<byte[]>("BlobHash")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob_hash");
+
+                    b.Property<string>("OcrEngine")
+                        .HasColumnType("text")
+                        .HasColumnName("ocr_engine");
+
+                    b.Property<bool>("OcrSkipped")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ocr_skipped");
+
+                    b.Property<int?>("PageCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("page_count");
+
+                    b.Property<int>("PipelineVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("pipeline_version");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("BlobHash");
+
+                    b.ToTable("blob_contents", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Search.BlobMetadata", b =>
+                {
+                    b.Property<byte[]>("BlobHash")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob_hash");
+
+                    b.Property<string>("Camera")
+                        .HasColumnType("text")
+                        .HasColumnName("camera");
+
+                    b.Property<double?>("DurationSeconds")
+                        .HasColumnType("double precision")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<int>("PipelineVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("pipeline_version");
+
+                    b.Property<bool>("Readable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("readable");
+
+                    b.Property<string>("Tags")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("tags");
+
+                    b.Property<DateTimeOffset?>("TakenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("taken_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("BlobHash");
+
+                    b.ToTable("blob_metadata", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Search.ContentPage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<byte[]>("BlobHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob_hash");
+
+                    b.Property<int>("PageNo")
+                        .HasColumnType("integer")
+                        .HasColumnName("page_no");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("text");
+
+                    b.Property<string>("Words")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("words");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BlobHash", "PageNo")
+                        .IsUnique();
+
+                    b.ToTable("content_pages", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Infrastructure.Persistence.Setting", b =>
                 {
                     b.Property<string>("Key")

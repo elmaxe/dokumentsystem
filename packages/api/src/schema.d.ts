@@ -598,6 +598,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Files and folders whose name, text or metadata match. `q` takes words, "exact phrases", -excluded words and the operators type:, in:, after:, before:, camera:, taken: and is:starred; the other parameters are the filter chips and override the operators. */
+        get: operations["Search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Name matches as someone types, best first. */
+        get: operations["SearchSuggest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The pages of one file that match `q`, for the viewer to open on and step through. */
+        get: operations["SearchMatchesInFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads/{id}": {
         parameters: {
             query?: never;
@@ -711,6 +762,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/settings/text-recognition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Turning it on reads again, in the background, the files skipped while it was off. */
+        put: operations["AdminPutTextRecognitionSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/text-recognition/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminGetTextProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/text-recognition/reread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Reads the text of every stored file again, in the background, after new files are done. */
+        post: operations["AdminRereadAllText"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/ml/status": {
         parameters: {
             query?: never;
@@ -818,6 +919,7 @@ export interface components {
             trash: components["schemas"]["TrashSettingsDto"];
             ml: components["schemas"]["MlSettingsDto"];
             scanner: components["schemas"]["ScannerSettingsDto"];
+            textRecognition: components["schemas"]["TextRecognitionDto"];
             signIn: components["schemas"]["SignInInfo"];
         };
         AdminUser: {
@@ -939,6 +1041,12 @@ export interface components {
         KeepForeverRequest: {
             keepForever: boolean;
         };
+        MatchesResponse: {
+            terms: string[];
+            pages: components["schemas"]["PageMatchDto"][];
+        };
+        /** @enum {unknown} */
+        MatchSource: "name" | "text" | "ocr" | "metadata";
         MlEndpointDto: {
             url: string;
             hasApiKey: boolean;
@@ -999,6 +1107,14 @@ export interface components {
         };
         /** @enum {unknown} */
         NodeKind: "folder" | "file";
+        PageMatchDto: {
+            /** Format: int32 */
+            pageNo: number;
+            source: components["schemas"]["PageSource"];
+            boxes: number[][];
+        };
+        /** @enum {unknown} */
+        PageSource: "text" | "ocr" | "metadata";
         PathEntry: {
             /** Format: uuid */
             id: string;
@@ -1041,6 +1157,30 @@ export interface components {
         ScannerSettingsDto: {
             address: null | string;
         };
+        SearchResponse: {
+            results: components["schemas"]["SearchResultDto"][];
+            /** Format: int32 */
+            total: number;
+            terms: string[];
+            /** Format: int32 */
+            pending: number;
+            /** Format: int32 */
+            withoutFilters: null | number;
+        };
+        SearchResultDto: {
+            node: components["schemas"]["NodeDto"];
+            path: components["schemas"]["PathEntry"][];
+            source: components["schemas"]["MatchSource"];
+            /** Format: int32 */
+            pageNo: null | number;
+            /** Format: int32 */
+            pageCount: null | number;
+            /** Format: int32 */
+            pagesWithHits: number;
+            snippet: null | components["schemas"]["SnippetDto"];
+        };
+        /** @enum {unknown} */
+        SearchSort: "relevance" | "modified";
         ServerInfo: {
             name: string;
             version: string;
@@ -1072,6 +1212,12 @@ export interface components {
             adminGroup: string;
             quotaClaim: null | string;
         };
+        SnippetDto: {
+            text: string;
+            highlights: number[][];
+            cutStart: boolean;
+            cutEnd: boolean;
+        };
         StarredItem: {
             node: components["schemas"]["NodeDto"];
             path: components["schemas"]["PathEntry"][];
@@ -1096,12 +1242,33 @@ export interface components {
             /** Format: int64 */
             trashBytes: number;
         };
+        SuggestionDto: {
+            node: components["schemas"]["NodeDto"];
+            path: components["schemas"]["PathEntry"][];
+        };
+        SuggestResponse: {
+            items: components["schemas"]["SuggestionDto"][];
+            terms: string[];
+        };
         TestMlRequest: {
             url: string;
             apiKey: null | string;
         };
         TestScannerRequest: {
             address: string;
+        };
+        TextProgress: {
+            /** Format: int32 */
+            read: number;
+            /** Format: int32 */
+            waiting: number;
+            /** Format: int32 */
+            running: number;
+            /** Format: int32 */
+            failed: number;
+        };
+        TextRecognitionDto: {
+            enabled: boolean;
         };
         /** @enum {unknown} */
         ThumbnailState: "none" | "pending" | "ready";
@@ -2018,6 +2185,91 @@ export interface operations {
             };
         };
     };
+    Search: {
+        parameters: {
+            query?: {
+                q?: string;
+                type?: string;
+                modifiedAfter?: string;
+                modifiedBefore?: string;
+                folderId?: string;
+                starred?: boolean;
+                sort?: components["schemas"]["SearchSort"];
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    SearchSuggest: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestResponse"];
+                };
+            };
+        };
+    };
+    SearchMatchesInFile: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchesResponse"];
+                };
+            };
+        };
+    };
     GetUpload: {
         parameters: {
             query?: never;
@@ -2221,6 +2473,70 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminPutTextRecognitionSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TextRecognitionDto"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextRecognitionDto"];
+                };
+            };
+        };
+    };
+    AdminGetTextProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextProgress"];
+                };
+            };
+        };
+    };
+    AdminRereadAllText: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextProgress"];
                 };
             };
         };

@@ -5,6 +5,7 @@ using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
+using Dokument.Infrastructure.Search;
 using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,8 @@ public static class DependencyInjection
         services.AddScoped<JobQueue>();
         services.AddSingleton<DerivedStore>();
         services.AddScoped<PreviewService>();
+        services.AddScoped<ContentService>();
+        services.AddScoped<SearchService>();
         services.AddScoped<SettingsStore>();
         services.AddHttpClient<ServiceProbe>();
         return services;
