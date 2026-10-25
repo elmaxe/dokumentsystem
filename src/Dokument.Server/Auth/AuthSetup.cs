@@ -95,6 +95,11 @@ public static class AuthSetup
         options.GetClaimsFromUserInfoEndpoint = true;
         options.ClaimActions.MapJsonKey(oidc.GroupsClaim, oidc.GroupsClaim);
         options.ClaimActions.MapUniqueJsonKey("preferred_username", "preferred_username");
+        if (oidc.QuotaClaim is { } quotaClaim)
+        {
+            options.ClaimActions.MapUniqueJsonKey(quotaClaim, quotaClaim);
+        }
+
         options.Scope.Clear();
         foreach (var scope in oidc.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
@@ -125,6 +130,9 @@ public static class AuthSetup
         var subject =
             principal.FindFirstValue("sub")
             ?? throw new InvalidOperationException("The IdP's ID token has no sub claim.");
+        var logger = http
+            .RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger(typeof(AuthSetup));
         var identity = new OidcIdentity(
             Issuer: principal.FindFirstValue("iss") ?? principal.FindFirst("sub")!.Issuer,
             Subject: subject,
@@ -135,12 +143,10 @@ public static class AuthSetup
                 .FindAll(oidc.GroupsClaim)
                 .Select(c => c.Value)
                 .Distinct(StringComparer.Ordinal)
-                .ToList()
+                .ToList(),
+            Quota: ReadQuotaClaim(principal, oidc, logger)
         );
 
-        var logger = http
-            .RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger(typeof(AuthSetup));
         var result = await http
             .RequestServices.GetRequiredService<UserProvisioner>()
             .ProvisionAsync(identity, oidc.Policy, http.RequestAborted);
@@ -175,6 +181,37 @@ public static class AuthSetup
 
         context.Response.Redirect(context.Request.PathBase + ReturnUrl.Sanitize(context.ReturnUri));
         context.HandleResponse();
+    }
+
+    /// <summary>The quota claim's value (§17.1). One that can't be read is logged and changes nothing.</summary>
+    private static ClaimedQuota ReadQuotaClaim(
+        ClaimsPrincipal principal,
+        OidcSettings oidc,
+        ILogger logger
+    )
+    {
+        if (oidc.QuotaClaim is not { } claim)
+        {
+            return ClaimedQuota.NotRead;
+        }
+
+        if (principal.FindFirstValue(claim) is not { } value)
+        {
+            return ClaimedQuota.Absent;
+        }
+
+        if (QuotaClaim.TryParse(value) is { } quota)
+        {
+            return ClaimedQuota.Of(quota);
+        }
+
+        logger.LogWarning(
+            "Ignoring the {Claim} claim for {Subject}: {Value} isn't a size, a byte count or \"unlimited\"",
+            claim,
+            principal.FindFirstValue("sub"),
+            value
+        );
+        return ClaimedQuota.NotRead;
     }
 
     private static string SignInPage(HttpRequest request, string error) =>

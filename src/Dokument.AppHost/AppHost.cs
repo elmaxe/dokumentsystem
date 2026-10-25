@@ -47,6 +47,8 @@ var server = AddRole("server", launchProfile: "http")
     .WithEnvironment("OIDC_CLIENT_ID", "dokument")
     .WithEnvironment("OIDC_CLIENT_SECRET", "dokument-dev-secret")
     .WithEnvironment("OIDC_PROVIDER_NAME", "Keycloak (dev)")
+    // bob gets 50GB from this claim; alice and carol fall back to the admin page (§17.1).
+    .WithEnvironment("OIDC_QUOTA_CLAIM", "dokument_quota")
     .WaitFor(keycloak);
 server.WithUrl(
     ReferenceExpression.Create($"{server.GetEndpoint("http")}/scalar"),
