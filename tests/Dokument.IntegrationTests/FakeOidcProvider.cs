@@ -12,7 +12,12 @@ using Microsoft.IdentityModel.Tokens;
 namespace Dokument.IntegrationTests;
 
 /// <summary>A test person at the fake IdP.</summary>
-public sealed record FakeUser(string Subject, string Name, string Email, params string[] Groups);
+public sealed record FakeUser(string Subject, string Name, string Email, params string[] Groups)
+{
+    /// <summary>More claims for userinfo, such as a quota claim. Values are serialized as given, so numbers stay numbers.</summary>
+    public IReadOnlyDictionary<string, object> Claims { get; init; } =
+        new Dictionary<string, object>();
+}
 
 /// <summary>
 /// Just enough of an OIDC provider for the code + PKCE flow: discovery, JWKS, authorize (signs in <see cref="NextUser"/>
@@ -198,12 +203,12 @@ public sealed class FakeOidcProvider : IAsyncDisposable
                     out var user
                 )
                     ? Results.Json(
-                        new
+                        new Dictionary<string, object>(user.Claims)
                         {
-                            sub = user.Subject,
-                            name = user.Name,
-                            email = user.Email,
-                            groups = user.Groups,
+                            ["sub"] = user.Subject,
+                            ["name"] = user.Name,
+                            ["email"] = user.Email,
+                            ["groups"] = user.Groups,
                         }
                     )
                     : Results.Unauthorized()

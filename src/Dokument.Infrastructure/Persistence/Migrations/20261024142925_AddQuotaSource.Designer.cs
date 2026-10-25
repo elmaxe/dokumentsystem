@@ -14,8 +14,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Dokument.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(DokumentDbContext))]
-    [Migration("20261025095808_AddStarsAndRecentFiles")]
-    partial class AddStarsAndRecentFiles
+    [Migration("20261024142925_AddQuotaSource")]
+    partial class AddQuotaSource
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -251,56 +251,6 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("nodes", (string)null);
                 });
 
-            modelBuilder.Entity("Dokument.Domain.Files.RecentFile", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<Guid>("NodeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("node_id");
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("action");
-
-                    b.Property<DateTimeOffset>("At")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("at");
-
-                    b.HasKey("UserId", "NodeId");
-
-                    b.HasIndex("NodeId");
-
-                    b.HasIndex("UserId", "At")
-                        .IsDescending(false, true);
-
-                    b.ToTable("recent_files", (string)null);
-                });
-
-            modelBuilder.Entity("Dokument.Domain.Files.Star", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<Guid>("NodeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("node_id");
-
-                    b.Property<DateTimeOffset>("StarredAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("starred_at");
-
-                    b.HasKey("UserId", "NodeId");
-
-                    b.HasIndex("NodeId");
-
-                    b.ToTable("stars", (string)null);
-                });
-
             modelBuilder.Entity("Dokument.Domain.Files.Upload", b =>
                 {
                     b.Property<Guid>("Id")
@@ -476,6 +426,11 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("quota_bytes");
 
+                    b.Property<string>("QuotaSource")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("quota_source");
+
                     b.Property<bool>("QuotaUnlimited")
                         .HasColumnType("boolean")
                         .HasColumnName("quota_unlimited");
@@ -488,10 +443,6 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("role");
-
-                    b.Property<bool>("ShowSeconds")
-                        .HasColumnType("boolean")
-                        .HasColumnName("show_seconds");
 
                     b.Property<long>("UsedBytes")
                         .HasColumnType("bigint")
@@ -713,36 +664,6 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("CurrentVersion");
-                });
-
-            modelBuilder.Entity("Dokument.Domain.Files.RecentFile", b =>
-                {
-                    b.HasOne("Dokument.Domain.Files.Node", null)
-                        .WithMany()
-                        .HasForeignKey("NodeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Dokument.Domain.Identity.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Dokument.Domain.Files.Star", b =>
-                {
-                    b.HasOne("Dokument.Domain.Files.Node", null)
-                        .WithMany()
-                        .HasForeignKey("NodeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Dokument.Domain.Identity.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Dokument.Domain.Files.Upload", b =>

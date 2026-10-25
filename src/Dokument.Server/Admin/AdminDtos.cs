@@ -35,12 +35,14 @@ public sealed record MlEndpointUpdate(string Url, string? ApiKey, bool KeepApiKe
 public sealed record ScannerSettingsDto(string? Address);
 
 /// <summary>Sign-in comes from <c>OIDC_*</c> environment variables (§5), so the page only shows it.</summary>
+/// <param name="QuotaClaim">The claim that sets each person's quota (§17.1), or null when quotas are set here.</param>
 public sealed record SignInInfo(
     bool Enabled,
     string? ProviderName,
     string? Issuer,
     string? UserGroup,
-    string AdminGroup
+    string AdminGroup,
+    string? QuotaClaim
 );
 
 /// <param name="ApiKey">Null uses the key saved for this URL, if any.</param>
@@ -57,6 +59,7 @@ public sealed record StorageReport(long FilesBytes, List<VolumeUsage> Volumes);
 /// <param name="Holds">What lives on the volume: <c>originals</c>, <c>derived</c>, or both.</param>
 public sealed record VolumeUsage(List<string> Holds, long TotalBytes, long FreeBytes);
 
+/// <param name="QuotaSource"><c>claim</c> when the sign-in provider sets the quota; it can't be changed here then (§17.1).</param>
 public sealed record AdminUser(
     Guid Id,
     string DisplayName,
@@ -64,6 +67,7 @@ public sealed record AdminUser(
     UserRole Role,
     long UsedBytes,
     QuotaDto Quota,
+    QuotaSource QuotaSource,
     long? EffectiveQuotaBytes,
     DateTimeOffset? LastLoginAt,
     bool Disabled

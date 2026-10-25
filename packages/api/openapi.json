@@ -1499,6 +1499,7 @@
           "role",
           "usedBytes",
           "quota",
+          "quotaSource",
           "effectiveQuotaBytes",
           "lastLoginAt",
           "disabled"
@@ -1527,6 +1528,9 @@
           },
           "quota": {
             "$ref": "#/components/schemas/QuotaDto"
+          },
+          "quotaSource": {
+            "$ref": "#/components/schemas/QuotaSource"
           },
           "effectiveQuotaBytes": {
             "type": [
@@ -2143,6 +2147,12 @@
           }
         }
       },
+      "QuotaSource": {
+        "enum": [
+          "admin",
+          "claim"
+        ]
+      },
       "RecentAction": {
         "enum": [
           "opened",
@@ -2335,7 +2345,8 @@
           "providerName",
           "issuer",
           "userGroup",
-          "adminGroup"
+          "adminGroup",
+          "quotaClaim"
         ],
         "type": "object",
         "properties": {
@@ -2362,6 +2373,12 @@
           },
           "adminGroup": {
             "type": "string"
+          },
+          "quotaClaim": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

@@ -812,6 +812,7 @@ export interface components {
             /** Format: int64 */
             usedBytes: number;
             quota: components["schemas"]["QuotaDto"];
+            quotaSource: components["schemas"]["QuotaSource"];
             /** Format: int64 */
             effectiveQuotaBytes: null | number;
             /** Format: date-time */
@@ -970,6 +971,8 @@ export interface components {
             bytes: null | number;
         };
         /** @enum {unknown} */
+        QuotaSource: "admin" | "claim";
+        /** @enum {unknown} */
         RecentAction: "opened" | "downloaded" | "uploaded" | "restored";
         RecentItem: {
             node: components["schemas"]["NodeDto"];
@@ -1023,6 +1026,7 @@ export interface components {
             issuer: null | string;
             userGroup: null | string;
             adminGroup: string;
+            quotaClaim: null | string;
         };
         StarredItem: {
             node: components["schemas"]["NodeDto"];
