@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.15** · Last updated: 2026-10-25
+> Status: **Draft v0.16** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -375,7 +375,15 @@ Implementation notes (built in M1):
 
 Also:
 - The client sends `client_modified_at` (the file's mtime) for display. The original bytes stay untouched.
-- **Folder upload** (drag-and-drop a directory) creates the folder tree first, then uploads the files with limited parallelism.
+- **Folder upload** (decision 24) creates the folder tree first, then uploads the files with limited parallelism:
+  - **Starting one:** "Upload folder" in the New menu and the phone's New sheet (`<input webkitdirectory>`, left out where the browser can't pick folders), or dropping folders onto the file area. A drop reads the folders through the entries API, so empty folders come along; files dropped beside them upload as usual.
+  - **Skipped without asking:** `.DS_Store`, `Thumbs.db`, `desktop.ini` and AppleDouble `._*` files. A file or folder whose name `NodeName` refuses fails in the tray with the reason, and isn't retried.
+  - **`POST /api/v1/folders/tree`** makes every folder in one transaction: `{folderId, paths: ["Kvitton", "Kvitton/2025", …], onConflict, totalBytes}`. It answers each path's folder id and name and, for a folder that was already there, the names it holds, so the client can ask about name clashes before sending anything.
+  - **The top folder's name is taken:** `onConflict=fail` answers 409 and the client asks: **Merge** (the default button), **Keep both** ("Kvitton (1)") or Cancel. Merge reuses existing folders below it with the same names. A *file* with a folder's name always gets a numbered folder beside it.
+  - **Quota:** `totalBytes` is checked against the owner's quota (used plus reserved) before anything is made; if it doesn't fit, the request answers 413, nothing is created and the dialog says how big the folder is and how much is left. Duplicates aren't subtracted, since the hashes aren't known yet. Each file still reserves its own quota when its upload starts.
+  - **Checks:** files are hashed and checked in batches (200 files or 512 MiB); new files with free names start uploading at once. Duplicates (§8.3) and name clashes inside merged folders are each asked about once, for the whole folder, after the last file is hashed. Skipped duplicates leave their folders in place.
+  - **Upload tray:** one row per folder with its files and bytes added up and the time left, Pause/Resume for the whole folder, and Open when it's done. Expanding it lists the files that failed (with **Retry failed**) and those still on their way, with their paths inside the folder.
+  - **Not yet:** picking a folder upload back up after the page reloads (single files still resume through tus), and folder uploads in the mobile app (M5).
 
 ### 8.2 Versioning
 
@@ -902,7 +910,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | Milestone | Scope |
 |---|---|
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
-| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, and Starred and Recent. **Still to come:** folder uploads, live updates. |
+| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, and folder uploads. **Still to come:** live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media. **Still to come:** metadata, video posters and transcoding, Gotenberg, the admin queue page, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
@@ -940,6 +948,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 21 | Starred and Recent | 2026-10-25: stars are per person, on files and folders; Starred is sortable with a Location column; Recent is files only, newest first by the person's own last open, download, upload or version restore (not renames or moves), at most 100; Recent is a private per-person table, not the audit log, so preview opens stay unaudited (§6, §15.2, §18) |
 | 22 | Readable files on disk | 2026-10-24: keep the hash-named pool as the only store; no real paths on disk, sidecars or live mirror. A name manifest is written beside each DB dump, so the tree can be rebuilt without Postgres, and an export job (worker, into `/data/exports`, also the `export` CLI) writes readable copies, incrementally, optionally with old versions, on a schedule that starts off. Lands in M6 (§7.1, §19) |
 | 23 | Blobs per person | 2026-10-25: `blobs/{owner_id}/ab/cd/{sha256}`, keyed `(owner_id, hash)`, deduplicated per person only; renditions stay keyed by hash and go with the last copy; one blob lock per hash; copies across owners copy the bytes. No data migration, since nothing is in use yet (§6, §7, §12) |
+| 24 | Folder uploads | 2026-10-25: one `POST /api/v1/folders/tree` makes all the folders first; a taken top-folder name asks Merge (default) / Keep both / Cancel, and merged folders reuse subfolders with the same names; the whole folder's size is checked against the quota before anything is made; hashing and the duplicate check run in batches so uploading starts early, with one duplicate and one name-clash question per folder; one tray row per folder; OS junk files skipped silently (§8.1) |
 
 ## 26. Open questions
 

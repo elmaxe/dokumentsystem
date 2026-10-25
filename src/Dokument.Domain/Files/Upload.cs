@@ -52,3 +52,16 @@ public enum NameConflictPolicy
     /// <summary>Upload as a new version of the existing file.</summary>
     NewVersion,
 }
+
+/// <summary>What happens when a folder upload's top folder has the name of something already there (docs/design.md §8.1).</summary>
+public enum FolderConflictPolicy
+{
+    /// <summary>Refuse, so the client can ask the user.</summary>
+    Fail,
+
+    /// <summary>Add to the existing folder, reusing subfolders with the same names.</summary>
+    Merge,
+
+    /// <summary>Keep both: the new folder becomes "name (1)".</summary>
+    KeepBoth,
+}
