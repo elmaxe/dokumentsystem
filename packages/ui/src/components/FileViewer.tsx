@@ -1,4 +1,4 @@
-import { findHits, formatBytes, splitHighlights } from "@dokument/core";
+import { formatBytes } from "@dokument/core";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
@@ -11,10 +11,12 @@ import { ActionMenu, type MenuAction } from "./Menu";
 import { Progress } from "./Progress";
 
 const PdfPreview = lazy(() => import("./PdfPreview"));
+const CodePreview = lazy(() => import("./CodePreview"));
+const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 
 /** What the viewer body shows (docs/design.md §14). `src` is the server's preview URL, which is not audited. */
 export type PreviewSource =
-  | { type: "image" | "pdf" | "text" | "video" | "audio"; src: string }
+  | { type: "image" | "pdf" | "text" | "markdown" | "video" | "audio"; src: string }
   /** The worker is still making the rendition the viewer needs, e.g. for a HEIC photo. */
   | { type: "preparing" }
   | { type: "none" };
@@ -82,6 +84,10 @@ export function FileViewer({
   const previousMarked = markedPages.filter((p) => p < page).at(-1);
   const nextMarked = markedPages.find((p) => p > page);
   const boxesOn = (pageNo: number) => marks?.pages.find((p) => p.pageNo === pageNo)?.boxes ?? [];
+  const [markdownView, setMarkdownView] = useState<"formatted" | "source">("formatted");
+  const [wrap, setWrap] = useStoredFlag("dokument.viewer.wrap");
+  const [findRequest, setFindRequest] = useState(0);
+  const showsCode = preview.type === "text" || (preview.type === "markdown" && markdownView === "source");
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -149,6 +155,13 @@ export function FileViewer({
             <IconButton icon="close" label={t("viewer.stopMarking")} size="sm" onClick={marks.onClear} />
           </div>
         )}
+        {preview.type === "markdown" && <MarkdownViewToggle value={markdownView} onChange={setMarkdownView} />}
+        {showsCode && (
+          <>
+            <IconButton icon="wrap_text" label={t("code.wrap")} selected={wrap} onClick={() => setWrap(!wrap)} />
+            <IconButton icon="search" label={t("code.findInFile")} onClick={() => setFindRequest((n) => n + 1)} className="max-sm:hidden" />
+          </>
+        )}
         {onShare && (
           <>
             <Button variant="tonal" icon="person_add" onClick={onShare} className="max-md:hidden">
@@ -201,8 +214,17 @@ export function FileViewer({
                 fallback={noPreview(true)}
               />
             </Suspense>
-          ) : preview.type === "text" ? (
-            <TextPreview key={preview.src} src={preview.src} terms={marks?.terms} fallback={noPreview(true)} />
+          ) : preview.type === "text" || preview.type === "markdown" ? (
+            <TextPreview
+              key={preview.src}
+              src={preview.src}
+              fileName={item.name}
+              formatted={preview.type === "markdown" && markdownView === "formatted"}
+              wrap={wrap}
+              findRequest={findRequest}
+              terms={marks?.terms}
+              fallback={noPreview(true)}
+            />
           ) : preview.type === "video" ? (
             <MediaPreview key={preview.src} type="video" src={preview.src} fallback={noPreview(true)} />
           ) : preview.type === "audio" ? (
@@ -398,7 +420,23 @@ function ImagePreview({ src, alt, boxes, fallback }: { src: string; alt: string;
 /** Text files are shown up to this many bytes; the rest is a download away. */
 const textLimit = 1024 * 1024;
 
-function TextPreview({ src, terms, fallback }: { src: string; terms?: readonly string[]; fallback: ReactNode }) {
+function TextPreview({
+  src,
+  fileName,
+  formatted,
+  wrap,
+  findRequest,
+  terms,
+  fallback,
+}: {
+  src: string;
+  fileName: string;
+  formatted: boolean;
+  wrap: boolean;
+  findRequest: number;
+  terms?: readonly string[];
+  fallback: ReactNode;
+}) {
   const { t, i18n } = useTranslation();
   const [text, setText] = useState<{ body: string; truncated: boolean } | "failed" | null>(null);
 
@@ -420,28 +458,89 @@ function TextPreview({ src, terms, fallback }: { src: string; terms?: readonly s
 
   if (text === "failed") return <Centered>{fallback}</Centered>;
   if (!text) return <Loading />;
+  const truncated = text.truncated && (
+    <p className="m-0 flex shrink-0 items-center gap-2 border-b border-outline-variant px-4 py-2 text-body-sm text-on-surface-variant">
+      <Icon name="info" size="sm" />
+      {t("viewer.truncated", { size: formatBytes(textLimit, i18n.language) })}
+    </p>
+  );
+  if (formatted) {
+    return (
+      <div className="min-h-0 flex-1 overflow-auto p-2 sm:p-4">
+        <div className="mx-auto max-w-3xl overflow-hidden rounded-md bg-surface-container-lowest shadow-elevation-1">
+          {truncated}
+          <div className="px-5 py-6 sm:px-12 sm:py-10">
+            <Suspense fallback={<Loading />}>
+              <MarkdownPreview text={text.body} terms={terms} />
+            </Suspense>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div
-      ref={(element) => element?.querySelector("mark")?.scrollIntoView({ block: "center" })}
-      className="min-h-0 flex-1 overflow-auto p-4 sm:p-8"
-    >
-      <div className="mx-auto max-w-5xl rounded-md bg-surface-container-lowest shadow-elevation-1">
-        {text.truncated && (
-          <p className="m-0 flex items-center gap-2 border-b border-outline-variant px-4 py-2 text-body-sm text-on-surface-variant">
-            <Icon name="info" size="sm" />
-            {t("viewer.truncated", { size: formatBytes(textLimit, i18n.language) })}
-          </p>
-        )}
-        <pre className="m-0 overflow-x-auto p-4 font-mono text-body-sm break-words whitespace-pre-wrap">
-          {terms?.length
-            ? splitHighlights(text.body, findHits(text.body, terms)).map((part, i) =>
-                part.hit ? <mark key={i}>{part.text}</mark> : part.text,
-              )
-            : text.body}
-        </pre>
+    <div className="flex min-h-0 flex-1 flex-col p-2 sm:p-4">
+      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden rounded-md bg-surface-container-lowest shadow-elevation-1">
+        {truncated}
+        <div className="min-h-0 flex-1">
+          <Suspense fallback={<Loading />}>
+            <CodePreview text={text.body} fileName={fileName} wrap={wrap} terms={terms} findRequest={findRequest} />
+          </Suspense>
+        </div>
       </div>
     </div>
   );
+}
+
+/** Formatted or source, for Markdown files (§14). */
+function MarkdownViewToggle({ value, onChange }: { value: "formatted" | "source"; onChange: (value: "formatted" | "source") => void }) {
+  const { t } = useTranslation();
+  const options = [
+    { id: "formatted", icon: "article", label: t("markdown.formatted") },
+    { id: "source", icon: "code", label: t("markdown.source") },
+  ] as const;
+  return (
+    <div role="radiogroup" aria-label={t("markdown.showAs")} className="flex h-10 shrink-0 overflow-hidden rounded-full border border-outline">
+      {options.map((option, i) => (
+        <button
+          key={option.id}
+          type="button"
+          role="radio"
+          aria-checked={value === option.id}
+          title={option.label}
+          onClick={() => onChange(option.id)}
+          className={cn(
+            "inline-flex cursor-pointer items-center gap-1.5 px-3 text-label-lg max-sm:px-2.5",
+            i > 0 && "border-l border-outline",
+            value === option.id ? "bg-secondary-container text-on-secondary-container" : "text-on-surface-variant hover:bg-on-surface/8",
+          )}
+        >
+          <Icon name={value === option.id ? "check" : option.icon} size="sm" />
+          <span className="max-sm:sr-only">{option.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A per-browser preference, such as wrapping long lines. Storage can be unavailable; then it lasts the page. */
+function useStoredFlag(key: string) {
+  const [value, setValue] = useState(() => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const set = (next: boolean) => {
+    setValue(next);
+    try {
+      localStorage.setItem(key, next ? "1" : "0");
+    } catch {
+      // Not remembered.
+    }
+  };
+  return [value, set] as const;
 }
 
 function MediaPreview({ type, src, item, fallback }: { type: "video" | "audio"; src: string; item?: FileItem; fallback: ReactNode }) {

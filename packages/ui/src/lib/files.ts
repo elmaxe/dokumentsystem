@@ -126,7 +126,7 @@ export const kindOf = (name: string, mimeType?: string | null): FileKind =>
   "other";
 
 /** How the viewer shows a file (docs/design.md §14). Office formats get the PDF viewer once Gotenberg renditions exist. */
-export type PreviewType = "image" | "pdf" | "text" | "video" | "audio" | "none";
+export type PreviewType = "image" | "pdf" | "text" | "markdown" | "video" | "audio" | "none";
 
 const textTypes = /^(text\/|application\/(json|xml|javascript|x-yaml|yaml|toml|x-sh|sql|ld\+json)$)|\+(json|xml)$/;
 
@@ -138,6 +138,7 @@ export function previewTypeOf(mimeType?: string | null): PreviewType {
   if (mimeType === "application/pdf") return "pdf";
   if (mimeType.startsWith("image/")) return "image";
   if (playable.test(mimeType)) return mimeType.startsWith("video/") ? "video" : "audio";
+  if (mimeType === "text/markdown" || mimeType === "text/x-markdown") return "markdown";
   if (textTypes.test(mimeType)) return "text";
   return "none";
 }
