@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
 import { useFormat } from "../lib/display";
@@ -62,6 +63,9 @@ const icons: Record<ProcessingState, { name: string; filled?: boolean; className
   failed: { name: "error", filled: true, className: "text-error" },
 };
 
+/** States with nothing more to happen. */
+const settled: ProcessingState[] = ["done", "nothingFound", "skipped", "unsupported", "unreadable"];
+
 export type ProcessingSectionProps = {
   steps: ProcessingStepView[];
   /** Admins only: runs a failed step again. */
@@ -72,7 +76,29 @@ export type ProcessingSectionProps = {
 export function ProcessingSection({ steps, onRetry }: ProcessingSectionProps) {
   const { t } = useTranslation();
   const format = useFormat();
+  const [expanded, setExpanded] = useState(false);
   const when = (at?: string | null) => (at ? format.date(at, { inSentence: true }) : "");
+
+  // Once every step is settled there is nothing to watch, so the section folds to one line (§16.4).
+  if (!expanded && steps.length > 0 && steps.every((s) => settled.includes(s.state))) {
+    return (
+      <section className="mt-2 border-t border-outline-variant pt-2">
+        <button
+          type="button"
+          aria-expanded={false}
+          onClick={() => setExpanded(true)}
+          className="flex min-h-10 w-full cursor-pointer items-center gap-3 rounded-sm text-left hover:bg-on-surface/4"
+        >
+          <Icon name="check_circle" filled size={20} className="shrink-0 text-success" />
+          <span className="flex-1 text-title-sm text-on-surface">
+            {t("processing.title")}
+            <span className="text-body-sm text-on-surface-variant"> · {t("processing.allDone")}</span>
+          </span>
+          <Icon name="expand_more" className="text-on-surface-variant" />
+        </button>
+      </section>
+    );
+  }
 
   const describe = (s: ProcessingStepView) => {
     switch (s.state) {

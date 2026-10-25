@@ -64,7 +64,9 @@ internal sealed partial class MetadataHandler(
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db
-            .ContentPages.Where(p => p.BlobHash == hash && p.PageNo == ContentPage.MetadataPage)
+            .ContentPages.Where(p =>
+                p.BlobHash == hash && p.VersionId == null && p.PageNo == ContentPage.MetadataPage
+            )
             .ExecuteDeleteAsync(ct);
         if (result.SearchText.Length > 0)
         {
@@ -89,8 +91,13 @@ internal sealed partial class MetadataHandler(
         metadata.PipelineVersion = BlobMetadata.CurrentPipelineVersion;
         metadata.Readable = result.Readable;
         metadata.TakenAt = result.TakenAt?.ToUniversalTime();
+        metadata.TakenOffsetMinutes = result.TakenOffsetKnown
+            ? (int?)result.TakenAt?.Offset.TotalMinutes
+            : null;
         metadata.Camera = result.Camera;
         metadata.DurationSeconds = result.DurationSeconds;
+        metadata.Latitude = result.Place?.Latitude;
+        metadata.Longitude = result.Place?.Longitude;
         metadata.Tags = JsonSerializer.Serialize(result.Tags);
         metadata.UpdatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);

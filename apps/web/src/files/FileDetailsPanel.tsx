@@ -1,10 +1,24 @@
 import { contentUrl, type PathEntry } from "@dokument/api";
-import { DetailsPanel, useSnackbar, type DetailsTab, type FileVersion } from "@dokument/ui";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { DetailsPanel, TextDialog, useSnackbar, type DetailsTab, type FileVersion } from "@dokument/ui";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { sessionQuery } from "../api";
 import { jobs } from "../admin/jobsApi";
-import { download, drive, errorMessage, invalidateFolders, pathLabel, processingQuery, versionsQuery, type Item } from "./drive";
+import {
+  ApiError,
+  download,
+  drive,
+  errorMessage,
+  fileDetailsQuery,
+  fileTextPage,
+  fileTextQuery,
+  invalidateFolders,
+  pathLabel,
+  processingQuery,
+  versionsQuery,
+  type Item,
+} from "./drive";
 
 type Props = {
   item: Item;
@@ -51,7 +65,75 @@ export function FileDetailsPanel({
       ),
   });
 
-  const processing = useQuery({ ...processingQuery(item.id, item.node.currentVersionId), enabled: isFile && tab === "info" });
+  const versionId = item.node.currentVersionId;
+  const processing = useQuery({ ...processingQuery(item.id, versionId), enabled: isFile && tab === "info" });
+  const fileDetails = useQuery({ ...fileDetailsQuery(item.id, versionId), enabled: isFile && tab === "info" });
+  const fileText = useQuery({ ...fileTextQuery(item.id, versionId), enabled: isFile && tab === "info" });
+  const [textDialog, setTextDialog] = useState<{ open: boolean; editPage?: number }>({ open: false });
+  const allText = useInfiniteQuery({
+    queryKey: ["fileText", item.id, versionId, "all"],
+    queryFn: ({ pageParam }) => fileTextPage(item.id, pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (last) => last.nextFrom ?? undefined,
+    enabled: isFile && textDialog.open,
+  });
+
+  const refreshInfo = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["fileDetails", item.id] }),
+      queryClient.invalidateQueries({ queryKey: ["fileText", item.id] }),
+    ]);
+  /** The message to show under a field when a save fails. */
+  const saveError = (error: unknown) =>
+    new Error(
+      error instanceof ApiError && error.problem.code === "invalidRequest" && error.problem.detail
+        ? error.problem.detail
+        : errorMessage(t, error),
+    );
+  const saveDetails = async (edit: { title: string | null; description: string | null; taken: string | null }) => {
+    try {
+      await drive.setDetails(item.id, edit);
+    } catch (error) {
+      throw saveError(error);
+    }
+    await refreshInfo();
+    toast(t("fileInfo.detailsSaved"));
+  };
+  const savePage = async (pageNo: number, text: string) => {
+    try {
+      await drive.setTextPage(item.id, pageNo, text);
+    } catch (error) {
+      throw saveError(error);
+    }
+    await refreshInfo();
+    toast(t("fileInfo.pageSaved"));
+  };
+  const revertPage = async (pageNo: number) => {
+    try {
+      await drive.revertTextPage(item.id, pageNo);
+    } catch (error) {
+      throw saveError(error);
+    }
+    await refreshInfo();
+    toast(t("fileInfo.pageReverted"));
+  };
+  /** Copies every page, fetching the ones not loaded yet. */
+  const copyText = async () => {
+    try {
+      const pages = (allText.data?.pages ?? []).flatMap((p) => p.pages);
+      let next = allText.data?.pages.at(-1)?.nextFrom ?? (allText.data ? null : 1);
+      while (next != null) {
+        const more = await fileTextPage(item.id, next, 100);
+        pages.push(...more.pages);
+        next = more.nextFrom ?? null;
+      }
+      await navigator.clipboard.writeText(pages.map((p) => p.text).join("\n\n"));
+      toast(t("fileInfo.copied"));
+    } catch (error) {
+      toast(errorMessage(t, error));
+    }
+  };
+  const textData = allText.data?.pages.at(-1) ?? fileText.data;
   const admin = useQuery(sessionQuery).data?.user.role === "admin";
   const retry = async (jobId: string) => {
     try {
@@ -86,6 +168,7 @@ export function FileDetailsPanel({
   };
 
   return (
+    <>
     <DetailsPanel
       item={item}
       details={{
@@ -100,6 +183,14 @@ export function FileDetailsPanel({
       onClose={onClose}
       onManageAccess={() => toast(t("common.notYet"))}
       onStarChange={onStarChange}
+      fileDetails={fileDetails.data && { details: fileDetails.data, onSave: saveDetails }}
+      fileText={
+        fileText.data && {
+          text: fileText.data,
+          canEdit: true,
+          onShowAll: (editPage) => setTextDialog({ open: true, editPage }),
+        }
+      }
       processing={processing.data && { steps: processing.data.steps, onRetry: admin ? (id) => void retry(id) : undefined }}
       versions={{
         canDelete: false,
@@ -109,5 +200,21 @@ export function FileDetailsPanel({
       }}
       className={className}
     />
+    {textData && (
+      <TextDialog
+        open={textDialog.open}
+        onOpenChange={(open) => setTextDialog((d) => ({ ...d, open }))}
+        name={item.name}
+        text={textData}
+        pages={allText.data?.pages.flatMap((p) => p.pages) ?? fileText.data?.pages ?? []}
+        paging={item.kind === "slides" ? "slides" : textData.pageCount != null || textData.totalPages > 1 ? "pages" : undefined}
+        onLoadMore={allText.hasNextPage ? () => void allText.fetchNextPage() : undefined}
+        onCopy={() => void copyText()}
+        onSavePage={savePage}
+        onRevertPage={revertPage}
+        editPage={textDialog.editPage}
+      />
+    )}
+    </>
   );
 }

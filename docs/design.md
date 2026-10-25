@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.22** · Last updated: 2026-10-25
+> Status: **Draft v0.23** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -275,13 +275,19 @@ blob_previews(blob_hash PK, status {ready|unsupported|failed}, pipeline_version,
 renditions(blob_hash, kind {thumb_s|thumb_m|preview|preview_pdf|video_web|poster|…},
            storage_key, mime_type, width, height, created_at, PRIMARY KEY (blob_hash, kind))
 
-blob_metadata(blob_hash PK, pipeline_version, taken_at NULL, camera NULL, duration_seconds NULL,
+blob_metadata(blob_hash PK, pipeline_version, taken_at NULL, taken_offset_minutes NULL, camera NULL,
+              duration_seconds NULL, latitude NULL, longitude NULL,
               tags jsonb, readable, updated_at)  -- exiftool's searchable tags and the filter values (§10.3)
 blob_contents(blob_hash PK, status {ready|empty|unsupported|failed}, pipeline_version, page_count NULL,
               ocr_skipped, ocr_engine NULL, updated_at)   -- what the text stage made of a blob
-content_pages(id, blob_hash, page_no, source {text|ocr|metadata|transcript}, text,
+content_pages(id, blob_hash, version_id NULL, page_no, source {text|ocr|metadata|added|transcript}, text,
               words jsonb NULL,                  -- OCR word boxes, [[x, y, w, h, "word"], …] as page fractions
-              UNIQUE (blob_hash, page_no))       -- BM25-indexed; page 0 is the metadata text
+              edited_by NULL, edited_at NULL,
+              UNIQUE (blob_hash, page_no) WHERE version_id IS NULL,      -- what was read, per blob
+              UNIQUE (version_id, page_no) WHERE version_id IS NOT NULL) -- people's corrections, per version (§13.5)
+                                                 -- BM25-indexed; page 0 is the metadata text
+version_details(version_id PK → file_versions, title NULL, description NULL, taken_at NULL,
+                taken_precision {year|month|day|time} NULL, edited_by, edited_at)   -- edits over what was read (§13.5)
 embeddings(blob_hash, page_no NULL, model, vector vchord) -- optional (M7)
 
 -- Planned (decision 26, §13.4), not built yet:
@@ -319,6 +325,7 @@ Notes:
 - **Name uniqueness within a folder:** NFC-normalized and case-insensitive (`name_key`). The top of each user's "My files" (parent NULL) counts as one folder, hence `NULLS NOT DISTINCT`. Conflicts are resolved like Drive: either "file (1).pdf" or "upload as new version", chosen by the user.
 - **Names** (`NodeName` in the domain) are trimmed, NFC, at most 255 UTF-8 bytes, never "." or "..", and contain no slashes or control characters, so `dokument export` can write any of them to disk.
 - **Renditions belong to the bytes, not versions or owners** (decisions 15 and 23): identical bytes are rendered once, even for two people, and a copy or a restored version has its thumbnail at once. **Extracted text, metadata and automatic tags do too** (decision 24), so a copy is searchable at once.
+- **People's corrections belong to the version** (decision 28): what was read is shared by everyone with the same bytes, so edits of the title, description, date taken and text are rows of `version_details` and `content_pages` with a `version_id`, and go with their version when it is purged.
 - **`path ltree`** makes subtree operations cheap: permission inheritance, "trash folder", "folder size", "search in folder".
 
 ---
@@ -500,8 +507,8 @@ The stages are independent jobs per blob, queued together when an upload finishe
 
 **Metadata stage, as built (M3):**
 - `exiftool -json -n -fast` on the original, with a 1-minute timeout. The searchable tags (title, subject, description, keywords, author/creator/artist, album, genre, company, comments, camera make and model, lens) become content page 0, so "fujifilm" or a PDF's author finds the file; their values are capped at 4000 characters each.
-- The camera ("FUJIFILM X-T30", without repeating the brand), the date taken (with the camera's UTC offset when it recorded one, otherwise the camera's clock as if it were UTC) and the duration are columns of `blob_metadata`, for the `camera:` and `taken:` filters. The kept tags are stored as JSON for the details panel later.
-- GPS is read but not searchable yet: place search needs offline geodata.
+- The camera ("FUJIFILM X-T30", without repeating the brand), the date taken (with the camera's UTC offset when it recorded one, otherwise the camera's clock as if it were UTC) and the duration are columns of `blob_metadata`, for the `camera:` and `taken:` filters. The offset is kept too (`taken_offset_minutes`), so the details panel shows the camera's own clock. The kept tags, including the lens and the picture size, are stored as JSON for the details panel (§13.5).
+- The GPS position (`GPSPosition`, signed decimal degrees; 0, 0 is a receiver without a fix) is kept as `latitude` and `longitude` and shown in the details panel. It isn't searchable yet: place search needs offline geodata.
 
 **Text stage, as built (M3):**
 - The format comes from the bytes: `%PDF-`, a zip (`PK`), text by MIME type with no NUL bytes, or an image libvips can load from the same allowlist as thumbnails.
@@ -631,13 +638,26 @@ Prepared in M3, built as its own piece after it (decision 26).
 - **Keyword rules** run right after the text stage: a rule is a tag plus words ("kvitto, kvittot, receipt → receipt"), matched with the search rule above on the text and metadata. Admins manage them; editing a rule re-runs it at background priority. The text stage's output stays the input, so rules never re-read files.
 - **Search:** a `tag:` operator and a Tags chip, through a `tags` field on the name index or a join; results show a file's tags.
 
+### 13.5 Details and text in the file info
+
+Built after M3 (decision 28). The details panel's Info tab shows what the worker read from a file, and people can correct it.
+
+- **Details** shows what the current version says about itself, only the rows it has: title, description, date taken (in the camera's clock, with its UTC offset when known), camera, lens, picture size, length, pages, place (coordinates and an "Open map" link to OpenStreetMap; place names wait for offline geodata), then subject, author, artist, composer, album, genre, company, keywords and comment. `GET /nodes/{id}/details`.
+- **Text in this file** shows where the text came from (the file's own text, recognized in a scan or photo, or added by people), the word count, and the start of the first page. "Show all text" opens a dialog with every page (20 at a time), each labelled with its source, and Copy for all of it. A file whose format has no text (a zip) has no Text section; a photo with no text says so and offers "Add text". While the text is still being read, the section says search won't find words inside the file yet. `GET /nodes/{id}/text?from=&limit=`.
+- **Editing the details:** the title, the description and the date taken. A date can be known to the year, month, day or minute ("1974", "1974-07", "1974-07-14 15:30"), for scans of old photos. Camera, lens, size, length and pages are facts about the file and can't be changed; keywords stay read-only because adding words to a file is what tags (§13.4) are for. Edited rows are marked and show what the file says, with "Use this" to drop the edit. A value the same as the file's isn't an edit. `PUT /nodes/{id}/details` sends all three; null keeps what the file says, and an empty title or description hides the file's.
+- **Editing the text** works one page at a time, so a long scan never becomes one huge text box. Text the same as what was read drops the correction, and "Use the text read from the file" does too (`PUT` and `DELETE /nodes/{id}/text/{page}`). Text can be added to a page where nothing was read, up to the file's page count (one page for files without pages). A page holds at most 200,000 characters, the text stage's own cap.
+- **Edits belong to the file version, never to the bytes** (§6): what was read is keyed by blob and shared by everyone with the same bytes, so fixing your copy must not change someone else's. A new upload starts with the previous version's details edits, but not its text corrections, because new bytes have new text. Restoring a version brings back that version's edits, text included. "Read all files again" or a better recognizer replaces what was read underneath and leaves the edits alone. The original is never changed (§1), and Download still gives the exact bytes.
+- **Search uses the edits.** An edited page replaces the read page of the same number for that version only; the version's page 0 holds the edited title and description and adds to what was read, so the file's own title still matches. An edited date wins over the camera's in `taken:`, and a partial date counts from its first day ("1974-07" matches `taken:1974` and `taken:1974-07`). The viewer still marks hits on a corrected scan from the read word boxes, so words people changed are found but not marked.
+- **Who:** everyone who can open the file sees its details and text; everyone who can change it (the owner now, editors once sharing lands) can edit them. Link viewers (M4) won't see the place. Each save writes a `file.details_edit` audit event naming the fields, or `file.text_edit` naming the page, never the text, and sends a live notice (`files`), so other tabs refresh.
+- **Later:** opening the text dialog from the viewer on the page being shown, and writing edits into an exported copy's EXIF.
+
 ---
 
 ## 14. Viewers
 
 | Type | Web | Mobile |
 |---|---|---|
-| Images | The original, or the WebP preview for HEIC/TIFF/SVG and huge images; zoom/pan; EXIF info panel later | Same; `expo-image` |
+| Images | The original, or the WebP preview for HEIC/TIFF/SVG and huge images; zoom/pan; EXIF details in the details panel (§13.5) | Same; `expo-image` |
 | PDF | **pdf.js** with page thumbnails, search-in-document, OCR text-layer overlay for scans | `react-native-pdf` (or pdf.js in a WebView) |
 | Office | The server's **PDF rendition** in the PDF viewer | Same |
 | Video | `<video>` with HTTP Range; web rendition if the original isn't playable | `expo-video` |
@@ -690,7 +710,7 @@ These are better in React DOM than through React Native Web.
   - Recent is stored in `recent_files`, one row per person and file. It is **private to that person** and is **not the audit log**: the viewer reports an open with `POST /nodes/{id}/opened`, which is never audited (§18); downloads and uploads are noted by the server as they happen.
   - Trashed items (and everything inside a trashed folder) drop out of both pages. A star comes back on restore; deleting forever removes stars and recent rows with the node.
   - A file opened from Starred or Recent steps through that page's files in the viewer, and closing returns there.
-- **Details panel:** info, sharing, versions, activity. Info ends with the file's **Processing** steps (§10.1, §16.4).
+- **Details panel:** info, sharing, versions, activity. Info goes on with the file's **Details** and **Text in this file**, which people can correct (§13.5), and ends with its **Processing** steps (§10.1, §16.4), folded to one line once every step is done.
 - **Upload tray** (bottom-right) with per-file progress, pause/resume and retry.
 - **Live updates** (§15.4): changes from other tabs and devices, and thumbnails as they are made, show up without a refresh.
 - Optionally a PWA, for "Add to home screen" on phones.
@@ -718,7 +738,7 @@ Changes made in one tab or on one device show up in the person's other open clie
 
   | Topic | Sent when | The web refetches |
   |---|---|---|
-  | `files` | create, rename, move, upload, version restore or Keep forever, trash and restore, star, version purge, a thumbnail is ready | folder listings, file details, versions, Starred, Recent |
+  | `files` | create, rename, move, upload, version restore or Keep forever, trash and restore, star, version purge, a thumbnail is ready, details or text edited | folder listings, file details, versions, the Details and Text sections, Starred, Recent |
   | `recent` | an open or download | Recent |
   | `trash` | trash, restore, delete forever, empty, trash purge | Trash |
   | `storage` | anything that changes usage, a quota or the default quota | the storage meter |
@@ -818,7 +838,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
   - A file with a ready thumbnail shows it in place of the type icon: 32 px, 40 px on phones, with pages showing their top as in the grid. Folders and files without a preview keep the icon, in a box of the same size so names line up; a pending thumbnail shimmers.
   - **Folders show their size:** the current version of every live file below them, at any depth. Old versions and trashed files don't count, so it isn't the same number as quota usage (§17). The listing API returns it as the folder's `size` plus `contents` (file and folder counts) from one ltree query per listing. An empty folder shows "—", and hovering a folder's size shows what it holds ("1,204 files, 38 folders").
   - Hovering a date shows the full timestamp ("23 October 2026, 17:40").
-- **Processing indicators** (decision 27): while the worker has steps waiting or running for a file, its grid tile shows a "Processing" pill on the thumbnail and its list row a small spinner after the name, both with a tooltip naming the steps and their state ("Processing: Thumbnail: running, Searchable text: waiting"). Failed steps don't keep the badge; they show in the details panel and on the admin Jobs page. The details panel's **Processing** section lists Thumbnail, Metadata and Searchable text with an icon and words for each state, notes that search can't find words inside the file until its text is read, and gives admins the error and **Try again** on a failed step. Only a finished thumbnail sends a live notice (§15.4), so while metadata or text steps are pending the listing and the section poll every 2 s (every 10 s after a minute); a pending thumbnail is polled for only without a live connection.
+- **Processing indicators** (decision 27): while the worker has steps waiting or running for a file, its grid tile shows a "Processing" pill on the thumbnail and its list row a small spinner after the name, both with a tooltip naming the steps and their state ("Processing: Thumbnail: running, Searchable text: waiting"). Failed steps don't keep the badge; they show in the details panel and on the admin Jobs page. The details panel's **Processing** section folds to "Processing · all done" once every step is settled, and otherwise lists Thumbnail, Metadata and Searchable text with an icon and words for each state, notes that search can't find words inside the file until its text is read, and gives admins the error and **Try again** on a failed step. Only a finished thumbnail sends a live notice (§15.4), so while metadata or text steps are pending the listing and the section poll every 2 s (every 10 s after a minute); a pending thumbnail is polled for only without a live connection.
 - **ActionBar:** the selection count plus Share, Download, Move, Trash and More.
 - **UploadTray:** one row per tus upload, in one of the states hashing, uploading, paused, done, duplicate ("Remove this copy") or failed (Retry), each with an icon and words.
 - **DuplicateDialog:** the §8.3 prompt. A batch offers Skip duplicates / Upload all / Review; a single file offers Skip / Upload anyway / Open existing.
@@ -1001,7 +1021,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
 | **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, folder uploads and live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, the web viewer for images, PDFs, text and browser-playable media, and the admin Jobs page with per-file processing status (decision 27). **Still to come:** metadata, video posters and transcoding, Gotenberg, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
-| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). **Next, as its own piece:** tags with keyword rules (§13.4). |
+| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Then details and text in the file info, with corrections search uses (§13.5, decision 28). **Next, as its own piece:** tags with keyword rules (§13.4). |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
@@ -1041,6 +1061,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 25 | Live updates | 2026-10-25: one SignalR hub; notices sent with `pg_notify` inside the changing transaction and forwarded by a `LISTEN`ing server; thin notices (topics and an origin, no ids or names) that make clients refetch; owner's clients only until sharing; per-tab client id to skip echoes; refetch everything after a reconnect; viewer banners instead of swapping the open file; ended sessions sign their clients out; the thumbnail poll stays only as a fallback (§15.4) |
 | 26 | Search (M3) | 2026-10-25: pg_search BM25 over names (words + 3-grams) and page text indexed Swedish-stemmed, English-stemmed and unstemmed together, no language detection; text, metadata and automatic tags keyed by blob; Tesseract (`swe+eng`) in the worker for scans and photos, at background priority with an admin switch (default on), replaced by the ML service in M7; exiftool metadata searchable now, with `camera:` and `taken:`; snippets as text + offsets, one marking rule shared by server and clients; queries never logged. Tags planned as shared per file, sources user / rule / ml, automatic ones per blob and removable per file. Transcription waits for M7 (§6, §10, §13, §14) |
 | 27 | Seeing what the worker is doing | 2026-10-25: admins see every job's files by name, owner and folder, whoever owns them (the admin already runs the server, and a hash alone is no use); jobs record `started_at`; queues pause per type through the `jobs` setting, checked when claiming; failed jobs can be retried or cleared, singly or all. Everyone sees a Processing section per file in the details panel, and a badge in grid and list only while steps wait or run; failed steps show only in details (errors for admins) and on the Jobs page. Metadata and text steps send no live notices yet, so pages poll every 2 s while they're pending; the Jobs page polls every 2 s; concurrency isn't editable yet (§10.1, §15.2, §16.4) |
+| 28 | Details and text in the file info | 2026-10-25: the Info tab shows what was read (details from exiftool, now with GPS, lens, size and the camera's UTC offset; and the text with its source) and lets people edit the title, description and date taken (partial dates allowed) and the text, page by page; edits belong to the file version, not the shared bytes, so nobody else's copy changes; a new version keeps the details edits but not the text corrections, a restore brings back that version's edits; search uses the edits (corrected pages replace read ones, edited dates win in `taken:`); the original is never changed; edits are audited without their text (§6, §10.3, §13.5) |
 
 ## 26. Open questions
 

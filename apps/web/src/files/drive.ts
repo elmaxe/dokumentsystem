@@ -1,6 +1,8 @@
 import type {
   DuplicateCheckResult,
+  FileDetailsDto,
   FileProcessing,
+  FileTextDto,
   FolderConflictPolicy,
   FolderListing,
   FolderTreeEntry,
@@ -124,6 +126,27 @@ export const processingQuery = (id: string, versionId: string | null) =>
       ),
   });
 
+/** What the file says about itself, with edits (§13.5), polled while the worker is still reading it. */
+export const fileDetailsQuery = (id: string, versionId: string | null) =>
+  queryOptions({
+    queryKey: ["fileDetails", id, versionId],
+    queryFn: (): Promise<FileDetailsDto> =>
+      unwrap(api.GET("/api/v1/nodes/{id}/details", { params: { path: { id } } })),
+    refetchInterval: (query) => pollWhilePending(query.state.data?.reading ?? false, query.state.dataUpdateCount),
+  });
+
+/** The start of the file's text for its info: enough pages to say where the text came from. */
+export const fileTextQuery = (id: string, versionId: string | null) =>
+  queryOptions({
+    queryKey: ["fileText", id, versionId, "start"],
+    queryFn: () => fileTextPage(id, 1, 5),
+    refetchInterval: (query) =>
+      pollWhilePending(query.state.data?.state === "reading", query.state.dataUpdateCount),
+  });
+
+export const fileTextPage = (id: string, from: number, limit = 20): Promise<FileTextDto> =>
+  unwrap(api.GET("/api/v1/nodes/{id}/text", { params: { path: { id }, query: { from, limit } } }));
+
 export const versionsQuery = (id: string) =>
   queryOptions({
     queryKey: ["versions", id],
@@ -197,6 +220,13 @@ export const drive = {
         body: { keepForever },
       }),
     ),
+  /** Edits the current version's title, description and date taken (§13.5); null keeps what the file says. */
+  setDetails: (id: string, body: { title: string | null; description: string | null; taken: string | null }) =>
+    send(api.PUT("/api/v1/nodes/{id}/details", { params: { path: { id } }, body })),
+  setTextPage: (id: string, pageNo: number, text: string) =>
+    send(api.PUT("/api/v1/nodes/{id}/text/{pageNo}", { params: { path: { id, pageNo } }, body: { text } })),
+  revertTextPage: (id: string, pageNo: number) =>
+    send(api.DELETE("/api/v1/nodes/{id}/text/{pageNo}", { params: { path: { id, pageNo } } })),
   trash: (ids: string[]) => send(api.POST("/api/v1/nodes/trash", { body: { ids } })),
   star: (ids: string[], starred: boolean) =>
     send(api.POST(starred ? "/api/v1/nodes/star" : "/api/v1/nodes/unstar", { body: { ids } })),

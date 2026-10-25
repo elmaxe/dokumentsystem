@@ -833,6 +833,197 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/details": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "What the file's current version says about itself (title, date taken, camera, place…), with people's edits on top.",
+        "operationId": "GetFileDetails",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDetailsDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Edits the current version's title, description and date taken, all three at once; null keeps what the file says. Later versions start with these edits. The file itself is never changed.",
+        "operationId": "SetFileDetails",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileDetailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/text": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "The searchable text of the current version, page by page from `from`, with corrections in place.",
+        "operationId": "GetFileText",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileTextDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/text/{pageNo}": {
+      "put": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Corrects one page of the current version's text, or adds text to a page where none was read. Search uses it from then on.",
+        "operationId": "SetFileTextPage",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pageNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileTextPageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Drops a page's correction, so the text read from the file counts again.",
+        "operationId": "RevertFileTextPage",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pageNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
     "/api/v1/nodes/trash": {
       "post": {
         "tags": [
@@ -2207,6 +2398,29 @@
           }
         }
       },
+      "DatePrecision": {
+        "enum": [
+          "year",
+          "month",
+          "day",
+          "time"
+        ]
+      },
+      "DetailField": {
+        "required": [
+          "key",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
       "DuplicateCheckItem": {
         "required": [
           "name",
@@ -2300,6 +2514,64 @@
           }
         }
       },
+      "EditableTakenDto": {
+        "required": [
+          "value",
+          "read",
+          "edited"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TakenDto"
+              }
+            ]
+          },
+          "read": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TakenDto"
+              }
+            ]
+          },
+          "edited": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EditableTextDto": {
+        "required": [
+          "value",
+          "read",
+          "edited"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "read": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "edited": {
+            "type": "boolean"
+          }
+        }
+      },
       "EmptyTrashResponse": {
         "required": [
           "items"
@@ -2309,6 +2581,136 @@
           "items": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "FileDetailsDto": {
+        "required": [
+          "reading",
+          "title",
+          "description",
+          "taken",
+          "camera",
+          "lens",
+          "width",
+          "height",
+          "durationSeconds",
+          "pageCount",
+          "place",
+          "fields",
+          "editedBy",
+          "editedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "reading": {
+            "type": "boolean"
+          },
+          "title": {
+            "$ref": "#/components/schemas/EditableTextDto"
+          },
+          "description": {
+            "$ref": "#/components/schemas/EditableTextDto"
+          },
+          "taken": {
+            "$ref": "#/components/schemas/EditableTakenDto"
+          },
+          "camera": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lens": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "width": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "height": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "durationSeconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "pageCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "place": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlaceDto"
+              }
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DetailField"
+            }
+          },
+          "editedBy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "editedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "FileDetailsRequest": {
+        "required": [
+          "title",
+          "description",
+          "taken"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "taken": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2323,6 +2725,75 @@
             "items": {
               "$ref": "#/components/schemas/ProcessingStepDto"
             }
+          }
+        }
+      },
+      "FileTextDto": {
+        "required": [
+          "state",
+          "ocrSkipped",
+          "pageCount",
+          "totalPages",
+          "maxPage",
+          "words",
+          "editedPages",
+          "pages",
+          "nextFrom"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/TextState"
+          },
+          "ocrSkipped": {
+            "type": "boolean"
+          },
+          "pageCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxPage": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "words": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "editedPages": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TextPageDto"
+            }
+          },
+          "nextFrom": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "FileTextPageRequest": {
+        "required": [
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
           }
         }
       },
@@ -3019,7 +3490,8 @@
         "enum": [
           "text",
           "ocr",
-          "metadata"
+          "metadata",
+          "added"
         ]
       },
       "PathEntry": {
@@ -3046,6 +3518,23 @@
         "properties": {
           "paused": {
             "type": "boolean"
+          }
+        }
+      },
+      "PlaceDto": {
+        "required": [
+          "latitude",
+          "longitude"
+        ],
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -3655,6 +4144,29 @@
           }
         }
       },
+      "TakenDto": {
+        "required": [
+          "value",
+          "precision",
+          "offsetMinutes"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/DatePrecision"
+          },
+          "offsetMinutes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "TestMlRequest": {
         "required": [
           "url",
@@ -3681,6 +4193,45 @@
         "properties": {
           "address": {
             "type": "string"
+          }
+        }
+      },
+      "TextPageDto": {
+        "required": [
+          "pageNo",
+          "source",
+          "text",
+          "edited",
+          "editedBy",
+          "editedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "pageNo": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PageSource"
+          },
+          "text": {
+            "type": "string"
+          },
+          "edited": {
+            "type": "boolean"
+          },
+          "editedBy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "editedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -3721,6 +4272,15 @@
             "type": "boolean"
           }
         }
+      },
+      "TextState": {
+        "enum": [
+          "reading",
+          "ready",
+          "empty",
+          "unsupported",
+          "unreadable"
+        ]
       },
       "ThumbnailState": {
         "enum": [

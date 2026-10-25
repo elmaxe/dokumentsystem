@@ -13,11 +13,19 @@ public enum PageSource
 
     /// <summary>Tags such as the title, author, camera or artist. Always page 0.</summary>
     Metadata,
+
+    /// <summary>Text someone added to a page where nothing was read, such as a caption for a photo (§13.5).</summary>
+    Added,
 }
 
 /// <summary>
 /// One page of a blob's searchable text: a PDF page, a slide, a whole document for formats without pages, or (page 0)
 /// its metadata. Indexed with BM25 (§13.1). Results are files, so the best page of each file is what a search shows.
+/// <para>
+/// A page with a <see cref="VersionId"/> is a person's correction for that file version (§13.5) and replaces the read
+/// page of the same number for it alone; page 0 of a version holds its edited title and description and adds to the
+/// read one. Both kinds sit in one table so one BM25 index serves them.
+/// </para>
 /// </summary>
 public sealed class ContentPage
 {
@@ -27,9 +35,18 @@ public sealed class ContentPage
     /// <summary>The BM25 index's key.</summary>
     public long Id { get; init; }
     public required ContentHash BlobHash { get; init; }
+
+    /// <summary>The version a correction belongs to; null for what the worker read from the bytes.</summary>
+    public Guid? VersionId { get; init; }
     public required int PageNo { get; init; }
+
+    /// <summary>For a correction, where the page it replaces came from, or <see cref="PageSource.Added"/>.</summary>
     public required PageSource Source { get; init; }
-    public required string Text { get; init; }
+    public required string Text { get; set; }
+
+    /// <summary>Who last corrected the page, and when; null for read pages.</summary>
+    public Guid? EditedBy { get; set; }
+    public DateTimeOffset? EditedAt { get; set; }
 
     /// <summary>
     /// For recognized text, where each word is on the page, so the viewer can mark hits on a scan: a JSON array of

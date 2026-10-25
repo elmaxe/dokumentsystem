@@ -8,23 +8,29 @@ using Microsoft.Extensions.Options;
 namespace Dokument.Worker.Search;
 
 /// <summary>What exiftool found in a file. <see cref="SearchText"/> is what search matches; empty when nothing useful was found.</summary>
+/// <param name="TakenOffsetKnown">Whether the camera recorded its UTC offset; without one, <paramref name="TakenAt"/> is its clock as if it were UTC.</param>
 public sealed record MetadataResult(
     bool Readable,
     DateTimeOffset? TakenAt,
+    bool TakenOffsetKnown,
     string? Camera,
     double? DurationSeconds,
+    GeoPoint? Place,
     IReadOnlyDictionary<string, string> Tags,
     string SearchText
 )
 {
     public static MetadataResult Unreadable { get; } =
-        new(false, null, null, null, new Dictionary<string, string>(), "");
+        new(false, null, false, null, null, null, new Dictionary<string, string>(), "");
 }
+
+/// <summary>Where a photo or video was taken, in decimal degrees (WGS 84).</summary>
+public sealed record GeoPoint(double Latitude, double Longitude);
 
 /// <summary>
 /// Reads metadata with exiftool (docs/design.md §10.3): camera and date taken from photos and videos, title and author
 /// from PDF and Office files, and tags from music. Only a fixed list of tags is asked for, so nothing private such as a
-/// serial number is kept. The original is opened read-only.
+/// serial number is kept. The GPS position is kept, for the details panel. The original is opened read-only.
 /// </summary>
 public sealed partial class ExifTool(IOptions<WorkerOptions> options)
 {
@@ -69,6 +75,9 @@ public sealed partial class ExifTool(IOptions<WorkerOptions> options)
         "CreateDate",
         "MediaCreateDate",
         "Duration",
+        "ImageWidth",
+        "ImageHeight",
+        "GPSPosition",
     ];
 
     /// <summary>The longest value kept per tag. Comments can hold whole documents.</summary>
@@ -123,13 +132,28 @@ public sealed partial class ExifTool(IOptions<WorkerOptions> options)
         }
 
         var camera = CameraOf(tags.GetValueOrDefault("Make"), tags.GetValueOrDefault("Model"));
-        var takenAt =
-            DateOf(
-                tags.GetValueOrDefault("DateTimeOriginal"),
-                tags.GetValueOrDefault("OffsetTimeOriginal")
-            )
-            ?? DateOf(tags.GetValueOrDefault("CreateDate"), null)
-            ?? DateOf(tags.GetValueOrDefault("MediaCreateDate"), "+00:00");
+
+        // The first date there is, and whether it said its offset (videos' MediaCreateDate is UTC by definition).
+        var original = tags.GetValueOrDefault("DateTimeOriginal");
+        var originalOffset = tags.GetValueOrDefault("OffsetTimeOriginal");
+        var created = tags.GetValueOrDefault("CreateDate");
+        var takenAt = DateOf(original, originalOffset);
+        var offsetKnown = takenAt is not null && HasOffset(original!, originalOffset);
+        if (takenAt is null && DateOf(created, null) is { } createdAt)
+        {
+            takenAt = createdAt;
+            offsetKnown = HasOffset(created!, null);
+        }
+
+        if (
+            takenAt is null
+            && DateOf(tags.GetValueOrDefault("MediaCreateDate"), "+00:00") is { } media
+        )
+        {
+            takenAt = media;
+            offsetKnown = true;
+        }
+
         double? duration =
             double.TryParse(
                 tags.GetValueOrDefault("Duration"),
@@ -158,7 +182,16 @@ public sealed partial class ExifTool(IOptions<WorkerOptions> options)
 
         var kept = tags.Where(t => TextTags.Contains(t.Key) || OtherTags.Contains(t.Key))
             .ToDictionary(t => t.Key, t => t.Value);
-        return new MetadataResult(true, takenAt, camera, duration, kept, text.ToString().Trim());
+        return new MetadataResult(
+            true,
+            takenAt,
+            offsetKnown,
+            camera,
+            duration,
+            PlaceOf(tags.GetValueOrDefault("GPSPosition")),
+            kept,
+            text.ToString().Trim()
+        );
     }
 
     private static string? ValueOf(JsonElement value)
@@ -245,6 +278,28 @@ public sealed partial class ExifTool(IOptions<WorkerOptions> options)
         return span <= TimeSpan.FromHours(14)
             ? new DateTimeOffset(local, match.Groups["sign"].Value == "-" ? -span : span)
             : new DateTimeOffset(local, TimeSpan.Zero);
+    }
+
+    private static bool HasOffset(string value, string? offset) =>
+        Offset().IsMatch(offset ?? (value.Length > 19 ? value[19..] : ""));
+
+    /// <summary>exiftool's numeric GPSPosition, "59.3157 18.0335", signed. 0 0 is a receiver with no fix.</summary>
+    internal static GeoPoint? PlaceOf(string? value)
+    {
+        var parts = value?.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (
+            parts is not [var lat, var lon]
+            || !double.TryParse(lat, CultureInfo.InvariantCulture, out var latitude)
+            || !double.TryParse(lon, CultureInfo.InvariantCulture, out var longitude)
+            || Math.Abs(latitude) > 90
+            || Math.Abs(longitude) > 180
+            || (latitude == 0 && longitude == 0)
+        )
+        {
+            return null;
+        }
+
+        return new GeoPoint(latitude, longitude);
     }
 
     [GeneratedRegex(@"(?<sign>[+-])(?<h>\d{2}):(?<m>\d{2})")]

@@ -447,6 +447,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What the file's current version says about itself (title, date taken, camera, place…), with people's edits on top. */
+        get: operations["GetFileDetails"];
+        /** @description Edits the current version's title, description and date taken, all three at once; null keeps what the file says. Later versions start with these edits. The file itself is never changed. */
+        put: operations["SetFileDetails"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The searchable text of the current version, page by page from `from`, with corrections in place. */
+        get: operations["GetFileText"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/text/{pageNo}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Corrects one page of the current version's text, or adds text to a page where none was read. Search uses it from then on. */
+        put: operations["SetFileTextPage"];
+        post?: never;
+        /** @description Drops a page's correction, so the text read from the file counts again. */
+        delete: operations["RevertFileTextPage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/trash": {
         parameters: {
             query?: never;
@@ -1083,6 +1136,12 @@ export interface components {
             sessionId: string;
             csrfToken: null | string;
         };
+        /** @enum {unknown} */
+        DatePrecision: "year" | "month" | "day" | "time";
+        DetailField: {
+            key: string;
+            value: string;
+        };
         DuplicateCheckItem: {
             name: string;
             /** Format: int64 */
@@ -1106,12 +1165,68 @@ export interface components {
             path: components["schemas"]["PathEntry"][];
             inTrash: boolean;
         };
+        EditableTakenDto: {
+            value: null | components["schemas"]["TakenDto"];
+            read: null | components["schemas"]["TakenDto"];
+            edited: boolean;
+        };
+        EditableTextDto: {
+            value: null | string;
+            read: null | string;
+            edited: boolean;
+        };
         EmptyTrashResponse: {
             /** Format: int32 */
             items: number;
         };
+        FileDetailsDto: {
+            reading: boolean;
+            title: components["schemas"]["EditableTextDto"];
+            description: components["schemas"]["EditableTextDto"];
+            taken: components["schemas"]["EditableTakenDto"];
+            camera: null | string;
+            lens: null | string;
+            /** Format: int32 */
+            width: null | number;
+            /** Format: int32 */
+            height: null | number;
+            /** Format: double */
+            durationSeconds: null | number;
+            /** Format: int32 */
+            pageCount: null | number;
+            place: null | components["schemas"]["PlaceDto"];
+            fields: components["schemas"]["DetailField"][];
+            editedBy: null | string;
+            /** Format: date-time */
+            editedAt: null | string;
+        };
+        FileDetailsRequest: {
+            title: null | string;
+            description: null | string;
+            taken: null | string;
+        };
         FileProcessing: {
             steps: components["schemas"]["ProcessingStepDto"][];
+        };
+        FileTextDto: {
+            state: components["schemas"]["TextState"];
+            ocrSkipped: boolean;
+            /** Format: int32 */
+            pageCount: null | number;
+            /** Format: int32 */
+            totalPages: number;
+            /** Format: int32 */
+            maxPage: number;
+            /** Format: int32 */
+            words: number;
+            /** Format: int32 */
+            editedPages: number;
+            pages: components["schemas"]["TextPageDto"][];
+            /** Format: int32 */
+            nextFrom: null | number;
+        };
+        FileTextPageRequest: {
+            text: string;
         };
         /**
          * @default fail
@@ -1297,7 +1412,7 @@ export interface components {
             boxes: number[][];
         };
         /** @enum {unknown} */
-        PageSource: "text" | "ocr" | "metadata";
+        PageSource: "text" | "ocr" | "metadata" | "added";
         PathEntry: {
             /** Format: uuid */
             id: string;
@@ -1305,6 +1420,12 @@ export interface components {
         };
         PauseQueueRequest: {
             paused: boolean;
+        };
+        PlaceDto: {
+            /** Format: double */
+            latitude: number;
+            /** Format: double */
+            longitude: number;
         };
         ProbeResult: {
             reachable: boolean;
@@ -1451,12 +1572,28 @@ export interface components {
             items: components["schemas"]["SuggestionDto"][];
             terms: string[];
         };
+        TakenDto: {
+            value: string;
+            precision: components["schemas"]["DatePrecision"];
+            /** Format: int32 */
+            offsetMinutes: null | number;
+        };
         TestMlRequest: {
             url: string;
             apiKey: null | string;
         };
         TestScannerRequest: {
             address: string;
+        };
+        TextPageDto: {
+            /** Format: int32 */
+            pageNo: number;
+            source: components["schemas"]["PageSource"];
+            text: string;
+            edited: boolean;
+            editedBy: null | string;
+            /** Format: date-time */
+            editedAt: null | string;
         };
         TextProgress: {
             /** Format: int32 */
@@ -1471,6 +1608,8 @@ export interface components {
         TextRecognitionDto: {
             enabled: boolean;
         };
+        /** @enum {unknown} */
+        TextState: "reading" | "ready" | "empty" | "unsupported" | "unreadable";
         /** @enum {unknown} */
         ThumbnailState: "none" | "pending" | "ready";
         TrashItem: {
@@ -2193,6 +2332,123 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StorageUsage"];
                 };
+            };
+        };
+    };
+    GetFileDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileDetailsDto"];
+                };
+            };
+        };
+    };
+    SetFileDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileDetailsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetFileText: {
+        parameters: {
+            query?: {
+                from?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileTextDto"];
+                };
+            };
+        };
+    };
+    SetFileTextPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                pageNo: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileTextPageRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RevertFileTextPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                pageNo: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
