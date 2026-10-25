@@ -239,9 +239,11 @@ public sealed class TextExtractor(ITextRecognizer recognizer)
             return new ExtractResult(ContentStatus.Empty, null, [], OcrSkipped: true);
         }
 
-        byte[] png;
+        byte[] png,
+            inverted;
         int width,
-            height;
+            height,
+            pad;
         try
         {
             using var header = Image.NewFromFile(path, access: Enums.Access.Sequential);
@@ -251,13 +253,17 @@ public sealed class TextExtractor(ITextRecognizer recognizer)
             }
 
             // Turned upright from EXIF, in grey, at most OcrMaxEdge: what Tesseract reads best.
-            using var image = Image.Thumbnail(
+            // In memory, because a second look may read it again and the file is read only once, in order.
+            using var thumbnail = Image.Thumbnail(
                 path,
                 OcrMaxEdge,
                 height: OcrMaxEdge,
                 size: Enums.Size.Down
             );
+            using var image = thumbnail.CopyMemory();
             (png, width, height) = GreyPng(image);
+            pad = Math.Max(32, Math.Max(width, height) / 20);
+            inverted = InvertedPng(image, pad);
         }
         catch (VipsException e)
         {
@@ -269,6 +275,22 @@ public sealed class TextExtractor(ITextRecognizer recognizer)
         try
         {
             result = await recognizer.RecognizeAsync(png, width, height, ct);
+            if (result.Words.Count < TesseractOcr.MinWords)
+            {
+                // Light text on a dark or busy background, or text up against the edge, is often missed. Tesseract
+                // reads it far better dark on white with a margin, so photos get a second look that way.
+                var second = await recognizer.RecognizeAsync(
+                    inverted,
+                    width + (2 * pad),
+                    height + (2 * pad),
+                    ct
+                );
+                if (second.Words.Count > result.Words.Count)
+                {
+                    result = Unpad(second, width, height, pad);
+                }
+            }
+
             engine = await recognizer.EngineAsync(ct);
         }
         catch (ToolMissingException)
@@ -304,6 +326,45 @@ public sealed class TextExtractor(ITextRecognizer recognizer)
             eight.Width,
             eight.Height
         );
+    }
+
+    /// <summary>The image in grey, inverted and with a white margin of <paramref name="pad"/> pixels.</summary>
+    private static byte[] InvertedPng(Image image, int pad)
+    {
+        using var flat = image.HasAlpha() ? image.Flatten(background: [255]) : image.Copy();
+        using var grey = flat.Colourspace(Enums.Interpretation.Bw);
+        using var eight =
+            grey.Format == Enums.BandFormat.Uchar
+                ? grey.Copy()
+                : grey.Cast(Enums.BandFormat.Uchar, shift: grey.Format == Enums.BandFormat.Ushort);
+        using var inverted = eight.Invert();
+        using var padded = inverted.Embed(
+            pad,
+            pad,
+            eight.Width + (2 * pad),
+            eight.Height + (2 * pad),
+            extend: Enums.Extend.White
+        );
+        return padded.PngsaveBuffer(compression: 1, keep: Enums.ForeignKeep.None);
+    }
+
+    /// <summary>Moves word boxes found on the padded image back onto the original.</summary>
+    internal static OcrResult Unpad(OcrResult result, int width, int height, int pad)
+    {
+        double paddedWidth = width + (2 * pad),
+            paddedHeight = height + (2 * pad);
+        return result with
+        {
+            Words = result
+                .Words.Select(w => new OcrWord(
+                    w.Text,
+                    Math.Clamp(((w.X * paddedWidth) - pad) / width, 0, 1),
+                    Math.Clamp(((w.Y * paddedHeight) - pad) / height, 0, 1),
+                    w.Width * paddedWidth / width,
+                    w.Height * paddedHeight / height
+                ))
+                .ToList(),
+        };
     }
 
     private async Task<ExtractResult> PdfAsync(string path, bool ocr, CancellationToken ct)

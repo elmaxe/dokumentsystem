@@ -64,6 +64,8 @@ if (builder.Configuration.GetValue<bool>("WorkerOnHost"))
 {
     AddRole("worker", launchProfile: null)
         .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+        // One line per job and per file read, in the dashboard's structured logs.
+        .WithEnvironment("Serilog__MinimumLevel__Override__Dokument.Worker", "Debug")
         .WithHttpEndpoint(env: "HTTP_PORTS")
         .WithHttpHealthCheck("/health/ready")
         .WaitFor(server);
@@ -74,6 +76,8 @@ else
         .AddDockerfile("worker", "../..", stage: "runtime")
         .WithEnvironment("ROLE", "worker")
         .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+        // One line per job and per file read, in the dashboard's structured logs.
+        .WithEnvironment("Serilog__MinimumLevel__Override__Dokument.Worker", "Debug")
         .WithBindMount(dataRoot, "/data")
         .WithEnvironment("Storage__OriginalsPath", "/data/originals")
         .WithEnvironment("Storage__DerivedPath", "/data/derived")

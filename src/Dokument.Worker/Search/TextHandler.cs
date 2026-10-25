@@ -72,6 +72,15 @@ internal sealed partial class TextHandler(
             LogUnreadable(logger, job.Subject, result.Reason);
         }
 
+        LogRead(
+            logger,
+            job.Subject,
+            result.Status,
+            result.Pages.Count,
+            result.Pages.Count(p => p.Source == PageSource.Ocr),
+            result.OcrSkipped
+        );
+
         if (result.OcrUnavailable && Interlocked.Exchange(ref warnedOcrMissing, 1) == 0)
         {
             LogOcrMissing(logger);
@@ -123,6 +132,19 @@ internal sealed partial class TextHandler(
             + "Install it, or set Worker:TesseractCommand to its full path; skipped files are read on the next start"
     )]
     private static partial void LogOcrMissing(ILogger logger);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Read blob {Hash}: {Status}, {Pages} pages with text, {OcrPages} of them recognized, skipped recognition: {OcrSkipped}"
+    )]
+    private static partial void LogRead(
+        ILogger logger,
+        string hash,
+        ContentStatus status,
+        int pages,
+        int ocrPages,
+        bool ocrSkipped
+    );
 
     [LoggerMessage(Level = LogLevel.Information, Message = "No text for blob {Hash}: {Reason}")]
     private static partial void LogUnreadable(ILogger logger, string hash, string? reason);

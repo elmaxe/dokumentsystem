@@ -170,9 +170,53 @@ public class TextRecognitionTests
     }
 
     [Fact]
+    public void One_sure_word_is_text()
+    {
+        var tsv = Header + "5\t1\t1\t1\t1\t1\t10\t10\t100\t20\t95\tCollections\n";
+        Assert.Equal("Collections", TesseractOcr.ParseTsv(tsv, 200, 100).Text);
+    }
+
+    [Fact]
+    public void Moves_boxes_off_the_margin()
+    {
+        var padded = new OcrResult("Filmer", [new OcrWord("Filmer", 0.25, 0.25, 0.5, 0.5)]);
+        var word = Assert.Single(TextExtractor.Unpad(padded, 100, 100, 50).Words);
+        Assert.Equal(new OcrWord("Filmer", 0, 0, 1, 1), word);
+    }
+
+    [Fact]
+    public async Task Reads_light_text_on_dark_up_to_the_edge()
+    {
+        // White on black with no margin, like a poster or a title card, which Tesseract misses as it is.
+        using var text = NetVips.Image.Text("Filmer", font: "DejaVu Sans Bold 72", dpi: 150);
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(
+                path,
+                text.PngsaveBuffer(),
+                TestContext.Current.CancellationToken
+            );
+            var result = await new TextExtractor(
+                new TesseractOcr(
+                    Microsoft.Extensions.Options.Options.Create(
+                        new Dokument.Worker.Jobs.WorkerOptions()
+                    )
+                )
+            ).ExtractAsync(path, null, ocr: true, TestContext.Current.CancellationToken);
+
+            Assert.Equal("Filmer", Assert.Single(result.Pages).Text);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Too_few_words_is_no_text()
     {
-        var tsv = Header + "5\t1\t1\t1\t1\t1\t10\t10\t100\t20\t96\tbrus\n";
+        var tsv = Header + "5\t1\t1\t1\t1\t1\t10\t10\t100\t20\t70\tbrus\n";
         Assert.Same(OcrResult.Empty, TesseractOcr.ParseTsv(tsv, 200, 100));
     }
 }

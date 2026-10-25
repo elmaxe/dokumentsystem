@@ -63,8 +63,16 @@ public sealed class TesseractOcr(IOptions<WorkerOptions> options) : ITextRecogni
     /// </summary>
     internal const int MinConfidence = 55;
 
-    /// <summary>Fewer kept words than this and the image is taken to have no text.</summary>
+    /// <summary>Fewer kept words than this and the image is taken to have no text, unless one of them is a sure word.</summary>
     internal const int MinWords = 3;
+
+    /// <summary>
+    /// A word of at least <see cref="SureLetters"/> letters read this confidently counts on its own, so a title or sign
+    /// with one or two words isn't lost. Noise from photos rarely gets this sure.
+    /// </summary>
+    internal const int SureConfidence = 85;
+
+    internal const int SureLetters = 4;
 
     private string? engine;
 
@@ -121,6 +129,7 @@ public sealed class TesseractOcr(IOptions<WorkerOptions> options) : ITextRecogni
         var text = new StringBuilder();
         var words = new List<OcrWord>();
         (string Block, string Paragraph, string Line)? last = null;
+        var sure = false;
         foreach (var row in tsv.Split('\n'))
         {
             var cells = row.TrimEnd('\r').Split('\t');
@@ -140,6 +149,7 @@ public sealed class TesseractOcr(IOptions<WorkerOptions> options) : ITextRecogni
                 continue;
             }
 
+            sure |= confidence >= SureConfidence && word.Count(char.IsLetter) >= SureLetters;
             var position = (cells[2], cells[3], cells[4]);
             if (last is { } previous)
             {
@@ -174,6 +184,8 @@ public sealed class TesseractOcr(IOptions<WorkerOptions> options) : ITextRecogni
             }
         }
 
-        return words.Count < MinWords ? OcrResult.Empty : new OcrResult(text.ToString(), words);
+        return words.Count < MinWords && !sure
+            ? OcrResult.Empty
+            : new OcrResult(text.ToString(), words);
     }
 }
