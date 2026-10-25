@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.15** · Last updated: 2026-10-25
+> Status: **Draft v0.16** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -96,7 +96,7 @@ Scale target: up to about 1M files and a few TB per instance.
 
 | Component | Responsibility | Needs storage? | Needs DB? |
 |---|---|---|---|
-| `server` | API, auth, uploads, downloads/streaming, SignalR, serves the web SPA, the purge (§12) | yes (rw originals) | yes |
+| `server` | API, auth, uploads, downloads/streaming, live updates over SignalR (§15.4), serves the web SPA, the purge (§12) | yes (rw originals) | yes |
 | `worker` | Runs background jobs; calls `ml` and `gotenberg` | yes (ro originals, rw derived) | yes |
 | `ml` | Stateless inference over HTTP | **no** | **no** |
 | `gotenberg` | Converts Office documents to PDF (optional) | no | no |
@@ -365,7 +365,7 @@ Decided 2026-10-24 (decision 22) over a live mirror of hardlinks, real paths on 
    - Hash, store the blob, and create the node or version (§7). The response carries the file's id in `Dokument-Node-Id`.
    - Release the reservation and add the size to `used_bytes`, unless the owner already had that blob.
    - Enqueue the processing jobs (M2).
-   - Emit a SignalR event (later) and an audit event.
+   - Write an audit event and a live update notice (§15.4).
 4. Abandoned uploads expire after 24 h without progress, which releases the reservation and deletes the temp data. The server sweeps them hourly, since it owns `tmp/`.
 
 Implementation notes (built in M1):
@@ -627,7 +627,7 @@ These are better in React DOM than through React Native Web.
   - A file opened from Starred or Recent steps through that page's files in the viewer, and closing returns there.
 - **Details panel:** info, sharing, versions, activity.
 - **Upload tray** (bottom-right) with per-file progress, pause/resume and retry.
-- **Real-time updates via SignalR:** new files, thumbnails ready, changes from other devices.
+- **Live updates** (§15.4): changes from other tabs and devices, and thumbnails as they are made, show up without a refresh.
 - Optionally a PWA, for "Add to home screen" on phones.
 
 ### 15.3 Mobile app (React Native)
@@ -642,6 +642,34 @@ These are better in React DOM than through React Native Web.
 - **Offline files:** pin a file or folder to keep a local copy, synced when it changes.
 - **Background uploads:** resumable tus uploads that survive app suspension. Expect iOS limitations.
 - **Push notifications (later):** via **ntfy / UnifiedPush** to avoid depending on Google and Apple. The in-app notification center works without it.
+
+### 15.4 Live updates
+
+Changes made in one tab or on one device show up in the person's other open clients without a refresh (decision 24).
+
+- **Transport:** one SignalR hub at `/api/v1/live`, server to client only. The web client tries WebSockets, then Server-Sent Events, then long polling. It signs in with the session cookie and sends `X-CSRF-Token` on SignalR's own POSTs; mobile will use the bearer token (M5). Reverse proxies must pass WebSocket upgrades on `/api/v1/live`; without them the client falls back to SSE or long polling and still works.
+- **Notices travel through Postgres.** Whatever changes data (API, purge, worker) runs `pg_notify('dokument_live', …)` on its own connection, inside its transaction, so a notice is sent on commit and dropped on rollback. The server `LISTEN`s on a dedicated connection and forwards each notice to the SignalR groups `user:{id}`. This also lets the worker's thumbnail jobs reach clients without a second channel, and works with several server instances.
+- **Notices are thin:** a list of topics and an optional origin, never ids, names or sizes. Clients refetch through the normal API, so permission checks live in one place and nothing private travels on the socket.
+
+  | Topic | Sent when | The web refetches |
+  |---|---|---|
+  | `files` | create, rename, move, upload, version restore or Keep forever, trash and restore, star, version purge, a thumbnail is ready | folder listings, file details, versions, Starred, Recent |
+  | `recent` | an open or download | Recent |
+  | `trash` | trash, restore, delete forever, empty, trash purge | Trash |
+  | `storage` | anything that changes usage, a quota or the default quota | the storage meter |
+  | `account` | language or preferences | the session |
+
+- **Who hears what:** notices go to the owner of the changed items (and the person who made the change, when that's someone else). Sharing (M4) will add the people with access. A change to the default quota goes to everyone.
+- **Echo skip:** each tab makes a random client id and sends it as `X-Dokument-Client` on its mutations and tus requests. The server passes it on as the notice's origin (only if it is at most 64 letters, digits and dashes), and the tab that made the change skips that notice, since it has already updated itself.
+- **Reconnects:** the client retries for as long as it is open (at once, 2 s, 5 s, 10 s, then every 30 s), and refetches everything after any gap, since notices aren't queued. If the server loses its `LISTEN` connection, it reconnects with backoff and then tells every client to refetch everything.
+- **In the web app:**
+  - New items in the open folder are highlighted for 2 s (a tonal fill with an outline that fades). Removed items simply go.
+  - Thumbnails swap in when the worker finishes. The listing poll (§16.4) only runs while the live connection is down.
+  - The viewer never swaps the file being read. If a newer version arrives, a banner offers "Show newest"; if the file is trashed or deleted, a banner says so and offers "Open trash".
+  - A folder that is trashed or deleted while open shows an empty state with "Open trash" and "Go to My files".
+  - After 30 s without a connection, a banner says changes from other devices will show up when it's back.
+  - When a session is ended from another device, or signed out in another tab, its clients get `signedOut` and go to the sign-in page ("You were signed out because this session was ended"). The server closes those connections 2 s later.
+- **Out of scope for now:** live progress of other devices' uploads, presence ("who else is looking"), the notification center (§20) and the mobile client (M5).
 
 ---
 
@@ -719,7 +747,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **Button** (filled / tonal / outlined / text / danger) and **IconButton**. At most one filled button per view.
 - **Chip:** search filters that mirror the operators ("Type: PDF" for `type:pdf`).
 - **FileTypeIcon:** a Material Symbol in the `file-*` colour per MIME group. Also the thumbnail fallback. Folders stay neutral.
-- **FileGrid:** folders first, then file tiles with 4:3 thumbnails. Documents (PDF, Office, text) show the top of page 1; photos are cropped to fill. A shimmer shows while a thumbnail is pending, and the thumbnail is swapped in when it is ready: for now the listing is polled (every 2 s, then every 10 s) while anything is pending, and SignalR replaces that with live updates. Video tiles show a duration badge.
+- **FileGrid:** folders first, then file tiles with 4:3 thumbnails. Documents (PDF, Office, text) show the top of page 1; photos are cropped to fill. A shimmer shows while a thumbnail is pending, and the thumbnail is swapped in when it is ready, through a live update (§15.4). While the live connection is down, the listing is polled instead (every 2 s, then every 10 s) as long as anything is pending. Video tiles show a duration badge.
 - **FileList:** a sortable name / owner / modified / size table. Under 600 px of container width, the columns fold into a second line. Pages can swap the columns after the name: the Trash page shows original location / deleted / size.
   - A file with a ready thumbnail shows it in place of the type icon: 32 px, 40 px on phones, with pages showing their top as in the grid. Folders and files without a preview keep the icon, in a box of the same size so names line up; a pending thumbnail shimmers.
   - **Folders show their size:** the current version of every live file below them, at any depth. Old versions and trashed files don't count, so it isn't the same number as quota usage (§17). The listing API returns it as the folder's `size` plus `contents` (file and folder counts) from one ltree query per listing. An empty folder shows "—", and hovering a folder's size shows what it holds ("1,204 files, 38 folders").
@@ -809,7 +837,7 @@ People who are managed in an IdP can get their storage from it instead of from t
 ## 20. Notifications
 
 - **SMTP** via MailKit. Admins configure host, port, TLS, user, password and from-address, and can send a test email.
-- **In-app notification center** (SignalR, live).
+- **In-app notification center** (live, over the §15.4 connection).
 - **Events:**
   - Shared with you
   - Quota warning (80% / 95%)
@@ -874,6 +902,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
   - Our own `Meter("Dokument")`, named `dokument.*`:
     - `dokument.jobs.queued` / `dokument.jobs.running` (gauges by `job.type`), `dokument.jobs.duration` (histogram by type and outcome), `dokument.jobs.failed` (counter), `dokument.jobs.lag` (age of the oldest due job)
     - `dokument.uploads.bytes` (counter), `dokument.uploads.active` (gauge), `dokument.downloads` (counter)
+    - `dokument.live.connections` (open live connections on this server) and `dokument.live.notices` (counter of notices forwarded)
     - `dokument.renditions.generated` (counter by `dokument.rendition.kind`), `dokument.storage.bytes` (by `dokument.storage.kind`: originals and derived)
     - The gauges (job counts and lag, active uploads, storage) describe the whole install, so the worker samples them from Postgres every 30 s and walks the derived volume every 10 minutes, only while metrics are exported. With several workers each reports the same values under its own `service.instance.id`, so dashboards should take the max.
     - later: search query duration, OCR pages, ML endpoint up/down
@@ -902,7 +931,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | Milestone | Scope |
 |---|---|
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
-| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, and Starred and Recent. **Still to come:** folder uploads, live updates. |
+| **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, and live updates. **Still to come:** folder uploads. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media. **Still to come:** metadata, video posters and transcoding, Gotenberg, the admin queue page, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
@@ -940,6 +969,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 21 | Starred and Recent | 2026-10-25: stars are per person, on files and folders; Starred is sortable with a Location column; Recent is files only, newest first by the person's own last open, download, upload or version restore (not renames or moves), at most 100; Recent is a private per-person table, not the audit log, so preview opens stay unaudited (§6, §15.2, §18) |
 | 22 | Readable files on disk | 2026-10-24: keep the hash-named pool as the only store; no real paths on disk, sidecars or live mirror. A name manifest is written beside each DB dump, so the tree can be rebuilt without Postgres, and an export job (worker, into `/data/exports`, also the `export` CLI) writes readable copies, incrementally, optionally with old versions, on a schedule that starts off. Lands in M6 (§7.1, §19) |
 | 23 | Blobs per person | 2026-10-25: `blobs/{owner_id}/ab/cd/{sha256}`, keyed `(owner_id, hash)`, deduplicated per person only; renditions stay keyed by hash and go with the last copy; one blob lock per hash; copies across owners copy the bytes. No data migration, since nothing is in use yet (§6, §7, §12) |
+| 24 | Live updates | 2026-10-25: one SignalR hub; notices sent with `pg_notify` inside the changing transaction and forwarded by a `LISTEN`ing server; thin notices (topics and an origin, no ids or names) that make clients refetch; owner's clients only until sharing; per-tab client id to skip echoes; refetch everything after a reconnect; viewer banners instead of swapping the open file; ended sessions sign their clients out; the thumbnail poll stays only as a fallback (§15.4) |
 
 ## 26. Open questions
 

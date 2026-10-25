@@ -6,6 +6,7 @@ import {
   AdminRail,
   adminPlaces,
   Avatar,
+  Banner,
   BottomNav,
   DisplaySettingsProvider,
   Icon,
@@ -22,6 +23,7 @@ import { Outlet, useNavigate, useParams, useRouterState } from "@tanstack/react-
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { logout, sessionQuery } from "./api";
+import { useLiveOffline, useLiveUpdates } from "./live";
 import { useAccountSettings } from "./settings/account";
 import { NameDialog } from "./files/dialogs";
 import { drive, errorMessage, folderQuery, invalidateFolders, nameKey, storageQuery } from "./files/drive";
@@ -52,6 +54,8 @@ function Shell() {
   const queryClient = useQueryClient();
   const uploads = useUploads();
   const session = useQuery(sessionQuery);
+  useLiveUpdates();
+  const offline = useLiveOffline();
   const storage = useQuery(storageQuery);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const { folderId = null } = useParams({ strict: false }) as { folderId?: string };
@@ -167,6 +171,11 @@ function Shell() {
             }
           />
         </header>
+        {offline && (
+          <Banner tone="warning" icon="cloud_off" className="mx-4 mb-2 shrink-0 sm:mx-6">
+            {t("live.offline")}
+          </Banner>
+        )}
         <div {...dragProps} className="relative flex min-h-0 flex-1">
           <Outlet />
           {dropping && (

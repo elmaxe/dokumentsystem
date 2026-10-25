@@ -3,7 +3,10 @@ import { queryOptions } from "@tanstack/react-query";
 
 let csrfToken: string | null = null;
 
-export const api = createApiClient({ csrfToken: () => csrfToken });
+/** This tab, as live notices name it: a tab skips the notices about its own changes (§15.4). */
+export const clientId = crypto.randomUUID();
+
+export const api = createApiClient({ csrfToken: () => csrfToken, clientId });
 
 /** For requests that don't go through the API client, such as tus uploads. */
 export const getCsrfToken = () => csrfToken;

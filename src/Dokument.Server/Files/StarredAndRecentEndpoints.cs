@@ -1,5 +1,6 @@
 using Dokument.Domain.Files;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Live;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -86,12 +87,14 @@ public static class StarredAndRecentEndpoints
         HttpContext context,
         DriveService drive,
         RecentFiles recent,
+        LiveChanges live,
         CancellationToken ct
     )
     {
         var actor = context.Actor();
         var node = await drive.GetFileAsync(actor, id, ct);
         await recent.RecordAsync(actor.UserId, node.Id, RecentAction.Opened, ct);
+        await live.NotifyAsync(actor.UserId, LiveTopics.Recent, ct);
         return TypedResults.NoContent();
     }
 

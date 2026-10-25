@@ -68,6 +68,7 @@ function Tile({ item, selected, itemProps, menuActions, onAction, meta }: TilePr
             ? "border-transparent bg-primary-container text-on-primary-container"
             : "border-outline-variant bg-surface-container-lowest text-on-surface hover:shadow-elevation-1",
           folder ? "h-14 items-center gap-3 pr-1 pl-3" : "flex-col gap-2 p-2",
+          item.arrived && "animate-arrive",
         )}
       >
         {folder ? (

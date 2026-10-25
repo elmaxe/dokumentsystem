@@ -2,6 +2,7 @@ using Dokument.Domain.Files;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Previews;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Telemetry;
@@ -21,6 +22,7 @@ internal sealed partial class ThumbnailHandler(
     BlobStore blobs,
     DerivedStore derived,
     Thumbnailer thumbnailer,
+    LiveChanges live,
     TimeProvider time,
     ILogger<ThumbnailHandler> logger
 ) : IJobHandler
@@ -96,6 +98,16 @@ internal sealed partial class ThumbnailHandler(
         preview.PageCount = result.PageCount;
         preview.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+
+        // Everyone with a file of these bytes sees its thumbnail appear (§16.4).
+        var owners = await db
+            .Nodes.Where(n =>
+                n.TrashedAt == null && n.CurrentVersion != null && n.CurrentVersion.BlobHash == hash
+            )
+            .Select(n => n.OwnerId)
+            .Distinct()
+            .ToListAsync(ct);
+        await live.NotifyAsync(owners, LiveTopics.Files, ct);
         foreach (var rendition in renditions)
         {
             DokumentTelemetry.RenditionsGenerated.Add(

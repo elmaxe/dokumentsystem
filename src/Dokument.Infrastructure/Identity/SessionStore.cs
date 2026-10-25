@@ -1,11 +1,12 @@
 using Dokument.Domain.Identity;
+using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dokument.Infrastructure.Identity;
 
 /// <summary>Issues, validates, lists and revokes app sessions (docs/design.md §5).</summary>
-public sealed class SessionStore(DokumentDbContext db, TimeProvider time)
+public sealed class SessionStore(DokumentDbContext db, LiveChanges live, TimeProvider time)
 {
     /// <summary>Creates a session and returns it with its token. The token is not stored and can't be recovered later.</summary>
     public async Task<(Session Session, SessionToken Token)> CreateAsync(
@@ -69,10 +70,20 @@ public sealed class SessionStore(DokumentDbContext db, TimeProvider time)
             .ToListAsync(ct);
     }
 
-    /// <summary>Revokes a session. With <paramref name="userId"/>, only if it belongs to that user. Returns false if there was nothing to revoke.</summary>
-    public async Task<bool> RevokeAsync(
+    /// <summary>
+    /// Revokes a session and sends its open clients to the sign-in page. With <paramref name="userId"/>, only if it
+    /// belongs to that user. Returns false if there was nothing to revoke.
+    /// </summary>
+    public Task<bool> RevokeAsync(
         Guid sessionId,
         Guid? userId = null,
+        CancellationToken ct = default
+    ) => RevokeAsync(sessionId, userId, SessionEndReason.Revoked, ct);
+
+    public async Task<bool> RevokeAsync(
+        Guid sessionId,
+        Guid? userId,
+        SessionEndReason reason,
         CancellationToken ct = default
     )
     {
@@ -82,6 +93,11 @@ public sealed class SessionStore(DokumentDbContext db, TimeProvider time)
                 s.Id == sessionId && s.RevokedAt == null && (userId == null || s.UserId == userId)
             )
             .ExecuteUpdateAsync(set => set.SetProperty(s => s.RevokedAt, now), ct);
+        if (revoked > 0)
+        {
+            await live.SessionEndedAsync(sessionId, reason, ct);
+        }
+
         return revoked > 0;
     }
 }

@@ -378,6 +378,17 @@ export const sv: Strings = {
     truncated: "Visar de första {{size}}. Ladda ned filen för att se allt.",
     loading: "Läser in förhandsvisningen",
   },
+  live: {
+    offline: "Servern går inte att nå. Ändringar från andra enheter visas när den är tillbaka.",
+    fileGone: "Filen har flyttats till papperskorgen eller raderats, kanske på en annan enhet eller i en annan flik.",
+    newerVersion: "En nyare version laddades upp {{date}}. Du ser fortfarande den du öppnade.",
+    showNewest: "Visa nyaste",
+    folderGoneTitle: "Mappen har flyttats till papperskorgen eller raderats",
+    folderGoneText: "Kanske på en annan enhet eller i en annan flik. Ligger den i papperskorgen kan du återställa den därifrån.",
+    openTrash: "Öppna papperskorgen",
+    goToMyFiles: "Gå till Mina filer",
+    sessionEnded: "Du har loggats ut eftersom den här sessionen avslutades. Logga in igen för att fortsätta.",
+  },
   account: {
     menu: "Konto",
     admin: "Administratörsinställningar",

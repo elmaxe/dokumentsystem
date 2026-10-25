@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Dokument.Application.Files;
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
+using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Settings;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,7 @@ public sealed class TrashService(
     PurgeService purge,
     PurgeSignal purgeSignal,
     AuditLog audit,
+    LiveChanges live,
     SettingsStore settings,
     TimeProvider time
 )
@@ -64,6 +66,11 @@ public sealed class TrashService(
         }
 
         await db.SaveChangesAsync(ct);
+        await live.NotifyAsync(
+            trashed.Select(n => n.OwnerId),
+            LiveTopics.Files | LiveTopics.Trash | LiveTopics.Storage,
+            ct
+        );
         await tx.CommitAsync(ct);
     }
 
@@ -187,6 +194,11 @@ public sealed class TrashService(
             restored.Add(new RestoredNode(root, toRoot));
         }
 
+        await live.NotifyAsync(
+            roots.Select(n => n.OwnerId),
+            LiveTopics.Files | LiveTopics.Trash | LiveTopics.Storage,
+            ct
+        );
         await tx.CommitAsync(ct);
         return restored;
     }
@@ -211,6 +223,11 @@ public sealed class TrashService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await DeleteAsync(actor, roots, ct);
         await db.SaveChangesAsync(ct);
+        await live.NotifyAsync(
+            roots.Select(n => n.OwnerId),
+            LiveTopics.Trash | LiveTopics.Storage,
+            ct
+        );
         await tx.CommitAsync(ct);
         purgeSignal.Request();
     }
@@ -227,6 +244,11 @@ public sealed class TrashService(
             details: new JsonObject { ["items"] = roots.Count }
         );
         await db.SaveChangesAsync(ct);
+        await live.NotifyAsync(
+            roots.Select(n => n.OwnerId).Append(actor.UserId),
+            LiveTopics.Trash | LiveTopics.Storage,
+            ct
+        );
         await tx.CommitAsync(ct);
         purgeSignal.Request();
         return roots.Count;
