@@ -52,6 +52,8 @@ export type FileViewerProps = {
   marks?: ViewerMarks;
   /** "Result 3 of 23", when the siblings are search results. */
   position?: string;
+  /** A note under the top bar, such as a newer version having arrived (§15.4). */
+  banner?: ReactNode;
 };
 
 /** The file viewer (§14, §16.4): a full-screen preview with the file's actions, its siblings and its details. */
@@ -70,6 +72,7 @@ export function FileViewer({
   details,
   marks,
   position,
+  banner,
 }: FileViewerProps) {
   const { t } = useTranslation();
   const swipe = useRef<{ x: number; y: number } | null>(null);
@@ -167,6 +170,7 @@ export function FileViewer({
           <ActionMenu actions={menuActions} onAction={onAction} trigger={<IconButton icon="more_vert" label={t("common.more")} />} />
         )}
       </header>
+      {banner && <div className="shrink-0 px-2 pt-2 sm:px-4">{banner}</div>}
       <div className="flex min-h-0 flex-1">
         <div
           className="relative flex min-w-0 flex-1 flex-col"

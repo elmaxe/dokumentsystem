@@ -1,11 +1,13 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Storage;
 using Dokument.Server.Admin;
 using Dokument.Server.Auth;
 using Dokument.Server.Files;
+using Dokument.Server.Live;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -36,6 +38,15 @@ public static class ServerRole
         builder.Services.AddExceptionHandler<DriveExceptionHandler>();
         builder.Services.AddHostedService<UploadCleanup>();
         builder.Services.AddHostedService<PurgeSchedule>();
+        builder
+            .Services.AddSignalR()
+            .AddJsonProtocol(options =>
+                options.PayloadSerializerOptions.Converters.Add(
+                    new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
+                )
+            );
+        builder.Services.AddSingleton<LiveConnections>();
+        builder.Services.AddHostedService<LiveListener>();
         builder.Services.AddScoped<NodeDtoMapper>();
         builder.Services.AddHttpContextAccessor();
         builder.Services.ConfigureHttpJsonOptions(options =>
@@ -77,6 +88,19 @@ public static class ServerRole
         app.UseAuthorization();
         app.UseRateLimiter();
         app.UseCsrfProtection();
+        app.Use(
+            (context, next) =>
+            {
+                // Which tab made the change, so its own notice can be skipped (§15.4).
+                var client = context.Request.Headers[LiveHub.ClientHeader].ToString();
+                if (LiveHub.IsClientId(client))
+                {
+                    context.RequestServices.GetRequiredService<LiveChanges>().Origin = client;
+                }
+
+                return next(context);
+            }
+        );
 
         app.MapOpenApi();
         if (app.Environment.IsDevelopment())
@@ -97,6 +121,7 @@ public static class ServerRole
         api.MapSearchEndpoints();
         api.MapTusEndpoints();
         api.MapAdminEndpoints();
+        app.MapHub<LiveHub>(LiveHub.Path).RequireAuthorization();
         app.MapFallback("/api/{**path}", () => TypedResults.NotFound());
         app.MapFallbackToFile("index.html");
         return app;

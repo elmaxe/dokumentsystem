@@ -155,6 +155,7 @@ export function FileList<T extends FileItem>({
                   isSelected
                     ? "bg-primary-container text-on-primary-container"
                     : "text-on-surface-variant hover:bg-on-surface/5",
+                  item.arrived && "animate-arrive",
                 )}
               >
                 <td className="pl-4">

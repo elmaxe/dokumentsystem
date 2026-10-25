@@ -64,4 +64,18 @@ public static class DokumentTelemetry
         unit: "s",
         description: "How long a search took."
     );
+
+    /// <summary>Clients connected for live updates (§15.4).</summary>
+    public static readonly UpDownCounter<long> LiveConnections = Meter.CreateUpDownCounter<long>(
+        "dokument.live.connections",
+        unit: "{connection}",
+        description: "Clients connected for live updates."
+    );
+
+    /// <summary>Change notices passed on to clients, whether or not anyone was connected to get them.</summary>
+    public static readonly Counter<long> LiveNotices = Meter.CreateCounter<long>(
+        "dokument.live.notices",
+        unit: "{notice}",
+        description: "Change notices passed on to clients."
+    );
 }

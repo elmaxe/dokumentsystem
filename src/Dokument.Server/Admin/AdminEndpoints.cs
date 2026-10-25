@@ -4,6 +4,7 @@ using Dokument.Domain.Identity;
 using Dokument.Domain.Settings;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Identity;
+using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Search;
 using Dokument.Infrastructure.Settings;
@@ -96,6 +97,7 @@ public static class AdminEndpoints
         StorageSettingsDto request,
         HttpContext context,
         SettingsStore settings,
+        LiveChanges live,
         CancellationToken ct
     )
     {
@@ -106,6 +108,7 @@ public static class AdminEndpoints
 
         var value = new StorageSettings(StorageLimit.From(request.DefaultQuotaBytes));
         await settings.SetAsync(SettingKeys.Storage, value, context.Actor(), ct);
+        await live.NotifyEveryoneAsync(LiveTopics.Storage, ct);
         return TypedResults.Ok(request);
     }
 
@@ -351,6 +354,7 @@ public static class AdminEndpoints
         SettingsStore settings,
         OidcSettings oidc,
         AuditLog audit,
+        LiveChanges live,
         CancellationToken ct
     )
     {
@@ -398,6 +402,7 @@ public static class AdminEndpoints
             }
         );
         await db.SaveChangesAsync(ct);
+        await live.NotifyAsync(user.Id, LiveTopics.Storage, ct);
         var defaultQuota = (await settings.GetAsync(SettingKeys.Storage, ct)).DefaultQuota;
         return TypedResults.Ok(AdminUserOf(user, defaultQuota, oidc));
     }

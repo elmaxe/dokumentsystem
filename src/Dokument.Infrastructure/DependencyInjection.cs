@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Jobs;
+using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Search;
@@ -41,6 +42,7 @@ public static class DependencyInjection
         services.AddSingleton<BlobStore>();
         services.AddSingleton<UploadLocks>();
         services.AddScoped<AuditLog>();
+        services.AddScoped<LiveChanges>();
         services.AddScoped<DriveService>();
         services.AddScoped<UploadService>();
         services.AddScoped<PurgeService>();

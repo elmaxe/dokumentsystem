@@ -1,6 +1,8 @@
 import type {
   DuplicateCheckResult,
+  FolderConflictPolicy,
   FolderListing,
+  FolderTreeEntry,
   NameConflictPolicy,
   NodeDetails,
   NodeDto,
@@ -17,6 +19,7 @@ import { kindOf, type FileItem } from "@dokument/ui";
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import type { useTranslation } from "react-i18next";
 import { api } from "../api";
+import { isLiveConnected } from "../live";
 
 type TFunction = ReturnType<typeof useTranslation>["t"];
 
@@ -79,18 +82,22 @@ export const toItem = (node: NodeDto): Item => ({
 });
 
 /**
- * While the worker is still making thumbnails, the listing is polled so they appear on their own (§16.4): every 2 s
- * at first, then every 10 s for slow ones. SignalR replaces this with the live updates work.
+ * Thumbnails being made appear on their own (§16.4): the worker's live notice brings them. Without a live connection
+ * the listing is polled instead, every 2 s at first, then every 10 s for slow ones.
  */
-const pollWhilePending = (listing: FolderListing | undefined, updates: number) =>
-  listing?.items.some((item) => item.thumbnail === "pending") ? (updates < 30 ? 2_000 : 10_000) : false;
+const pollWhilePending = (pending: boolean, updates: number) =>
+  pending && !isLiveConnected() ? (updates < 30 ? 2_000 : 10_000) : false;
 
 export const folderQuery = (folderId: string | null) =>
   queryOptions({
     queryKey: ["folder", folderId ?? "root"],
     queryFn: (): Promise<FolderListing> =>
       unwrap(api.GET("/api/v1/nodes", { params: { query: folderId ? { folderId } : {} } })),
-    refetchInterval: (query) => pollWhilePending(query.state.data, query.state.dataUpdateCount),
+    refetchInterval: (query) =>
+      pollWhilePending(
+        query.state.data?.items.some((item) => item.thumbnail === "pending") ?? false,
+        query.state.dataUpdateCount,
+      ),
   });
 
 export const nodeQuery = (id: string) =>
@@ -98,7 +105,7 @@ export const nodeQuery = (id: string) =>
     queryKey: ["node", id],
     queryFn: (): Promise<NodeDetails> => unwrap(api.GET("/api/v1/nodes/{id}", { params: { path: { id } } })),
     refetchInterval: (query) =>
-      query.state.data?.node.thumbnail === "pending" ? (query.state.dataUpdateCount < 30 ? 2_000 : 10_000) : false,
+      pollWhilePending(query.state.data?.node.thumbnail === "pending", query.state.dataUpdateCount),
   });
 
 export const versionsQuery = (id: string) =>
@@ -185,6 +192,14 @@ export const drive = {
   emptyTrash: async () => (await unwrap(api.POST("/api/v1/trash/empty"))).items,
   checkDuplicates: async (files: { name: string; size: number; sha256: string }[]): Promise<DuplicateCheckResult[]> =>
     (await unwrap(api.POST("/api/v1/uploads/check", { body: { files } }))).files,
+  /** Makes a folder upload's folders in one go (§8.1); throws nameTaken or quotaExceeded before making any. */
+  createFolderTree: async (
+    folderId: string | null,
+    paths: string[],
+    onConflict: FolderConflictPolicy,
+    totalBytes: number,
+  ): Promise<FolderTreeEntry[]> =>
+    (await unwrap(api.POST("/api/v1/folders/tree", { body: { folderId, paths, onConflict, totalBytes } }))).folders,
   copyFromContent: (
     folderId: string | null,
     name: string,

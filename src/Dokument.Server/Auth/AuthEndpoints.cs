@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Dokument.Domain.Identity;
 using Dokument.Infrastructure.Identity;
+using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
@@ -96,6 +97,7 @@ public static class AuthEndpoints
         SetLanguageRequest request,
         ClaimsPrincipal principal,
         DokumentDbContext db,
+        LiveChanges live,
         CancellationToken ct
     )
     {
@@ -120,6 +122,7 @@ public static class AuthEndpoints
         var user = await db.Users.SingleAsync(u => u.Id == principal.UserId(), ct);
         user.Locale = language;
         await db.SaveChangesAsync(ct);
+        await live.NotifyAsync(user.Id, LiveTopics.Account, ct);
         return TypedResults.Ok(UserProfile.From(user));
     }
 
@@ -127,12 +130,14 @@ public static class AuthEndpoints
         SetPreferencesRequest request,
         ClaimsPrincipal principal,
         DokumentDbContext db,
+        LiveChanges live,
         CancellationToken ct
     )
     {
         var user = await db.Users.SingleAsync(u => u.Id == principal.UserId(), ct);
         user.ShowSeconds = request.ShowSeconds;
         await db.SaveChangesAsync(ct);
+        await live.NotifyAsync(user.Id, LiveTopics.Account, ct);
         return TypedResults.Ok(UserProfile.From(user));
     }
 
@@ -143,7 +148,12 @@ public static class AuthEndpoints
         CancellationToken ct
     )
     {
-        await sessions.RevokeAsync(principal.SessionId(), principal.UserId(), ct);
+        await sessions.RevokeAsync(
+            principal.SessionId(),
+            principal.UserId(),
+            SessionEndReason.SignedOut,
+            ct
+        );
         SessionAuthentication.DeleteCookie(context);
         return TypedResults.NoContent();
     }

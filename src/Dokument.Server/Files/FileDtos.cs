@@ -75,6 +75,30 @@ public sealed record NodeDetails(NodeDto Node, List<PathEntry> Path);
 
 public sealed record CreateFolderRequest(Guid? FolderId, string Name);
 
+/// <param name="FolderId">Where the uploaded folders go; null for the top of "My files".</param>
+/// <param name="Paths">Each folder to make, relative to <paramref name="FolderId"/>, its names separated by "/" ("Kvitton/2025"). Folders above a path are made too.</param>
+/// <param name="OnConflict">What to do when a top folder's name is taken. Folders below a merged one are always merged.</param>
+/// <param name="TotalBytes">The size of all the files that will be uploaded into these folders. Nothing is made if it doesn't fit in the quota.</param>
+public sealed record FolderTreeRequest(
+    Guid? FolderId,
+    List<string> Paths,
+    FolderConflictPolicy OnConflict = FolderConflictPolicy.Fail,
+    long TotalBytes = 0
+);
+
+/// <param name="Path">The path as it was asked for.</param>
+/// <param name="Created">False when an existing folder was reused (merged into).</param>
+/// <param name="ExistingNames">What an existing folder already holds, to ask about name clashes before uploading. Empty for new folders.</param>
+public sealed record FolderTreeEntry(
+    string Path,
+    Guid Id,
+    string Name,
+    bool Created,
+    List<string> ExistingNames
+);
+
+public sealed record FolderTreeResponse(List<FolderTreeEntry> Folders);
+
 public sealed record RenameRequest(string Name);
 
 /// <param name="FolderId">The folder to move into; null for the top of "My files".</param>

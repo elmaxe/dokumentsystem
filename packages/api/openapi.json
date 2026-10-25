@@ -376,6 +376,37 @@
         }
       }
     },
+    "/api/v1/folders/tree": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Folder uploads: makes all the folders first, in one go, then the files are uploaded into them.",
+        "operationId": "CreateFolderTree",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FolderTreeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderTreeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/rename": {
       "post": {
         "tags": [
@@ -2000,6 +2031,14 @@
           }
         }
       },
+      "FolderConflictPolicy": {
+        "enum": [
+          "fail",
+          "merge",
+          "keepBoth"
+        ],
+        "default": "fail"
+      },
       "FolderCounts": {
         "required": [
           "files",
@@ -2045,6 +2084,81 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/NodeDto"
+            }
+          }
+        }
+      },
+      "FolderTreeEntry": {
+        "required": [
+          "path",
+          "id",
+          "name",
+          "created",
+          "existingNames"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created": {
+            "type": "boolean"
+          },
+          "existingNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "FolderTreeRequest": {
+        "required": [
+          "folderId",
+          "paths"
+        ],
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "onConflict": {
+            "$ref": "#/components/schemas/FolderConflictPolicy"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0
+          }
+        }
+      },
+      "FolderTreeResponse": {
+        "required": [
+          "folders"
+        ],
+        "type": "object",
+        "properties": {
+          "folders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FolderTreeEntry"
             }
           }
         }

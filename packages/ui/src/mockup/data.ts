@@ -1,7 +1,7 @@
 import type { TFunction } from "i18next";
 import type { ActivityEntry, FileDetails } from "../components/DetailsPanel";
 import type { SharePerson } from "../components/ShareDialog";
-import type { UploadItem } from "../components/UploadTray";
+import type { UploadGroup, UploadItem } from "../components/UploadTray";
 import type { FileVersion } from "../components/VersionHistory";
 import { isFolder, type FileItem } from "../lib/files";
 import { pages, thumbnails } from "./thumbnails";
@@ -149,6 +149,23 @@ export const sampleUploads: UploadItem[] = [
   { id: "4", name: "ikea-kvitto-2025-03.pdf", kind: "pdf", state: "duplicate", size: 182_000, folder: "Kvitton", duplicateOf: "Mina filer / Kvitton / 2025" },
   { id: "5", name: "Lägenhetsritning.pdf", kind: "pdf", state: "failed", size: 1_200_000, folder: "Bostadsrätten" },
   { id: "6", name: "Bröllopsfoton.zip", kind: "archive", state: "hashing", size: 3_400_000_000, folder: "Mina filer" },
+];
+
+/** A folder upload part way through: most files done, two failed, a few still going (§8.1). */
+export const sampleFolderGroups: UploadGroup[] = [
+  { id: "kvitton", name: "Kvitton", folder: "Mina filer", skipped: 38 },
+  { id: "skanningar", name: "Skanningar", folder: "Kvitton › 2025" },
+];
+
+export const sampleFolderUploads: UploadItem[] = [
+  { id: "f1", name: "2025/okt/el-oktober.pdf", kind: "pdf", state: "uploading", size: 2_400_000, uploaded: 1_400_000, secondsLeft: 6, folder: "okt", group: "kvitton" },
+  { id: "f2", name: "2025/okt/IMG_4410.heic", kind: "image", state: "uploading", size: 3_900_000, uploaded: 900_000, secondsLeft: 20, folder: "okt", group: "kvitton" },
+  { id: "f3", name: "2024/mars/kvitto\u0007byggmax.pdf", kind: "pdf", state: "failed", size: 120_000, folder: "mars", group: "kvitton", error: "Names can't contain control characters.", retryable: false },
+  { id: "f4", name: "2025/apotek.jpg", kind: "image", state: "failed", size: 1_800_000, folder: "2025", group: "kvitton", error: "The file changed while it was uploading." },
+  ...Array.from({ length: 10 }, (_, i): UploadItem => ({ id: `w${i}`, name: `2025/okt/scan-${i + 1}.pdf`, kind: "pdf", state: "hashing", size: 400_000, folder: "okt", group: "kvitton" })),
+  ...Array.from({ length: 1150 }, (_, i): UploadItem => ({ id: `d${i}`, name: `2025/scan-${i}.pdf`, kind: "pdf", state: "done", size: 300_000, folder: "2025", group: "kvitton" })),
+  { id: "s1", name: "skanning-1.pdf", kind: "pdf", state: "done", size: 640_000, folder: "Skanningar", group: "skanningar" },
+  { id: "s2", name: "skanning-2.pdf", kind: "pdf", state: "done", size: 710_000, folder: "Skanningar", group: "skanningar" },
 ];
 
 /** Gives each folder its size and counts from everything below it, as the server does (§16.4). */

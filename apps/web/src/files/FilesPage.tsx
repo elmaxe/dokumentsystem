@@ -2,6 +2,7 @@ import { contentUrl, type PathEntry, type RecentAction } from "@dokument/api";
 import {
   ActionBar,
   Breadcrumbs,
+  Button,
   EmptyState,
   FileGrid,
   FileList,
@@ -20,11 +21,13 @@ import {
 } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useRemoteFileChanges } from "../live";
 import { MoveDialog, NameDialog } from "./dialogs";
 import { FileDetailsPanel } from "./FileDetailsPanel";
 import {
+  ApiError,
   download,
   drive,
   errorMessage,
@@ -62,6 +65,39 @@ function store(key: string, value: string) {
   } catch {
     // Private mode: the choice just isn't remembered.
   }
+}
+
+/** How long an item that arrived from elsewhere stays outlined. */
+const arrivalHighlight = 2_000;
+
+/**
+ * The items that just appeared because of a change made somewhere else (§15.4), so they can be outlined for a moment.
+ * The person's own uploads and new folders aren't counted: no live notice comes for them.
+ */
+function useArrivals(ids: string[], scope: string, ready: boolean): Set<string> {
+  const remoteChanges = useRemoteFileChanges();
+  const seen = useRef<{ scope: string; key: string; remoteChanges: number } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [arrived, setArrived] = useState<Set<string>>(() => new Set());
+  const key = ids.join();
+
+  useEffect(() => {
+    if (!ready) return;
+    const before = seen.current;
+    // A notice comes first and the refetch it starts later, so only a new set of items is compared.
+    if (before?.scope === scope && before.key === key) return;
+    seen.current = { scope, key, remoteChanges };
+    if (!before || before.scope !== scope || before.remoteChanges === remoteChanges) return;
+    const was = new Set(before.key.split(","));
+    const added = ids.filter((id) => !was.has(id));
+    if (added.length === 0) return;
+    setArrived(new Set(added));
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setArrived(new Set()), arrivalHighlight);
+  }, [key, scope, ready, remoteChanges, ids]);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return arrived;
 }
 
 const activityIcons: Record<RecentAction, string> = {
@@ -105,8 +141,14 @@ export function FilesPage({ source }: { source: FilesSource }) {
             path: r.path,
             recent: { at: r.at, action: r.action },
           }));
+  const arrived = useArrivals(
+    rows.map((row) => row.id),
+    source.place === "folder" ? `folder:${folderId ?? "root"}` : source.place,
+    query.isSuccess,
+  );
+  const marked = arrived.size > 0 ? rows.map((row) => (arrived.has(row.id) ? { ...row, arrived: true } : row)) : rows;
   // Recent keeps the server's newest-first order; the others sort like a folder.
-  const items = source.place === "recent" ? rows : sortItems(rows, sort, i18n.language);
+  const items = source.place === "recent" ? marked : sortItems(marked, sort, i18n.language);
   const byId = new Map(items.map((item) => [item.id, item]));
   const chosen = selected.map((id) => byId.get(id)).filter((item): item is Row => !!item);
   const single = chosen.length === 1 ? chosen[0] : undefined;
@@ -308,6 +350,9 @@ export function FilesPage({ source }: { source: FilesSource }) {
   };
 
   const showDetails = details.open && single;
+  // Gone while open, perhaps trashed on another device, or a link to a folder that no longer exists.
+  const folderGone =
+    source.place === "folder" && listing.isError && listing.error instanceof ApiError && listing.error.status === 404;
   const title = source.place === "starred" ? t("nav.starred") : t("nav.recent");
   const empty =
     source.place === "folder"
@@ -381,7 +426,22 @@ export function FilesPage({ source }: { source: FilesSource }) {
             </div>
           </div>
 
-          {query.isError ? (
+          {folderGone ? (
+            <EmptyState
+              icon="folder_delete"
+              title={t("live.folderGoneTitle")}
+              text={t("live.folderGoneText")}
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button variant="outlined" onClick={() => void navigate({ to: "/trash" })}>
+                    {t("live.openTrash")}
+                  </Button>
+                  <Button onClick={() => open(null)}>{t("live.goToMyFiles")}</Button>
+                </div>
+              }
+              className="mt-4"
+            />
+          ) : query.isError ? (
             <EmptyState icon="error" title={errorMessage(t, query.error)} className="mt-4" />
           ) : query.isPending ? null : items.length === 0 ? (
             <EmptyState icon={empty.icon} title={empty.title} text={empty.text} className="mt-4" />
