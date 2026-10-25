@@ -11,7 +11,7 @@ import { ActionMenu } from "../components/Menu";
 import { places } from "../lib/places";
 import { sortItems, type SortKey } from "../lib/files";
 import { fileMenu, selectionActions, selectionMore } from "./actions";
-import type { Node } from "./data";
+import { withFolderContents, type Node } from "./data";
 import { folderPath, useMockup } from "./store";
 
 /** My files, Shared with me, Recent, Starred and Trash: one file area with different contents. */
@@ -41,6 +41,8 @@ export function FilesScreen() {
       items = app.nodes.filter((n) => n.trashedDaysLeft !== undefined);
       break;
   }
+  // Folders show what they hold, as the server reports it (§16.4).
+  items = withFolderContents(items, live);
   if (place !== "recent") items = sortItems(items, app.sort, i18n.language);
 
   const meta = (item: Node) =>

@@ -3,7 +3,7 @@ import type { ActivityEntry, FileDetails } from "../components/DetailsPanel";
 import type { SharePerson } from "../components/ShareDialog";
 import type { UploadItem } from "../components/UploadTray";
 import type { FileVersion } from "../components/VersionHistory";
-import type { FileItem } from "../lib/files";
+import { isFolder, type FileItem } from "../lib/files";
 import { pages, thumbnails } from "./thumbnails";
 
 // A household's library, in Swedish like the real one would be. Dates are relative to now so
@@ -150,3 +150,26 @@ export const sampleUploads: UploadItem[] = [
   { id: "5", name: "Lägenhetsritning.pdf", kind: "pdf", state: "failed", size: 1_200_000, folder: "Bostadsrätten" },
   { id: "6", name: "Bröllopsfoton.zip", kind: "archive", state: "hashing", size: 3_400_000_000, folder: "Mina filer" },
 ];
+
+/** Gives each folder its size and counts from everything below it, as the server does (§16.4). */
+export function withFolderContents(items: Node[], nodes: Node[]): Node[] {
+  const contents = (id: string) => {
+    let size = 0;
+    let files = 0;
+    let folders = 0;
+    const walk = (parentId: string) => {
+      for (const child of nodes.filter((n) => n.parentId === parentId)) {
+        if (isFolder(child)) {
+          folders++;
+          walk(child.id);
+        } else {
+          files++;
+          size += child.size ?? 0;
+        }
+      }
+    };
+    walk(id);
+    return { size, contents: { files, folders } };
+  };
+  return items.map((item) => (isFolder(item) ? { ...item, ...contents(item.id) } : item));
+}

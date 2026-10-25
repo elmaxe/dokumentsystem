@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.12** · Last updated: 2026-10-24
+> Status: **Draft v0.13** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -559,7 +559,7 @@ Built in M1 (decision 18).
 | Text / code / Markdown | CodeMirror (read-only) / rendered Markdown | Rendered text |
 | Other | Metadata + download | Download / "open in…" |
 
-- **Built in M2 (web):** a full-screen viewer at `/files/{id}` for images (zoom steps from 50 % to 400 %, double-click, drag to pan), PDFs (pdf.js with range requests, one page at a time fitted to the width, Page Up/Down), text (the first 1 MB, as plain text; later a read-only CodeMirror 6 view with syntax highlighting, line numbers, folding and search for code, JSON, YAML and logs, plus rendered Markdown), and audio and video the browser can play. Everything else shows "No preview" with Download. Arrow keys or a swipe move between the files in the folder; Esc closes. PDF page thumbnails, search in the document and the OCR overlay come later.
+- **Built in M2 (web):** a full-screen viewer at `/files/{id}` for images (zoom steps from 50 % to 400 %, double-click, drag to pan), PDFs (pdf.js with range requests, one page at a time fitted to the width, Page Up/Down), text (the first 1 MiB, as plain text; later a read-only CodeMirror 6 view with syntax highlighting, line numbers, folding and search for code, JSON, YAML and logs, plus rendered Markdown), and audio and video the browser can play. Everything else shows "No preview" with Download. Arrow keys or a swipe move between the files in the folder; Esc closes. PDF page thumbnails, search in the document and the OCR overlay come later.
 - **`GET /nodes/{id}/preview` serves what the viewer shows** and is **not audited** (§18): the WebP preview if there is one, otherwise the original bytes inline, with range support. Markup (HTML, XML, SVG) is served as `text/plain`, with `nosniff` and a `sandbox` CSP, so a preview can never run in our origin. `GET /nodes/{id}/content` stays the audited download. Anyone who can view a file can read its bytes through the preview, so the audit log records downloads, not every way the bytes could leave.
 - **"Download original" is always available** to anyone with viewer rights (except via no-download links), and returns exact bytes.
 - Folders can be downloaded as a **streamed zip** (built on the fly, never staged on disk).
@@ -691,6 +691,9 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **FileTypeIcon:** a Material Symbol in the `file-*` colour per MIME group. Also the thumbnail fallback. Folders stay neutral.
 - **FileGrid:** folders first, then file tiles with 4:3 thumbnails. Documents (PDF, Office, text) show the top of page 1; photos are cropped to fill. A shimmer shows while a thumbnail is pending, and the thumbnail is swapped in when it is ready: for now the listing is polled (every 2 s, then every 10 s) while anything is pending, and SignalR replaces that with live updates. Video tiles show a duration badge.
 - **FileList:** a sortable name / owner / modified / size table. Under 600 px of container width, the columns fold into a second line. Pages can swap the columns after the name: the Trash page shows original location / deleted / size.
+  - A file with a ready thumbnail shows it in place of the type icon: 32 px, 40 px on phones, with pages showing their top as in the grid. Folders and files without a preview keep the icon, in a box of the same size so names line up; a pending thumbnail shimmers.
+  - **Folders show their size:** the current version of every live file below them, at any depth. Old versions and trashed files don't count, so it isn't the same number as quota usage (§17). The listing API returns it as the folder's `size` plus `contents` (file and folder counts) from one ltree query per listing. An empty folder shows "—", and hovering a folder's size shows what it holds ("1,204 files, 38 folders").
+  - Hovering a date shows the full timestamp ("23 October 2026, 17:40").
 - **ActionBar:** the selection count plus Share, Download, Move, Trash and More.
 - **UploadTray:** one row per tus upload, in one of the states hashing, uploading, paused, done, duplicate ("Remove this copy") or failed (Retry), each with an icon and words.
 - **DuplicateDialog:** the §8.3 prompt. A batch offers Skip duplicates / Upload all / Review; a single file offers Skip / Upload anyway / Open existing.
@@ -708,7 +711,10 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **Icons:** Material Symbols Rounded (Apache-2.0), outlined by default and filled when active or selected.
 - Keyboard navigation everywhere: arrow keys in the grid, Space to select, Enter to open, Delete to trash. Focus is shown by a visible 2 px focus ring. Every icon button has a label.
 - **Clickable mockup:** `packages/ui` holds the components in Storybook (`pnpm --filter @dokument/ui dev`), with toolbar switches for light/dark, sv/en and phone to desktop widths. The **Screens** stories are one app on fake data: the file browser, viewer, search results and admin settings, with selection, sharing, uploads and the duplicate prompt working locally.
-- Dates in lists come from `formatFileDate` in `packages/core`: "Today 09:14", "Yesterday", "12 Mar", then "21 Jun 2025". English uses British day-month order and a 24-hour clock.
+- Dates in lists come from `formatFileDate` in `packages/core`: "Today 09:14", "Yesterday", "12 Mar", then "21 Jun 2025". English uses British day-month order and a 24-hour clock. Tooltips and the details panel use `formatFullDate` ("23 October 2026, 17:40").
+- **Settings page** (`/settings`, "Settings" in the account menu): the person's own settings, with the normal nav, saved as soon as they change. Sections so far: Language (the same choice as the account menu's quick switch) and Date and time.
+- **Show seconds in times** is a per-person switch on the Settings page, off by default and saved on the account (`users.show_seconds`, `PUT /api/v1/me/preferences`) so it follows them across devices. When it is on, every time shown gets seconds ("Today 09:14:07", "23 October 2026, 17:40:12"). Components read it through `useFormat()` in `packages/ui`.
+- **Sizes are binary everywhere** (decision 19): 1 KiB = 1024 B, labelled B, KiB, MiB, GiB and TiB, through `formatBytes` in `packages/core`. Inputs use the same units: quotas are entered in GiB. There is no setting, so every screen, the API docs and the admin pages agree.
 
 ---
 
@@ -717,7 +723,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **Admin settings:** a default quota (no limit until an admin sets one), and per person either the default, a limit of their own, or no limit. Changing someone's quota writes a `user.quota_change` audit event. The default applies at reservation time, so lowering it never deletes anything; it only stops new uploads.
 - **Counted:** originals of all versions owned by the user, including trash, with blobs deduplicated per user. **Not counted:** renditions and thumbnails.
 - **Enforcement:** reserve at upload start and settle at completion (§8). `used_bytes` is updated in the same transaction. A nightly reconciliation job recomputes it and logs any drift.
-- **UX:** a storage meter in the nav, which also says how much of the storage emptying the trash would free ("1.4 GB of it in the trash"), a breakdown page (by type, largest files, trash, old versions), and email plus in-app warnings at 80% and 95%.
+- **UX:** a storage meter in the nav, which also says how much of the storage emptying the trash would free ("1.4 GiB of it in the trash"), a breakdown page (by type, largest files, trash, old versions), and email plus in-app warnings at 80% and 95%.
 - **Admin view:** per-user usage, total disk usage, and the free space on the volume. Built on the admin Storage and People pages: the size of all originals (each blob once), and total and free space for the volume holding originals (plus the derived volume when it is separate).
 
 ### 17.1 Quota from an OIDC claim
@@ -855,7 +861,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 ## 23. Internationalization
 
 - **sv and en from day one:** UI, emails and date/number formats.
-- **Each person picks their language** in the account menu: Same as browser (the default), Svenska or English. The choice is saved on the account (`users.locale`), so it follows them across devices and emails can use it. The sign-in page, before anyone is known, follows the browser.
+- **Each person picks their language** in the account menu or on the Settings page (§16.5): Same as browser (the default), Svenska or English. The choice is saved on the account (`users.locale`), so it follows them across devices and emails can use it. The sign-in page, before anyone is known, follows the browser. Whether times show seconds is saved the same way (§16.5).
 - OCR languages are configurable (default `swe+eng`). The search stemmer is chosen per detected page language.
 
 ---
@@ -898,7 +904,8 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 16 | Observability | 2026-10-23: OpenTelemetry for traces, metrics and logs, off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set; standard `OTEL_*` variables only; trace context stored on jobs; strict no-PII attribute rules; optional Prometheus endpoint on a separate port. On by default under the Aspire AppHost in development. Prometheus on `METRICS_PORT` uses the beta OpenTelemetry exporter (§22.1) |
 | 17 | Admin settings page | 2026-10-23: admin pages with sections that save separately (2026-10-24: split into People, Storage and Settings, with an admin rail that replaces the normal nav on those pages, as in Immich, §15.2); default quota off until set, per-person default / own limit / no limit; ML URLs in priority order with encrypted API keys and live health checks; ClamAV address stored and tested but not yet used; sign-in shown read-only; language is a per-person choice in the account menu (§4.3, §11, §17, §21, §23) |
 | 18 | Trash and retention | 2026-10-24: trash groups by `trashed_root_id`, listed by root on the Trash page; restore to My files when the folder is gone or trashed, numbering on name clashes; Undo after trashing; no browsing inside trashed folders yet; trash retention is an admin setting (default 30 days); the purge runs hourly in the server role and also enforces version retention; per-blob advisory lock shared with uploads; no manual per-version delete and no warning email yet (§12) |
-| 19 | Quota from an OIDC claim | 2026-10-24: `OIDC_QUOTA_CLAIM` sets each person's quota at every login from a byte count, a binary size (`GB` = `GiB` = 1024³) or `unlimited`; unreadable values are ignored with a warning; the claim wins and locks the admin dialog; a missing claim falls back to the default; changes are audited as `system` with the source `claim` (§17.1) |
+| 19 | Sizes and times in file lists | 2026-10-24: binary units (KiB, MiB, GiB, TiB, 1 KiB = 1024 B) everywhere, including quota inputs, with no setting; folders show the size of their live contents (current versions only) and their file and folder counts; list rows show thumbnails instead of type icons when one is ready; a per-person "Show seconds in times" switch on a new Settings page (`/settings`, linked from the account menu, which also holds the language choice), and full timestamps on hover (§16.4, §16.5, §17) |
+| 20 | Quota from an OIDC claim | 2026-10-24: `OIDC_QUOTA_CLAIM` sets each person's quota at every login from a byte count, a binary size (`GB` = `GiB` = 1024³) or `unlimited`; unreadable values are ignored with a warning; the claim wins and locks the admin dialog; a missing claim falls back to the default; changes are audited as `system` with the source `claim` (§17.1) |
 
 ## 26. Open questions
 

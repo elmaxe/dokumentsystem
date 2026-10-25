@@ -67,6 +67,7 @@ export const toItem = (node: NodeDto): Item => ({
   name: node.name,
   kind: node.kind === "folder" ? "folder" : kindOf(node.name, node.mimeType),
   size: node.size ?? undefined,
+  contents: node.contents ?? undefined,
   modified: node.modifiedAt,
   owner: node.ownerName,
   thumbnail: node.thumbnail === "ready" ? thumbnailUrl(node.id, node.currentVersionId) : undefined,

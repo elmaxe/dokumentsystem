@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 /** The MIME groups that get their own icon and colour (docs/design.md §16.2). */
 export type FileKind =
   | "folder"
@@ -16,8 +18,10 @@ export type FileItem = {
   id: string;
   name: string;
   kind: FileKind;
-  /** Bytes. Folders have none. */
+  /** Bytes; for a folder, everything in it. */
   size?: number;
+  /** What a folder holds, at any depth. */
+  contents?: FolderContents;
   /** ISO 8601. */
   modified: string;
   owner: string;
@@ -30,6 +34,19 @@ export type FileItem = {
   shared?: boolean;
   starred?: boolean;
 };
+
+export type FolderContents = { files: number; folders: number };
+
+/** "1,204 files, 38 folders", "1 file", or "Empty". */
+export function contentsLabel(t: TFunction, { files, folders }: FolderContents): string {
+  if (files === 0 && folders === 0) return t("files.contents.empty");
+  return [
+    files > 0 && t("files.contents.files", { count: files }),
+    folders > 0 && t("files.contents.folders", { count: folders }),
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
 
 export const isFolder = (item: Pick<FileItem, "kind">) => item.kind === "folder";
 

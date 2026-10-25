@@ -1,6 +1,6 @@
-import { formatBytes, formatFileDate } from "@dokument/core";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
+import { useFormat } from "../lib/display";
 import { Avatar, type AvatarTone } from "./Avatar";
 import { Button, IconButton } from "./Button";
 import { Icon } from "./Icon";
@@ -36,7 +36,8 @@ export type VersionHistoryProps = {
  * "Removed in N days" per the retention policy: 30 days or 100 versions (§8.2).
  */
 export function VersionHistory({ versions, onAction, onUploadVersion, canDelete = true }: VersionHistoryProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const format = useFormat();
   return (
     <div className="flex flex-col">
       <Button variant="tonal" icon="upload" className="my-2 w-full" onClick={onUploadVersion}>
@@ -78,8 +79,8 @@ export function VersionHistory({ versions, onAction, onUploadVersion, canDelete 
                 <Avatar name={version.by} tone={version.tone} size="sm" />
                 {[
                   version.by,
-                  formatFileDate(version.at, i18n.language),
-                  formatBytes(version.size, i18n.language),
+                  format.date(version.at),
+                  format.bytes(version.size),
                 ].join(" · ")}
               </span>
               {version.comment && (

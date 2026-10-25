@@ -4,7 +4,7 @@ import { Avatar, Banner, Button, Dialog, Icon, IconButton, Progress, TextField, 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { admin, adminSettingsQuery, adminUsersQuery, mlStatusQuery, parseGb, storageReportQuery, toGb } from "./adminApi";
+import { admin, adminSettingsQuery, adminUsersQuery, mlStatusQuery, parseGib, storageReportQuery, toGib } from "./adminApi";
 
 const sections = [
   { id: "storage", icon: "hard_drive" },
@@ -172,9 +172,9 @@ function StorageSection({ settings }: { settings: AdminSettings }) {
   const report = useQuery(storageReportQuery);
   const initial = settings.storage.defaultQuotaBytes;
   const [limited, setLimited] = useState(initial !== null);
-  const [gb, setGb] = useState(initial !== null ? toGb(initial) : "");
+  const [gb, setGb] = useState(initial !== null ? toGib(initial) : "");
   const { busy, save } = useSave();
-  const bytes = limited ? parseGb(gb) : null;
+  const bytes = limited ? parseGib(gb) : null;
   const invalid = limited && bytes === null;
   const dirty = bytes !== initial;
   const size = (value: number) => formatBytes(value, i18n.language);
@@ -227,7 +227,7 @@ function StorageSection({ settings }: { settings: AdminSettings }) {
                 error={invalid && gb !== "" ? t("admin.storage.invalid") : undefined}
                 className="tabular w-28"
               />
-              <span className="mt-2.5">{t("admin.storage.gb")}</span>
+              <span className="mt-2.5">{t("admin.storage.gib")}</span>
             </div>
           )}
         </div>
@@ -330,9 +330,9 @@ function QuotaDialog({ user, provider, onClose }: { user: AdminUser; provider: s
   // The provider's quota claim wins (§17.1), so the dialog only shows it.
   const locked = user.quotaSource === "claim";
   const [kind, setKind] = useState(user.quota.kind);
-  const [gb, setGb] = useState(user.quota.bytes ? toGb(user.quota.bytes) : "");
+  const [gb, setGb] = useState(user.quota.bytes ? toGib(user.quota.bytes) : "");
   const { busy, save } = useSave();
-  const bytes = kind === "limit" ? parseGb(gb) : null;
+  const bytes = kind === "limit" ? parseGib(gb) : null;
   const defaultQuota = settings.data?.storage.defaultQuotaBytes ?? null;
   const options = [
     {
@@ -406,7 +406,7 @@ function QuotaDialog({ user, provider, onClose }: { user: AdminUser; provider: s
                     error={bytes === null && gb !== "" ? t("admin.storage.invalid") : undefined}
                     className="tabular w-28"
                   />
-                  <span className="mt-2.5 text-on-surface">{t("admin.storage.gb")}</span>
+                  <span className="mt-2.5 text-on-surface">{t("admin.storage.gib")}</span>
                 </span>
               )}
             </span>

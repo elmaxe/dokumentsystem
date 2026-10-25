@@ -441,6 +441,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("role");
 
+                    b.Property<bool>("ShowSeconds")
+                        .HasColumnType("boolean")
+                        .HasColumnName("show_seconds");
+
                     b.Property<long>("UsedBytes")
                         .HasColumnType("bigint")
                         .HasColumnName("used_bytes");

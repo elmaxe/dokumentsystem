@@ -32,3 +32,4 @@ export * from "./lib/files";
 export * from "./lib/places";
 export { useSnackbar } from "./lib/snackbar";
 export { useCoarsePointer } from "./lib/usePointer";
+export { DisplaySettingsProvider, useFormat, type DisplaySettings } from "./lib/display";

@@ -58,6 +58,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(u => u.Locale)
                 .HasColumnName("locale")
                 .HasConversion(l => l!.Code, v => UiLanguage.TryParse(v));
+            e.Property(u => u.ShowSeconds).HasColumnName("show_seconds");
             e.Property(u => u.CreatedAt).HasColumnName("created_at");
             e.Property(u => u.LastLoginAt).HasColumnName("last_login_at");
             e.Property(u => u.DisabledAt).HasColumnName("disabled_at");
