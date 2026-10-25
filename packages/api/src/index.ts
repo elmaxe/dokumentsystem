@@ -55,6 +55,9 @@ export type TagSuggestion = components["schemas"]["TagSuggestion"];
 export type TagRule = components["schemas"]["TagRuleDto"];
 export type TagRulePreview = components["schemas"]["TagRulePreviewDto"];
 export type TagRuleExample = components["schemas"]["TagRuleExampleDto"];
+export type FilingRule = components["schemas"]["FilingRuleDto"];
+export type FilingPreview = components["schemas"]["FilingPreviewDto"];
+export type FiledFile = components["schemas"]["FiledFileDto"];
 
 /** The tus endpoint for resumable uploads (docs/design.md §8.1). */
 export const uploadsPath = "/api/v1/uploads";

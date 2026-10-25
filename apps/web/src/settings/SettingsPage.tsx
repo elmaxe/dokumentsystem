@@ -2,6 +2,7 @@ import { Icon, Switch, useFormat } from "@dokument/ui";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAccountSettings } from "./account";
+import { FilingRules } from "./FilingRules";
 
 /**
  * The person's own settings (§16.5, §23), opened from the account menu. Everything here saves as soon as it
@@ -54,6 +55,9 @@ export function SettingsPage() {
               </label>
             ))}
           </fieldset>
+        </Section>
+        <Section icon="drive_file_move" title={t("filing.title")}>
+          <FilingRules />
         </Section>
         <Section icon="schedule" title={t("settings.time.title")}>
           <div className="flex items-center gap-4">

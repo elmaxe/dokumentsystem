@@ -10,7 +10,8 @@ const topicQueries: Record<LiveTopic, string[][]> = {
   recent: [["recent"]],
   trash: [["trash"]],
   storage: [["storage"]],
-  account: [["auth", "session"], ["storage"]],
+  account: [["auth", "session"], ["storage"], ["filing-rules"]],
+  filings: [["filing-rules"]],
 };
 
 /** How long the server can be out of reach before the page says so. Short drops pass unnoticed. */
@@ -27,6 +28,7 @@ type LiveState = {
 let state: LiveState = { connected: false, offlineSince: null, remoteFileChanges: 0 };
 const listeners = new Set<() => void>();
 const fileChangeListeners = new Set<() => void>();
+const filingListeners = new Set<() => void>();
 
 function update(next: Partial<LiveState>) {
   state = { ...state, ...next };
@@ -48,6 +50,12 @@ export const useRemoteFileChanges = () => useSyncExternalStore(subscribe, () => 
 export function onRemoteFileChange(listener: () => void) {
   fileChangeListeners.add(listener);
   return () => void fileChangeListeners.delete(listener);
+}
+
+/** Calls back when a filing rule moved some of the person's files (§13.5). */
+export function onFilings(listener: () => void) {
+  filingListeners.add(listener);
+  return () => void filingListeners.delete(listener);
 }
 
 /** True once the server has been out of reach for a while (§15.4). */
@@ -101,6 +109,7 @@ export function useLiveUpdates() {
         update({ remoteFileChanges: state.remoteFileChanges + 1 });
         fileChangeListeners.forEach((listener) => listener());
       }
+      if (message.topics.includes("filings")) filingListeners.forEach((listener) => listener());
       const keys = new Set(message.topics.flatMap((topic) => topicQueries[topic] ?? []).map((key) => JSON.stringify(key)));
       keys.forEach((key) => void queryClient.invalidateQueries({ queryKey: JSON.parse(key) as string[] }));
     });

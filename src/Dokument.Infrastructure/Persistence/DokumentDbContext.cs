@@ -1,5 +1,6 @@
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
+using Dokument.Domain.Filing;
 using Dokument.Domain.Identity;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Previews;
@@ -34,6 +35,8 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<BlobTag> BlobTags => Set<BlobTag>();
     public DbSet<TagRule> TagRules => Set<TagRule>();
     public DbSet<EffectiveTag> EffectiveTags => Set<EffectiveTag>();
+    public DbSet<FilingRule> FilingRules => Set<FilingRule>();
+    public DbSet<NodeFiling> NodeFilings => Set<NodeFiling>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -107,6 +110,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
         ConfigurePreviews(modelBuilder);
         ConfigureSearch(modelBuilder);
         ConfigureTags(modelBuilder);
+        ConfigureFiling(modelBuilder);
     }
 
     private static readonly ValueConverter<ContentHash, byte[]> ContentHashConverter = new(
@@ -329,6 +333,59 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
                 .HasColumnName("source")
                 .HasConversion(LowercaseEnum<TagSource>());
             e.Property(t => t.RuleId).HasColumnName("rule_id");
+            e.Property(t => t.Since).HasColumnName("since");
+        });
+    }
+
+    private static void ConfigureFiling(ModelBuilder modelBuilder)
+    {
+        // Filing rules (docs/design.md §13.5): each person's own, and one row per file a rule moved, so it moves once.
+        modelBuilder.Entity<FilingRule>(e =>
+        {
+            e.ToTable("filing_rules");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Id).HasColumnName("id");
+            e.Property(r => r.OwnerId).HasColumnName("owner_id");
+            e.Property(r => r.Tag)
+                .HasColumnName("tag")
+                .HasConversion(t => t.Value, v => TagName.From(v));
+            e.Property(r => r.TagKey).HasColumnName("tag_key");
+            e.Property(r => r.Folder)
+                .HasColumnName("folder_template")
+                .HasConversion(f => f.Value, v => FolderTemplate.From(v));
+            e.Property(r => r.Position).HasColumnName("position");
+            e.Property(r => r.Enabled).HasColumnName("enabled");
+            e.Property(r => r.ActiveSince).HasColumnName("active_since");
+            e.Property(r => r.CreatedAt).HasColumnName("created_at");
+            e.Property(r => r.UpdatedAt).HasColumnName("updated_at");
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(r => r.OwnerId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(r => new { r.OwnerId, r.TagKey }).IsUnique();
+        });
+
+        modelBuilder.Entity<NodeFiling>(e =>
+        {
+            e.ToTable("node_filings");
+            e.HasKey(f => f.NodeId);
+            e.Property(f => f.NodeId).HasColumnName("node_id");
+            e.Property(f => f.RuleId).HasColumnName("rule_id");
+            e.Property(f => f.Tag).HasColumnName("tag");
+            e.Property(f => f.FromFolderId).HasColumnName("from_folder_id");
+            e.Property(f => f.ToFolderId).HasColumnName("to_folder_id");
+            e.Property(f => f.FiledAt).HasColumnName("filed_at");
+            e.Property(f => f.UndoneAt).HasColumnName("undone_at");
+            e.HasOne<Node>()
+                .WithMany()
+                .HasForeignKey(f => f.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<FilingRule>()
+                .WithMany()
+                .HasForeignKey(f => f.RuleId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(f => f.RuleId);
+            e.HasIndex(f => f.FiledAt);
         });
     }
 

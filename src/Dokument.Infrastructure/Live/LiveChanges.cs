@@ -28,7 +28,10 @@ public enum LiveTopics
     /// <summary>The person's own settings, such as language or showing seconds.</summary>
     Account = 16,
 
-    All = Files | Recent | Trash | Storage | Account,
+    /// <summary>A filing rule moved some of the person's files, so clients can offer to undo it (§13.5).</summary>
+    Filings = 32,
+
+    All = Files | Recent | Trash | Storage | Account | Filings,
 }
 
 /// <summary>Why a session's clients should go to the sign-in page.</summary>

@@ -12,21 +12,33 @@ namespace Dokument.Infrastructure.Jobs;
 /// </summary>
 public sealed class JobQueue(DokumentDbContext db, TimeProvider time)
 {
-    /// <summary>Queues the work unless the same job is already waiting or running. Adds to the unit of work; the caller saves.</summary>
+    /// <summary>
+    /// Queues the work unless the same job is already waiting or running. With <paramref name="evenIfRunning"/>, a
+    /// running one doesn't count, for work whose running job may have read the state before the change that queues it
+    /// again. Adds to the unit of work; the caller saves.
+    /// </summary>
     public async Task EnqueueAsync(
         JobType type,
         string subject,
         JobPriority priority,
-        CancellationToken ct = default
+        CancellationToken ct = default,
+        bool evenIfRunning = false
     )
     {
         var active =
-            db.Jobs.Local.Any(j => j.Type == type && j.Subject == subject && j.IsActive)
+            db.Jobs.Local.Any(j =>
+                j.Type == type
+                && j.Subject == subject
+                && (evenIfRunning ? j.Status == JobStatus.Queued : j.IsActive)
+            )
             || await db.Jobs.AnyAsync(
                 j =>
                     j.Type == type
                     && j.Subject == subject
-                    && (j.Status == JobStatus.Queued || j.Status == JobStatus.Running),
+                    && (
+                        j.Status == JobStatus.Queued
+                        || (!evenIfRunning && j.Status == JobStatus.Running)
+                    ),
                 ct
             );
         if (!active)
