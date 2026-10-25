@@ -14,6 +14,12 @@ public enum RenditionKind
     /// Other images are shown from the original.
     /// </summary>
     Preview,
+
+    /// <summary>
+    /// A video or audio file browsers can play (H.264/AAC in MP4), made only when the original isn't playable. Not an
+    /// image, so it has no <see cref="RenditionKinds.MaxEdge"/>.
+    /// </summary>
+    Playable,
 }
 
 public static class RenditionKinds
@@ -28,13 +34,14 @@ public static class RenditionKinds
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
-    /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>.</summary>
+    /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>, <c>playable</c>.</summary>
     public static string Key(this RenditionKind kind) =>
         kind switch
         {
             RenditionKind.ThumbSmall => "thumb_s",
             RenditionKind.ThumbMedium => "thumb_m",
             RenditionKind.Preview => "preview",
+            RenditionKind.Playable => "playable",
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
@@ -44,6 +51,7 @@ public static class RenditionKinds
             "thumb_s" => RenditionKind.ThumbSmall,
             "thumb_m" => RenditionKind.ThumbMedium,
             "preview" => RenditionKind.Preview,
+            "playable" => RenditionKind.Playable,
             _ => throw new ArgumentException($"\"{key}\" isn't a rendition kind.", nameof(key)),
         };
 }

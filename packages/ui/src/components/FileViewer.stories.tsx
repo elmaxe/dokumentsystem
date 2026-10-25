@@ -111,6 +111,18 @@ const files: Record<string, { item: FileItem; preview: () => PreviewSource }> = 
     item: { id: "4", name: "IMG_4021.HEIC", kind: "image", modified: "2026-10-23T10:00:00Z", owner: "Alice" },
     preview: () => ({ type: "preparing" }),
   },
+  converting: {
+    item: { id: "8", name: "Midsommar-2026.mkv", kind: "video", modified: "2026-06-21T10:00:00Z", owner: "Alice" },
+    preview: () => ({ type: "converting", waiting: false, progress: 42 }),
+  },
+  waiting: {
+    item: { id: "9", name: "MVI_0412.AVI", kind: "video", modified: "2026-06-21T10:00:00Z", owner: "Alice" },
+    preview: () => ({ type: "converting", waiting: true }),
+  },
+  unplayable: {
+    item: { id: "10", name: "intervju.wma", kind: "audio", modified: "2026-03-02T10:00:00Z", owner: "Alice" },
+    preview: () => ({ type: "unplayable" }),
+  },
   none: {
     item: { id: "5", name: "backup-2026.zip", kind: "archive", modified: "2026-09-01T10:00:00Z", owner: "Alice" },
     preview: () => ({ type: "none" }),
@@ -154,7 +166,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "The viewer (§14). Images zoom with the toolbar or a double-click and pan by dragging; PDFs render with pdf.js one page at a time (Page Up/Down); text shows the first 1 MiB in a read-only CodeMirror with highlighting, folding and find, and Markdown is formatted with a Source toggle. Arrow keys or a swipe move to the next file, Esc closes. The arrows here step through every state.",
+          "The viewer (§14). Images zoom with the toolbar or a double-click and pan by dragging; PDFs render with pdf.js one page at a time (Page Up/Down); text shows the first 1 MiB in a read-only CodeMirror with highlighting, folding and find, and Markdown is formatted with a Source toggle. Video and audio browsers can't play wait for the worker's playable copy, with its progress. Arrow keys or a swipe move to the next file, Esc closes. The arrows here step through every state.",
       },
     },
   },
@@ -168,5 +180,8 @@ export const Pdf: Story = { args: { file: "pdf" } };
 export const Markdown: Story = { args: { file: "markdown" } };
 export const Code: Story = { args: { file: "code" } };
 export const Preparing: Story = { args: { file: "preparing" } };
+export const Converting: Story = { args: { file: "converting" } };
+export const WaitingForCopy: Story = { args: { file: "waiting" } };
+export const Unplayable: Story = { args: { file: "unplayable" } };
 export const NoPreview: Story = { args: { file: "none" } };
 export const Failed: Story = { args: { file: "failed" } };

@@ -54,6 +54,7 @@ public static class DependencyInjection
         services.AddScoped<JobMonitor>();
         services.AddSingleton<DerivedStore>();
         services.AddScoped<PreviewService>();
+        services.AddScoped<MediaService>();
         services.AddScoped<ContentService>();
         services.AddScoped<SearchService>();
         services.AddScoped<FileDetailsService>();

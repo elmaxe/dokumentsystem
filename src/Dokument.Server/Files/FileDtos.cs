@@ -18,6 +18,7 @@ namespace Dokument.Server.Files;
 /// any show a "Processing" badge. See <c>/nodes/{id}/processing</c> for every step.
 /// </param>
 /// <param name="Tags">The file's tags, by name: the ones people added and the automatic ones nobody removed (§13.4).</param>
+/// <param name="Media">For video and audio files, once the worker has looked at them. Null for everything else.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -36,7 +37,8 @@ public sealed record NodeDto(
     FolderCounts? Contents,
     bool Starred,
     List<ActiveStepDto> Processing,
-    List<TagDto> Tags
+    List<TagDto> Tags,
+    MediaDto? Media
 )
 {
     public static NodeDto From(
@@ -46,7 +48,8 @@ public sealed record NodeDto(
         IReadOnlyDictionary<Guid, FolderContents> folders,
         IReadOnlySet<Guid> starred,
         IReadOnlyDictionary<ContentHash, List<ActiveStep>> processing,
-        IReadOnlyDictionary<Guid, List<TagView>> tags
+        IReadOnlyDictionary<Guid, List<TagView>> tags,
+        IReadOnlyDictionary<ContentHash, MediaState> media
     ) =>
         new(
             node.Id,
@@ -75,7 +78,17 @@ public sealed record NodeDto(
                 : [],
             tags.TryGetValue(node.Id, out var shown)
                 ? shown.Select(t => new TagDto(t.Name, t.Source, t.RuleId)).ToList()
-                : []
+                : [],
+            node.CurrentVersion is { } latest && media.TryGetValue(latest.BlobHash, out var m)
+                ? new MediaDto(
+                    m.DurationSeconds,
+                    m.HasVideo,
+                    m.HasAudio,
+                    m.VideoCodec,
+                    m.Copy,
+                    m.Progress
+                )
+                : null
         );
 }
 
@@ -100,6 +113,21 @@ public sealed record ChangeTagsRequest(List<Guid> Ids, List<string>? Add, List<s
 public sealed record TagSuggestion(string Name, int Files);
 
 public sealed record TagSuggestions(List<TagSuggestion> Tags);
+
+/// <summary>A video or audio file, as the tile and the viewer need it (docs/design.md §14).</summary>
+/// <param name="DurationSeconds">Null when the file doesn't say, e.g. some live recordings.</param>
+/// <param name="HasVideo">False for audio files; their cover art, if any, is the thumbnail.</param>
+/// <param name="VideoCodec">ffprobe's name, e.g. <c>hevc</c>: the viewer tries the original first when the browser says it plays it.</param>
+/// <param name="Copy">Whether <c>/nodes/{id}/preview</c> serves a playable copy, or will. NotNeeded means the original plays as it is.</param>
+/// <param name="Progress">How far a copy being made has got, 0 to 100.</param>
+public sealed record MediaDto(
+    double? DurationSeconds,
+    bool HasVideo,
+    bool HasAudio,
+    string? VideoCodec,
+    CopyState Copy,
+    int? Progress
+);
 
 /// <summary>What a folder holds, at any depth.</summary>
 public sealed record FolderCounts(int Files, int Folders);

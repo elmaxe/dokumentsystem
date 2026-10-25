@@ -567,7 +567,7 @@
         "tags": [
           "Files"
         ],
-        "description": "What the viewer shows: a WebP for images browsers can't display or that are huge, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18).",
+        "description": "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18).",
         "operationId": "GetPreview",
         "parameters": [
           {
@@ -586,11 +586,50 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "original",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/playable": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Asks for a playable copy of a video or audio file browsers can't play, ahead of other work. 409 when copies are turned off or the file can't be converted; see NodeDto.media.",
+        "operationId": "RequestPlayableCopy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
           }
         }
       }
@@ -2189,6 +2228,86 @@
         }
       }
     },
+    "/api/v1/admin/settings/videos": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutVideoSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/videos/copies": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "How many playable copies of videos exist, the disk they take, and how many are still to make.",
+        "operationId": "AdminGetVideoCopies",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopyStats"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Deletes every playable copy. The originals are untouched; copies are made again as the setting says.",
+        "operationId": "AdminDeleteVideoCopies",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopyStats"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/storage": {
       "get": {
         "tags": [
@@ -2691,6 +2810,7 @@
           "ml",
           "scanner",
           "textRecognition",
+          "videos",
           "signIn"
         ],
         "type": "object",
@@ -2712,6 +2832,9 @@
           },
           "textRecognition": {
             "$ref": "#/components/schemas/TextRecognitionDto"
+          },
+          "videos": {
+            "$ref": "#/components/schemas/VideoSettingsDto"
           },
           "signIn": {
             "$ref": "#/components/schemas/SignInInfo"
@@ -2862,6 +2985,43 @@
           },
           "onConflict": {
             "$ref": "#/components/schemas/NameConflictPolicy"
+          }
+        }
+      },
+      "CopyState": {
+        "enum": [
+          "notNeeded",
+          "none",
+          "waiting",
+          "making",
+          "ready",
+          "failed"
+        ]
+      },
+      "CopyStats": {
+        "required": [
+          "count",
+          "bytes",
+          "waiting",
+          "failed"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "waiting": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -3865,6 +4025,7 @@
           "thumbnail",
           "metadata",
           "text",
+          "transcode",
           "tagRule",
           "file",
           "filingRule"
@@ -3977,6 +4138,48 @@
           "metadata",
           "tag"
         ]
+      },
+      "MediaDto": {
+        "required": [
+          "durationSeconds",
+          "hasVideo",
+          "hasAudio",
+          "videoCodec",
+          "copy",
+          "progress"
+        ],
+        "type": "object",
+        "properties": {
+          "durationSeconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "hasVideo": {
+            "type": "boolean"
+          },
+          "hasAudio": {
+            "type": "boolean"
+          },
+          "videoCodec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "copy": {
+            "$ref": "#/components/schemas/CopyState"
+          },
+          "progress": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
       },
       "MlEndpointDto": {
         "required": [
@@ -4104,7 +4307,8 @@
           "contents",
           "starred",
           "processing",
-          "tags"
+          "tags",
+          "media"
         ],
         "type": "object",
         "properties": {
@@ -4200,6 +4404,16 @@
             "items": {
               "$ref": "#/components/schemas/TagDto"
             }
+          },
+          "media": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MediaDto"
+              }
+            ]
           }
         }
       },
@@ -5554,6 +5768,29 @@
             "format": "int32"
           },
           "maxVersions": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "VideoCopies": {
+        "enum": [
+          "background",
+          "onOpen",
+          "never"
+        ]
+      },
+      "VideoSettingsDto": {
+        "required": [
+          "copies",
+          "maxHeight"
+        ],
+        "type": "object",
+        "properties": {
+          "copies": {
+            "$ref": "#/components/schemas/VideoCopies"
+          },
+          "maxHeight": {
             "type": "integer",
             "format": "int32"
           }

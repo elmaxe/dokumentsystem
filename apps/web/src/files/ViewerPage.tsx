@@ -1,4 +1,4 @@
-import { contentUrl, previewUrl, type NodeDto } from "@dokument/api";
+import { contentUrl, previewUrl, thumbnailUrl, type NodeDto } from "@dokument/api";
 import {
   Banner,
   Button,
@@ -34,11 +34,36 @@ import { lastSearchResults, matchesQuery } from "../search/search";
 /** Images every browser shows from the original. Others (HEIC, TIFF, SVG) wait for the worker's WebP preview. */
 const webImage = /^image\/(jpeg|png|webp|gif|avif)$/;
 
-function previewOf(node: NodeDto, versionId: string | null | undefined): PreviewSource {
+/** Video and audio that usually play from the original, before the worker has looked at them. Others wait for it. */
+const webMedia = /^(video\/(mp4|webm|ogg)|audio\/(mpeg|mp4|aac|ogg|opus|wav|x-wav|webm|flac|x-flac))$/;
+
+function previewOf(node: NodeDto, versionId: string | null | undefined, refused: boolean): PreviewSource {
   const type = previewTypeOf(node.mimeType);
   if (type === "none") return { type };
   if (type === "image" && !webImage.test(node.mimeType ?? "") && node.thumbnail === "pending") return { type: "preparing" };
-  return { type, src: previewUrl(node.id, versionId) };
+  const src = previewUrl(node.id, versionId);
+  // What the worker found applies to the current version; an older one just gets what the server has for it.
+  if (type !== "video" && type !== "audio") return { type, src };
+  const poster = type === "video" && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
+  const media = versionId === node.currentVersionId ? node.media : null;
+  if (!media && node.thumbnail === "pending" && !webMedia.test(node.mimeType ?? "")) return { type: "preparing" };
+  if (!media || media.copy === "notNeeded") return { type, src, poster };
+
+  const original = playsOriginal(node) ? previewUrl(node.id, versionId, { original: true }) : null;
+  if (media.copy === "ready") return original ? { type, src: original, fallbacks: [src], poster } : { type, src, poster };
+  if (original) return { type, src: original, poster };
+  if (media.copy === "failed" || refused) return { type: "unplayable" };
+  return { type: "converting", waiting: media.copy !== "making", progress: media.progress ?? undefined };
+}
+
+/**
+ * Whether this browser says it plays the original even though most don't, so it gets the full quality instead of the
+ * copy (§14). Only HEVC, which Safari and Chromium on some systems decode; the copy is tried when it fails anyway.
+ */
+function playsOriginal(node: NodeDto): boolean {
+  if (node.media?.videoCodec !== "hevc" || typeof document === "undefined") return false;
+  const container = node.mimeType === "video/quicktime" ? "video/quicktime" : "video/mp4";
+  return document.createElement("video").canPlayType(`${container}; codecs="hvc1"`) !== "";
 }
 
 /** The version being looked at when a change arrived from elsewhere, and when the file was last fetched before it. */
@@ -103,6 +128,19 @@ export function ViewerPage({
   useEffect(() => {
     drive.opened(fileId).catch(() => {});
   }, [fileId]);
+
+  // A video browsers can't play: ask for its copy now, which starts it or moves it ahead of background work. Refused
+  // when copies are off (§14).
+  const [refused, setRefused] = useState<string | null>(null);
+  const copy = details.data?.node.media?.copy;
+  const needsCopy = (copy === "none" || copy === "waiting") && shownVersion === current;
+  useEffect(() => {
+    if (!needsCopy) return;
+    drive
+      .requestPlayable(fileId)
+      .then((node) => queryClient.setQueryData(nodeQuery(fileId).queryKey, (old) => (old ? { ...old, node } : old)))
+      .catch(() => setRefused(fileId));
+  }, [needsCopy, fileId, queryClient]);
 
   const close = () =>
     void (from === "search"
@@ -169,7 +207,7 @@ export function ViewerPage({
       <FileViewer
         key={`${item.id}-${shownVersion}-${q ?? ""}`}
         item={item}
-        preview={previewOf(details.data.node, shownVersion)}
+        preview={previewOf(details.data.node, shownVersion, refused === fileId)}
         onClose={close}
         onDownload={() => {
           download(contentUrl(item.id, pin ? (shownVersion ?? undefined) : undefined));

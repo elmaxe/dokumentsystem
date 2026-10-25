@@ -242,7 +242,10 @@ public sealed class JobMonitor(
         }
     }
 
-    /// <summary>For a file list: the steps still waiting or running for each of these contents.</summary>
+    /// <summary>
+    /// For a file list: the steps still waiting or running for each of these contents. A playable copy isn't a step:
+    /// its progress is in the file's media (§14).
+    /// </summary>
     public async Task<Dictionary<ContentHash, List<ActiveStep>>> ActiveAsync(
         IReadOnlyCollection<ContentHash> hashes,
         CancellationToken ct = default
@@ -269,6 +272,7 @@ public sealed class JobMonitor(
             })
             .ToListAsync(ct);
         return active
+            .Where(j => JobType.FileSteps.Contains(j.Type))
             .GroupBy(j => byHex[j.Subject])
             .ToDictionary(
                 g => g.Key,
