@@ -3,6 +3,7 @@ using Dokument.Domain.Files;
 using Dokument.Domain.Identity;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Previews;
+using Dokument.Domain.Search;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
@@ -24,6 +25,9 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<Rendition> Renditions => Set<Rendition>();
     public DbSet<Star> Stars => Set<Star>();
     public DbSet<RecentFile> RecentFiles => Set<RecentFile>();
+    public DbSet<BlobContent> BlobContents => Set<BlobContent>();
+    public DbSet<ContentPage> ContentPages => Set<ContentPage>();
+    public DbSet<BlobMetadata> BlobMetadata => Set<BlobMetadata>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -95,6 +99,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
         ConfigureFiles(modelBuilder);
         ConfigureJobs(modelBuilder);
         ConfigurePreviews(modelBuilder);
+        ConfigureSearch(modelBuilder);
     }
 
     private static readonly ValueConverter<ContentHash, byte[]> ContentHashConverter = new(
@@ -175,6 +180,61 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(r => r.Width).HasColumnName("width");
             e.Property(r => r.Height).HasColumnName("height");
             e.Property(r => r.CreatedAt).HasColumnName("created_at");
+        });
+    }
+
+    private static void ConfigureSearch(ModelBuilder modelBuilder)
+    {
+        // Text and metadata belong to the bytes, like renditions, so they are keyed by hash with no foreign key; the
+        // purge removes them with the last copy (§12). The BM25 indexes are created in SQL by the migration (§13.1).
+        modelBuilder.Entity<BlobContent>(e =>
+        {
+            e.ToTable("blob_contents");
+            e.HasKey(c => c.BlobHash);
+            e.Property(c => c.BlobHash)
+                .HasColumnName("blob_hash")
+                .HasConversion(ContentHashConverter);
+            e.Property(c => c.Status)
+                .HasColumnName("status")
+                .HasConversion(LowercaseEnum<ContentStatus>());
+            e.Property(c => c.PipelineVersion).HasColumnName("pipeline_version");
+            e.Property(c => c.PageCount).HasColumnName("page_count");
+            e.Property(c => c.OcrSkipped).HasColumnName("ocr_skipped");
+            e.Property(c => c.OcrEngine).HasColumnName("ocr_engine");
+            e.Property(c => c.UpdatedAt).HasColumnName("updated_at");
+        });
+
+        modelBuilder.Entity<ContentPage>(e =>
+        {
+            e.ToTable("content_pages");
+            e.HasKey(p => p.Id);
+            e.Property(p => p.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(p => p.BlobHash)
+                .HasColumnName("blob_hash")
+                .HasConversion(ContentHashConverter);
+            e.Property(p => p.PageNo).HasColumnName("page_no");
+            e.Property(p => p.Source)
+                .HasColumnName("source")
+                .HasConversion(LowercaseEnum<PageSource>());
+            e.Property(p => p.Text).HasColumnName("text");
+            e.Property(p => p.Words).HasColumnName("words").HasColumnType("jsonb");
+            e.HasIndex(p => new { p.BlobHash, p.PageNo }).IsUnique();
+        });
+
+        modelBuilder.Entity<BlobMetadata>(e =>
+        {
+            e.ToTable("blob_metadata");
+            e.HasKey(m => m.BlobHash);
+            e.Property(m => m.BlobHash)
+                .HasColumnName("blob_hash")
+                .HasConversion(ContentHashConverter);
+            e.Property(m => m.PipelineVersion).HasColumnName("pipeline_version");
+            e.Property(m => m.TakenAt).HasColumnName("taken_at");
+            e.Property(m => m.Camera).HasColumnName("camera");
+            e.Property(m => m.DurationSeconds).HasColumnName("duration_seconds");
+            e.Property(m => m.Tags).HasColumnName("tags").HasColumnType("jsonb");
+            e.Property(m => m.Readable).HasColumnName("readable");
+            e.Property(m => m.UpdatedAt).HasColumnName("updated_at");
         });
     }
 

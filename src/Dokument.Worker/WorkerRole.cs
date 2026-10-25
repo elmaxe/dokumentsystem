@@ -1,6 +1,7 @@
 using Dokument.Domain.Jobs;
 using Dokument.Worker.Jobs;
 using Dokument.Worker.Previews;
+using Dokument.Worker.Search;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -28,8 +29,31 @@ public static class WorkerRole
             )
         );
 
+        services.AddSingleton<ExifTool>();
+        services.AddScoped<MetadataHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(
+                JobType.Metadata,
+                typeof(MetadataHandler),
+                worker.MetadataConcurrency
+            )
+        );
+
+        services.AddSingleton<ITextRecognizer, TesseractOcr>();
+        services.AddSingleton<TextExtractor>();
+        services.AddScoped<TextHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(
+                JobType.Text,
+                typeof(TextHandler),
+                worker.TextConcurrency,
+                worker.TextJobTimeout
+            )
+        );
+
         services.AddHostedService<JobRunner>();
         services.AddHostedService<ThumbnailBackfill>();
+        services.AddHostedService<ContentBackfill>();
         return services;
     }
 

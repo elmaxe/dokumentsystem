@@ -94,6 +94,7 @@ public static class ServerRole
         api.MapFileEndpoints();
         api.MapTrashEndpoints();
         api.MapStarredAndRecentEndpoints();
+        api.MapSearchEndpoints();
         api.MapTusEndpoints();
         api.MapAdminEndpoints();
         app.MapFallback("/api/{**path}", () => TypedResults.NotFound());

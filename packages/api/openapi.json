@@ -1004,6 +1004,180 @@
         }
       }
     },
+    "/api/v1/search": {
+      "get": {
+        "tags": [
+          "Search"
+        ],
+        "description": "Files and folders whose name, text or metadata match. `q` takes words, \"exact phrases\", -excluded words and the operators type:, in:, after:, before:, camera:, taken: and is:starred; the other parameters are the filter chips and override the operators.",
+        "operationId": "Search",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "modifiedAfter",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "modifiedBefore",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "folderId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "starred",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "default": "relevance",
+              "$ref": "#/components/schemas/SearchSort"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/search/suggest": {
+      "get": {
+        "tags": [
+          "Search"
+        ],
+        "description": "Name matches as someone types, best first.",
+        "operationId": "SearchSuggest",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/matches": {
+      "get": {
+        "tags": [
+          "Search"
+        ],
+        "description": "The pages of one file that match `q`, for the viewer to open on and step through.",
+        "operationId": "SearchMatchesInFile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/uploads/{id}": {
       "get": {
         "tags": [
@@ -1256,6 +1430,78 @@
         }
       }
     },
+    "/api/v1/admin/settings/text-recognition": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Turning it on reads again, in the background, the files skipped while it was off.",
+        "operationId": "AdminPutTextRecognitionSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TextRecognitionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextRecognitionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/text-recognition/progress": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminGetTextProgress",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextProgress"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/text-recognition/reread": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Reads the text of every stored file again, in the background, after new files are done.",
+        "operationId": "AdminRereadAllText",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextProgress"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/ml/status": {
       "get": {
         "tags": [
@@ -1467,6 +1713,7 @@
           "trash",
           "ml",
           "scanner",
+          "textRecognition",
           "signIn"
         ],
         "type": "object",
@@ -1485,6 +1732,9 @@
           },
           "scanner": {
             "$ref": "#/components/schemas/ScannerSettingsDto"
+          },
+          "textRecognition": {
+            "$ref": "#/components/schemas/TextRecognitionDto"
           },
           "signIn": {
             "$ref": "#/components/schemas/SignInInfo"
@@ -1855,6 +2105,35 @@
           }
         }
       },
+      "MatchesResponse": {
+        "required": [
+          "terms",
+          "pages"
+        ],
+        "type": "object",
+        "properties": {
+          "terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PageMatchDto"
+            }
+          }
+        }
+      },
+      "MatchSource": {
+        "enum": [
+          "name",
+          "text",
+          "ocr",
+          "metadata"
+        ]
+      },
       "MlEndpointDto": {
         "required": [
           "url",
@@ -2087,6 +2366,40 @@
           "file"
         ]
       },
+      "PageMatchDto": {
+        "required": [
+          "pageNo",
+          "source",
+          "boxes"
+        ],
+        "type": "object",
+        "properties": {
+          "pageNo": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PageSource"
+          },
+          "boxes": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          }
+        }
+      },
+      "PageSource": {
+        "enum": [
+          "text",
+          "ocr",
+          "metadata"
+        ]
+      },
       "PathEntry": {
         "required": [
           "id",
@@ -2256,6 +2569,105 @@
           }
         }
       },
+      "SearchResponse": {
+        "required": [
+          "results",
+          "total",
+          "terms",
+          "pending",
+          "withoutFilters"
+        ],
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchResultDto"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pending": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "withoutFilters": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "SearchResultDto": {
+        "required": [
+          "node",
+          "path",
+          "source",
+          "pageNo",
+          "pageCount",
+          "pagesWithHits",
+          "snippet"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeDto"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          },
+          "source": {
+            "$ref": "#/components/schemas/MatchSource"
+          },
+          "pageNo": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "pageCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "pagesWithHits": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "snippet": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SnippetDto"
+              }
+            ]
+          }
+        }
+      },
+      "SearchSort": {
+        "enum": [
+          "relevance",
+          "modified"
+        ]
+      },
       "ServerInfo": {
         "required": [
           "name",
@@ -2382,6 +2794,36 @@
           }
         }
       },
+      "SnippetDto": {
+        "required": [
+          "text",
+          "highlights",
+          "cutStart",
+          "cutEnd"
+        ],
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "highlights": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32"
+              }
+            }
+          },
+          "cutStart": {
+            "type": "boolean"
+          },
+          "cutEnd": {
+            "type": "boolean"
+          }
+        }
+      },
       "StarredItem": {
         "required": [
           "node",
@@ -2473,6 +2915,45 @@
           }
         }
       },
+      "SuggestionDto": {
+        "required": [
+          "node",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeDto"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          }
+        }
+      },
+      "SuggestResponse": {
+        "required": [
+          "items",
+          "terms"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SuggestionDto"
+            }
+          },
+          "terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "TestMlRequest": {
         "required": [
           "url",
@@ -2499,6 +2980,44 @@
         "properties": {
           "address": {
             "type": "string"
+          }
+        }
+      },
+      "TextProgress": {
+        "required": [
+          "read",
+          "waiting",
+          "running",
+          "failed"
+        ],
+        "type": "object",
+        "properties": {
+          "read": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waiting": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "running": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TextRecognitionDto": {
+        "required": [
+          "enabled"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
           }
         }
       },
@@ -2838,6 +3357,9 @@
     },
     {
       "name": "Starred and recent"
+    },
+    {
+      "name": "Search"
     },
     {
       "name": "Uploads"

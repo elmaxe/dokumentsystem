@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace Dokument.Worker.Previews;
 
 /// <summary>
-/// The few PDFium calls the thumbnailer needs (docs/design.md §10.3). The native library comes from the
+/// The few PDFium calls the thumbnailer and the text stage need (docs/design.md §10.3). The native library comes from the
 /// bblanchon.PDFium packages. PDFium isn't thread-safe, so every call goes through <see cref="Gate"/>.
 /// </summary>
 internal static partial class Pdfium
@@ -88,5 +88,24 @@ internal static partial class Pdfium
         int sizeY,
         int rotate,
         int flags
+    );
+
+    /// <summary>The page's text layer, for search (§10.2). Null when the page has none at all.</summary>
+    [LibraryImport(Library)]
+    public static partial nint FPDFText_LoadPage(nint page);
+
+    [LibraryImport(Library)]
+    public static partial void FPDFText_ClosePage(nint textPage);
+
+    [LibraryImport(Library)]
+    public static partial int FPDFText_CountChars(nint textPage);
+
+    /// <summary>Writes <paramref name="count"/> UTF-16 code units and a terminator; returns how many it wrote, the terminator included.</summary>
+    [LibraryImport(Library)]
+    public static unsafe partial int FPDFText_GetText(
+        nint textPage,
+        int startIndex,
+        int count,
+        ushort* result
     );
 }

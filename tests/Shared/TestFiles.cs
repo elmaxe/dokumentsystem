@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text;
 using NetVips;
 
@@ -70,5 +71,120 @@ internal static class TestFiles
             $"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
         );
         return Encoding.ASCII.GetBytes(pdf.ToString());
+    }
+
+    /// <summary>A PDF with a real text layer: one page per string, in Helvetica (WinAnsi, so å, ä and ö work).</summary>
+    public static byte[] TextPdf(params string[] pages)
+    {
+        var objects = new List<string>
+        {
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            $"<< /Type /Pages /Kids [{string.Join(' ', Enumerable.Range(0, pages.Length).Select(i => $"{4 + (2 * i)} 0 R"))}] /Count {pages.Length} >>",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        };
+        foreach (var text in pages)
+        {
+            var lines = text.Split('\n')
+                .Select(
+                    (line, i) => $"BT /F1 14 Tf 72 {760 - (i * 20)} Td ({PdfString(line)}) Tj ET"
+                );
+            var stream = string.Join("\n", lines);
+            objects.Add(
+                $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents {objects.Count + 2} 0 R >>"
+            );
+            objects.Add(
+                $"<< /Length {Encoding.Latin1.GetByteCount(stream)} >>\nstream\n{stream}\nendstream"
+            );
+        }
+
+        var pdf = new StringBuilder("%PDF-1.4\n");
+        var offsets = new List<int>();
+        for (var i = 0; i < objects.Count; i++)
+        {
+            offsets.Add(Encoding.Latin1.GetByteCount(pdf.ToString()));
+            pdf.Append($"{i + 1} 0 obj\n{objects[i]}\nendobj\n");
+        }
+
+        var xref = Encoding.Latin1.GetByteCount(pdf.ToString());
+        pdf.Append($"xref\n0 {objects.Count + 1}\n0000000000 65535 f \n");
+        foreach (var offset in offsets)
+        {
+            pdf.Append($"{offset:D10} 00000 n \n");
+        }
+
+        pdf.Append(
+            $"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
+        );
+        return Encoding.Latin1.GetBytes(pdf.ToString());
+    }
+
+    private static string PdfString(string text) =>
+        text.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
+
+    /// <summary>Black text on white, big enough for text recognition, as a PNG: a stand-in for a scanned receipt.</summary>
+    public static byte[] TextImage(string text)
+    {
+        using var rendered = Image.Text(text, font: "DejaVu Sans 40", dpi: 150);
+        using var inverted = rendered.Invert();
+        using var padded = inverted.Embed(
+            60,
+            60,
+            inverted.Width + 120,
+            inverted.Height + 120,
+            extend: Enums.Extend.White
+        );
+        return padded.PngsaveBuffer();
+    }
+
+    /// <summary>A minimal Word document with one paragraph per string.</summary>
+    public static byte[] Docx(params string[] paragraphs) =>
+        Zip(
+            (
+                "[Content_Types].xml",
+                "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"/>"
+            ),
+            (
+                "word/document.xml",
+                "<?xml version=\"1.0\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>"
+                    + string.Concat(
+                        paragraphs.Select(p =>
+                            $"<w:p><w:r><w:t>{System.Security.SecurityElement.Escape(p)}</w:t></w:r></w:p>"
+                        )
+                    )
+                    + "</w:body></w:document>"
+            )
+        );
+
+    /// <summary>A minimal presentation with one slide per string.</summary>
+    public static byte[] Pptx(params string[] slides) =>
+        Zip([
+            (
+                "[Content_Types].xml",
+                "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"/>"
+            ),
+            .. slides.Select(
+                (text, i) =>
+                    (
+                        $"ppt/slides/slide{i + 1}.xml",
+                        "<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>"
+                            + System.Security.SecurityElement.Escape(text)
+                            + "</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>"
+                    )
+            ),
+        ]);
+
+    private static byte[] Zip(params (string Name, string Content)[] entries)
+    {
+        using var buffer = new MemoryStream();
+        using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (name, content) in entries)
+            {
+                using var writer = new StreamWriter(zip.CreateEntry(name).Open());
+                writer.Write(content);
+            }
+        }
+
+        return buffer.ToArray();
     }
 }

@@ -1,4 +1,4 @@
-import type { AdminSettings, AdminUser, MlEndpointStatus, StorageReport } from "@dokument/api";
+import type { AdminSettings, AdminUser, MlEndpointStatus, StorageReport, TextProgress } from "@dokument/api";
 import { queryOptions } from "@tanstack/react-query";
 import { api } from "../api";
 import { unwrap } from "../files/drive";
@@ -25,6 +25,13 @@ export const mlStatusQuery = queryOptions({
   refetchInterval: 60_000,
 });
 
+/** How far the worker is with reading text, refreshed while it has files waiting. */
+export const textProgressQuery = queryOptions({
+  queryKey: ["admin", "text-progress"],
+  queryFn: (): Promise<TextProgress> => unwrap(api.GET("/api/v1/admin/text-recognition/progress")),
+  refetchInterval: (query) => ((query.state.data?.waiting ?? 0) + (query.state.data?.running ?? 0) > 0 ? 5_000 : false),
+});
+
 export const admin = {
   putStorage: (defaultQuotaBytes: number | null) =>
     unwrap(api.PUT("/api/v1/admin/settings/storage", { body: { defaultQuotaBytes } })),
@@ -33,6 +40,9 @@ export const admin = {
   putTrash: (keepDays: number) => unwrap(api.PUT("/api/v1/admin/settings/trash", { body: { keepDays } })),
   putMl: (endpoints: { url: string; apiKey: string | null; keepApiKey: boolean }[]) =>
     unwrap(api.PUT("/api/v1/admin/settings/ml", { body: { endpoints } })),
+  putTextRecognition: (enabled: boolean) =>
+    unwrap(api.PUT("/api/v1/admin/settings/text-recognition", { body: { enabled } })),
+  rereadText: () => unwrap(api.POST("/api/v1/admin/text-recognition/reread")),
   putScanner: (address: string | null) => unwrap(api.PUT("/api/v1/admin/settings/scanner", { body: { address } })),
   testMl: (url: string, apiKey: string | null) => unwrap(api.POST("/api/v1/admin/ml/test", { body: { url, apiKey } })),
   testScanner: (address: string) => unwrap(api.POST("/api/v1/admin/scanner/test", { body: { address } })),

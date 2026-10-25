@@ -1,0 +1,207 @@
+using System.Text;
+using Dokument.Domain.Search;
+using Dokument.Tests;
+using Dokument.Worker.Search;
+
+namespace Dokument.UnitTests;
+
+public class SearchQueryTests
+{
+    [Fact]
+    public void Splits_words_phrases_exclusions_and_operators()
+    {
+        var query = SearchQuery.Parse(
+            "IKEA-kvitto \"soffa 3-sits\" -faktura type:pdf in:\"Kvitton 2025\" after:2025-01 camera:fujifilm is:starred"
+        );
+
+        Assert.Equal(["ikea", "kvitto"], query.Terms);
+        Assert.Equal(["soffa", "3", "sits"], Assert.Single(query.Phrases));
+        Assert.Equal(["faktura"], query.Excluded);
+        Assert.Equal("pdf", query.Type!.Name);
+        Assert.Equal("Kvitton 2025", query.InFolderNamed);
+        Assert.Equal(new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero), query.Modified.From);
+        Assert.Null(query.Modified.To);
+        Assert.Equal("fujifilm", query.Camera);
+        Assert.True(query.Starred);
+        Assert.Equal(["ikea", "kvitto", "soffa", "3", "sits"], query.HighlightTerms);
+    }
+
+    [Theory]
+    [InlineData("taken:2024", "2024-01-01", "2025-01-01")]
+    [InlineData("taken:2024-02", "2024-02-01", "2024-03-01")]
+    [InlineData("taken:2024-02-29", "2024-02-29", "2024-03-01")]
+    public void Dates_cover_the_whole_year_month_or_day(string input, string from, string to)
+    {
+        var taken = SearchQuery.Parse(input).Taken;
+        Assert.Equal(DateTimeOffset.Parse(from + "T00:00:00Z"), taken.From);
+        Assert.Equal(DateTimeOffset.Parse(to + "T00:00:00Z"), taken.To);
+    }
+
+    [Fact]
+    public void Unknown_operators_and_bad_values_are_searched_as_words()
+    {
+        var query = SearchQuery.Parse("owner:bob type:nonsense taken:igår");
+        Assert.Equal(["owner", "bob", "type", "nonsense", "taken", "igår"], query.Terms);
+        Assert.False(query.HasFilters);
+    }
+
+    [Fact]
+    public void Long_queries_are_capped()
+    {
+        var query = SearchQuery.Parse(
+            string.Join(' ', Enumerable.Range(0, 100).Select(i => $"ord{i}"))
+        );
+        Assert.Equal(SearchQuery.MaxTerms, query.Terms.Count);
+        Assert.Empty(SearchQuery.Parse(new string('a', SearchQuery.MaxTermLength + 1)).Terms);
+    }
+}
+
+public class HighlighterTests
+{
+    [Theory]
+    [InlineData("Kvittot", "kvitto", true)]
+    [InlineData("kvitton", "kvitto", true)]
+    [InlineData("receipts", "receipt", true)]
+    [InlineData("kvittoarkivet", "kvitto", false)]
+    [InlineData("hyresavtal", "hyresavtl", true)]
+    [InlineData("ikea", "ika", false)]
+    [InlineData("katt", "kat", false)]
+    public void Marks_endings_and_typos_like_the_index_matches(
+        string word,
+        string term,
+        bool expected
+    ) => Assert.Equal(expected, Highlighter.Matches(word, term));
+
+    [Fact]
+    public void Snippets_center_on_the_hits()
+    {
+        var text =
+            string.Join(' ', Enumerable.Repeat("fyllnad", 80))
+            + "\n\nKvitto IKEA 2025-03-14"
+            + new string(' ', 1)
+            + string.Join(' ', Enumerable.Repeat("slut", 80));
+        var snippet = Highlighter.Snip(text, ["ikea", "kvitto"]);
+
+        Assert.True(snippet.CutStart);
+        Assert.True(snippet.CutEnd);
+        Assert.True(snippet.Text.Length <= Highlighter.SnippetLength + 40);
+        Assert.Equal(["Kvitto", "IKEA"], snippet.Highlights.Select(h => snippet.Text[h[0]..h[1]]));
+    }
+
+    [Fact]
+    public void Snippets_start_at_the_top_without_hits()
+    {
+        var snippet = Highlighter.Snip("Första raden\nandra raden", ["saknas"]);
+        Assert.Equal("Första raden andra raden", snippet.Text);
+        Assert.Empty(snippet.Highlights);
+        Assert.False(snippet.CutStart);
+    }
+}
+
+public class MetadataTests
+{
+    [Fact]
+    public void Reads_camera_date_and_text_tags_from_exiftool_json()
+    {
+        var json = """
+            [{"SourceFile":"x.jpg","Make":"FUJIFILM","Model":"X-T30","DateTimeOriginal":"2024:06:14 10:00:00",
+              "OffsetTimeOriginal":"+02:00","Keywords":["Semester","Gotland"],"ImageWidth":6240,"Title":""}]
+            """;
+        var result = ExifTool.Parse(Encoding.UTF8.GetBytes(json));
+
+        Assert.True(result.Readable);
+        Assert.Equal("FUJIFILM X-T30", result.Camera);
+        Assert.Equal(
+            new DateTimeOffset(2024, 6, 14, 10, 0, 0, TimeSpan.FromHours(2)),
+            result.TakenAt
+        );
+        Assert.Contains("FUJIFILM X-T30", result.SearchText);
+        Assert.Contains("Semester, Gotland", result.SearchText);
+        Assert.DoesNotContain("Title", result.Tags.Keys);
+    }
+
+    [Theory]
+    [InlineData("Canon", "Canon EOS R5", "Canon EOS R5")]
+    [InlineData("NIKON CORPORATION", "NIKON Z 6", "NIKON Z 6")]
+    [InlineData("Apple", "iPhone 15", "Apple iPhone 15")]
+    [InlineData(null, "X100V", "X100V")]
+    [InlineData("Sony", null, "Sony")]
+    public void Names_cameras_without_repeating_the_brand(
+        string? make,
+        string? model,
+        string expected
+    ) => Assert.Equal(expected, ExifTool.CameraOf(make, model));
+
+    [Theory]
+    [InlineData("2024:03:14 15:42:01", null, "2024-03-14T15:42:01+00:00")]
+    [InlineData("2024:03:14 15:42:01.123+01:00", null, "2024-03-14T15:42:01+01:00")]
+    [InlineData("2024:03:14 15:42:01", "-05:00", "2024-03-14T15:42:01-05:00")]
+    public void Keeps_the_cameras_clock_and_offset(string value, string? offset, string expected) =>
+        Assert.Equal(DateTimeOffset.Parse(expected), ExifTool.DateOf(value, offset));
+
+    [Theory]
+    [InlineData("0000:00:00 00:00:00")]
+    [InlineData("igår")]
+    [InlineData("")]
+    public void Ignores_empty_or_broken_dates(string value) =>
+        Assert.Null(ExifTool.DateOf(value, null));
+}
+
+public class TextRecognitionTests
+{
+    private const string Header =
+        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n";
+
+    [Fact]
+    public void Rebuilds_lines_and_drops_unsure_words()
+    {
+        var tsv =
+            Header
+            + "5\t1\t1\t1\t1\t1\t10\t10\t100\t20\t96\tKvitto\n"
+            + "5\t1\t1\t1\t1\t2\t120\t10\t80\t20\t91\tIKEA\n"
+            + "5\t1\t1\t1\t2\t1\t10\t40\t60\t20\t30\t~~\n"
+            + "5\t1\t1\t1\t2\t2\t10\t40\t60\t20\t88\tTotalt\n"
+            + "5\t1\t2\t1\t1\t1\t10\t80\t60\t20\t90\t249\n";
+        var result = TesseractOcr.ParseTsv(tsv, 200, 100);
+
+        Assert.Equal("Kvitto IKEA\nTotalt\n\n249", result.Text);
+        Assert.Equal(4, result.Words.Count);
+        Assert.Equal(new OcrWord("IKEA", 0.6, 0.1, 0.4, 0.2), result.Words[1]);
+    }
+
+    [Fact]
+    public void Too_few_words_is_no_text()
+    {
+        var tsv = Header + "5\t1\t1\t1\t1\t1\t10\t10\t100\t20\t96\tbrus\n";
+        Assert.Same(OcrResult.Empty, TesseractOcr.ParseTsv(tsv, 200, 100));
+    }
+}
+
+public class OfficeTextTests
+{
+    [Fact]
+    public void Reads_Word_paragraphs_and_one_page_per_slide()
+    {
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            var docx = Path.Combine(dir.FullName, "a.docx");
+            File.WriteAllBytes(docx, TestFiles.Docx("Hyresavtal", "Hyran är 9 500 kr"));
+            Assert.Equal(
+                ["Hyresavtal\nHyran är 9 500 kr"],
+                OfficeText.Read(docx, 10_000, TestContext.Current.CancellationToken)
+            );
+
+            var pptx = Path.Combine(dir.FullName, "b.pptx");
+            File.WriteAllBytes(pptx, TestFiles.Pptx("Agenda", "Budget", "Frågor"));
+            Assert.Equal(
+                ["Agenda", "Budget", "Frågor"],
+                OfficeText.Read(pptx, 10_000, TestContext.Current.CancellationToken)
+            );
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+}
