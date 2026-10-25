@@ -48,6 +48,8 @@ export type Suggestion = components["schemas"]["SuggestionDto"];
 export type MatchesResponse = components["schemas"]["MatchesResponse"];
 export type PageMatch = components["schemas"]["PageMatchDto"];
 export type TextProgress = components["schemas"]["TextProgress"];
+export type CopyStats = components["schemas"]["CopyStats"];
+export type MediaDto = components["schemas"]["MediaDto"];
 
 /** The tus endpoint for resumable uploads (docs/design.md §8.1). */
 export const uploadsPath = "/api/v1/uploads";
@@ -69,9 +71,17 @@ export function thumbnailUrl(nodeId: string, versionId?: string | null, size: "s
   return `${baseUrl}/api/v1/nodes/${nodeId}/thumbnail${query ? `?${query}` : ""}`;
 }
 
-/** What the viewer loads: a rendition for images browsers can't show, otherwise the original, inline. Not audited. */
-export function previewUrl(nodeId: string, versionId?: string | null, baseUrl = ""): string {
-  return `${baseUrl}/api/v1/nodes/${nodeId}/preview${versionId ? `?versionId=${versionId}` : ""}`;
+/**
+ * What the viewer loads: a rendition for images browsers can't show, the playable copy of a video browsers can't
+ * play, otherwise the original, inline. `original` asks for the original video even when there is a copy. Not audited.
+ */
+export function previewUrl(
+  nodeId: string,
+  versionId?: string | null,
+  { original = false, baseUrl = "" }: { original?: boolean; baseUrl?: string } = {},
+): string {
+  const query = new URLSearchParams({ ...(versionId ? { versionId } : {}), ...(original ? { original: "true" } : {}) }).toString();
+  return `${baseUrl}/api/v1/nodes/${nodeId}/preview${query ? `?${query}` : ""}`;
 }
 
 /** The RFC 9457 problem body the server sends for refused requests. File operations add a machine-readable code. */

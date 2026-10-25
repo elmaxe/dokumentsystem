@@ -15,6 +15,9 @@ public sealed record JobType
     /// <summary>Searchable text for one blob: the text layer, then recognition for scans and photos (§10.2, §13.2).</summary>
     public static readonly JobType Text = new("text");
 
+    /// <summary>A playable copy of a video or audio blob the browser can't play as it is (§10.2, §14).</summary>
+    public static readonly JobType Transcode = new("transcode");
+
     private JobType(string name) => Name = name;
 
     public string Name { get; }

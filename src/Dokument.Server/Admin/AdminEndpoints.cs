@@ -6,6 +6,7 @@ using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
+using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Search;
 using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Storage;
@@ -55,6 +56,19 @@ public static class AdminEndpoints
             .WithDescription("Checks every saved ML service now.");
         admin.MapPost("/ml/test", TestMl).WithName("AdminTestMl");
         admin.MapPost("/scanner/test", TestScanner).WithName("AdminTestScanner");
+        admin.MapPut("/settings/videos", PutVideos).WithName("AdminPutVideoSettings");
+        admin
+            .MapGet("/videos/copies", GetVideoCopies)
+            .WithName("AdminGetVideoCopies")
+            .WithDescription(
+                "How many playable copies of videos exist, the disk they take, and how many are still to make."
+            );
+        admin
+            .MapDelete("/videos/copies", DeleteVideoCopies)
+            .WithName("AdminDeleteVideoCopies")
+            .WithDescription(
+                "Deletes every playable copy. The originals are untouched; copies are made again as the setting says."
+            );
         admin.MapGet("/storage", GetStorageReport).WithName("AdminGetStorage");
         admin.MapGet("/users", ListUsers).WithName("AdminListUsers");
         admin.MapPut("/users/{id:guid}/quota", PutUserQuota).WithName("AdminPutUserQuota");
@@ -73,6 +87,7 @@ public static class AdminEndpoints
         var ml = await settings.GetAsync(SettingKeys.Ml, ct);
         var scanner = await settings.GetAsync(SettingKeys.Scanner, ct);
         var textRecognition = await settings.GetAsync(SettingKeys.TextRecognition, ct);
+        var videos = await settings.GetAsync(SettingKeys.Videos, ct);
         return TypedResults.Ok(
             new AdminSettingsDto(
                 new StorageSettingsDto(storage.DefaultQuota.Bytes),
@@ -81,6 +96,7 @@ public static class AdminEndpoints
                 MlDto(ml),
                 new ScannerSettingsDto(scanner.Address?.ToString()),
                 new TextRecognitionDto(textRecognition.Enabled),
+                new VideoSettingsDto(videos.Copies, videos.MaxHeight),
                 new SignInInfo(
                     oidc.Enabled,
                     oidc.ProviderName,
@@ -174,6 +190,56 @@ public static class AdminEndpoints
         }
 
         return TypedResults.Ok(request);
+    }
+
+    private static async Task<Results<Ok<VideoSettingsDto>, ValidationProblem>> PutVideos(
+        VideoSettingsDto request,
+        HttpContext context,
+        SettingsStore settings,
+        MediaService media,
+        TimeProvider time,
+        CancellationToken ct
+    )
+    {
+        var value = new VideoSettings(request.Copies, request.MaxHeight);
+        if (!value.IsValid)
+        {
+            return Invalid(
+                "maxHeight",
+                "Copies are 720 or 1080 pixels high, or the original's size."
+            );
+        }
+
+        var was = await settings.GetAsync(SettingKeys.Videos, ct);
+        await settings.SetAsync(SettingKeys.Videos, value, context.Actor(), ct);
+        if (value.Copies == VideoCopies.Background && was.Copies != VideoCopies.Background)
+        {
+            await media.EnqueueMissingCopiesAsync(time.GetUtcNow(), ct);
+        }
+
+        return TypedResults.Ok(request);
+    }
+
+    private static async Task<Ok<CopyStats>> GetVideoCopies(
+        MediaService media,
+        CancellationToken ct
+    ) => TypedResults.Ok(await media.CopyStatsAsync(ct));
+
+    private static async Task<Ok<CopyStats>> DeleteVideoCopies(
+        HttpContext context,
+        MediaService media,
+        SettingsStore settings,
+        TimeProvider time,
+        CancellationToken ct
+    )
+    {
+        await media.DeleteCopiesAsync(ct);
+        if ((await settings.GetAsync(SettingKeys.Videos, ct)).Copies == VideoCopies.Background)
+        {
+            await media.EnqueueMissingCopiesAsync(time.GetUtcNow(), ct);
+        }
+
+        return TypedResults.Ok(await media.CopyStatsAsync(ct));
     }
 
     private static async Task<Ok<TextProgress>> GetTextProgress(

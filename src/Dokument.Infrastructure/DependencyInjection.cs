@@ -53,6 +53,7 @@ public static class DependencyInjection
         services.AddScoped<JobQueue>();
         services.AddSingleton<DerivedStore>();
         services.AddScoped<PreviewService>();
+        services.AddScoped<MediaService>();
         services.AddScoped<ContentService>();
         services.AddScoped<SearchService>();
         services.AddScoped<SettingsStore>();

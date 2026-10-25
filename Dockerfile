@@ -40,10 +40,11 @@ RUN dotnet publish src/Dokument.Host -c Release -a $TARGETARCH --no-restore -o /
 # The app without the web UI: what Aspire runs as the dev worker (`--target runtime`), so it has the same tools.
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 # libvips for thumbnails (docs/design.md §10.3), with libde265 so HEIC photos decode. PDFium ships with the app.
-# exiftool reads metadata and Tesseract recognizes text in scans, in Swedish and English (§13.2).
+# exiftool reads metadata and Tesseract recognizes text in scans, in Swedish and English (§13.2). FFmpeg makes video
+# posters and playable copies (§14); Debian's is built with zimg, for tone mapping HDR.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libvips42t64 libheif-plugin-libde265 \
-        libimage-exiftool-perl tesseract-ocr tesseract-ocr-swe tesseract-ocr-eng \
+        libimage-exiftool-perl tesseract-ocr tesseract-ocr-swe tesseract-ocr-eng ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=server /app ./

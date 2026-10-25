@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.26** · Last updated: 2026-10-25
+> Status: **Draft v0.27** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -187,14 +187,14 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 ### 4.3 Configuration
 
 - **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
-- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17, 18 and 24): the default quota, trash and version retention, text recognition on or off, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
+- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17, 18, 24 and 32): the default quota, trash and version retention, text recognition on or off, video copies (when they're made and their size), the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
   - quota defaults
   - trash and version retention
   - SMTP
   - backup schedule
   - ML URLs
   - Gotenberg URL
-  - job concurrency (until the admin queue page exists: `Worker__ThumbnailConcurrency`, default 2; `Worker__MetadataConcurrency`, default 2; `Worker__TextConcurrency`, default 1)
+  - job concurrency (until the admin queue page exists: `Worker__ThumbnailConcurrency`, default 2; `Worker__MetadataConcurrency`, default 2; `Worker__TextConcurrency`, default 1; `Worker__TranscodeConcurrency`, default 1)
   - OCR languages (until then `Worker__OcrLanguages`, default `swe+eng`)
 
 ---
@@ -332,7 +332,7 @@ Notes:
   tmp/{upload_id}           # in-flight uploads (tus), same filesystem for atomic rename
 /data/derived/              # REGENERABLE — backup optional
   thumbs/ab/{sha256}/{kind}.webp   # thumb_s, thumb_m, preview; keyed by blob like the originals
-  previews/ab/{sha256}/…           # later: PDF renditions of Office files, web-playable video, posters
+  previews/ab/{sha256}/playable.mp4  # a copy browsers play, of video and audio they can't (§14); later Office PDFs
 /data/backups/              # DB dumps and name manifests (§7.1, §19)
 /data/exports/              # optional: readable copies written by export jobs (§7.1)
 ```
@@ -458,8 +458,8 @@ On disk, identical bytes are always stored once per person (§6, §7). On top of
 - **`pipeline_version` per stage:** bumping it (e.g. a better thumbnailer) lets an admin choose "re-run stage X for all".
 - **Concurrency per job type**, configurable in the UI. Defaults are NAS-friendly, e.g. thumbnails 2, video 1, OCR 1.
 - **Priorities:** interactive work (a user just uploaded) before bulk imports and rescans.
-- **Backfill:** when the worker starts, it queues the thumbnail, metadata and text stages at background priority for every blob without results from the current `pipeline_version`. That covers files from before a stage existed and pipeline upgrades.
-- **Timeouts per job type:** the default 5 minutes, except the text stage, which gets 30 minutes because a long scanned PDF is read page by page.
+- **Backfill:** when the worker starts, it queues the thumbnail, metadata and text stages at background priority for every blob without results from the current `pipeline_version`. That covers files from before a stage existed and pipeline upgrades. When video copies are made in the background, it also queues every copy still missing (never ones that failed).
+- **Timeouts per job type:** the default 5 minutes, except the text stage, which gets 30 minutes because a long scanned PDF is read page by page, and the transcode stage, which gets 3 hours (`Worker__TranscodeJobTimeout`) because a long film is re-encoded on the CPU.
 - **Admin UI:** queue sizes, running and failed jobs with errors, "retry failed", "regenerate missing", pause/resume per queue.
 
 ### 10.2 Stages
@@ -471,12 +471,12 @@ upload complete (or the backfill)
    ├─► text       (text layer: PDF, Office, ODF, plain text)  built (M3)
    │      └─► ocr (pages and images with no text layer)       Tesseract now, ML in M7
    │             └─► tag rules (keyword rules → blob_tags)    planned (§13.4)
-   ├─► transcode (video/audio only if not browser-playable)
+   │      └─► transcode (video/audio browsers can't play)       built (M2)
    ├─► embed     (optional, ML)
    └─► transcribe (optional, ML, M7; audio/video → timed transcript pages)
 ```
 
-The stages are independent jobs per blob, queued together when an upload finishes; each detects the format from the bytes itself.
+The stages are independent jobs per blob, queued together when an upload finishes; each detects the format from the bytes itself. Transcode is the exception: the thumbnail stage probes video and audio anyway, so it queues the copy when one is needed.
 
 ### 10.3 Tooling per format
 
@@ -485,8 +485,8 @@ The stages are independent jobs per blob, queued together when an upload finishe
 | JPEG/PNG/WebP/GIF/HEIC/AVIF/TIFF/SVG (RAW later) | exiftool | **NetVips** (libvips + libheif) → WebP thumbs, plus a WebP preview when the browser can't show the original | OCR (Tesseract, ML in M7) |
 | PDF | exiftool | **PDFium** renders page 1 for the thumbs; the viewer renders pages with pdf.js | PDFium text layer per page → OCR of pages without one |
 | DOCX/XLSX/PPTX/ODF/RTF | exiftool | **Gotenberg** (LibreOffice) → PDF rendition → PDFium | The document XML read straight from the zip (one page per slide); RTF and fallbacks from the PDF rendition later |
-| Video | ffprobe | ffmpeg poster frame; **web-playable rendition only if needed** (H.264/AAC MP4, or HLS for large files). Hardware acceleration: VAAPI/QSV/NVENC. | Transcript (ML, optional) |
-| Audio | ffprobe / ID3 | Embedded cover art, or a generic icon | Transcript (ML, optional) |
+| Video | ffprobe (+ exiftool) | ffmpeg poster frame; **a playable MP4 copy only when browsers can't play the original** (below). Hardware acceleration later: VAAPI/QSV/NVENC. | Transcript (ML, optional) |
+| Audio | ffprobe / ID3 | Embedded cover art, or the type icon; a playable copy of WMA, ALAC and the like | Transcript (ML, optional) |
 | Text/Markdown/code/CSV/JSON | — | Rendered first lines as thumb (optional) | Raw text (size-capped) |
 | Archives (zip) | entry list | icon | entry names only |
 
@@ -513,6 +513,16 @@ The stages are independent jobs per blob, queued together when an upload finishe
 - **A missing tool doesn't fail jobs.** When the worker runs outside the image (`--WorkerOnHost`) and exiftool or Tesseract isn't installed, it logs one warning. Metadata jobs then store nothing, and text jobs keep a PDF's text layer and mark scans and photos as skipped. The next worker start queues those files again once the tool runs. The commands are `Worker:ExifToolCommand` and `Worker:TesseractCommand`, a name on PATH or a full path.
 - With text recognition turned off (an admin switch, default on), scans and photos are recorded as skipped; turning it on queues them at background priority. "Read all files again" re-queues every blob.
 - The stage replaces a blob's pages in one transaction, so a search never sees half a document.
+
+**Video and audio, as built (M2, decision 32):**
+- **The thumbnail stage probes** anything libvips doesn't take with `ffprobe` (JSON, 1-minute timeout), limited to an allowlist of media containers so images, subtitles and text are never treated as video. It stores `blob_media` per blob: container, duration, whether there is video and audio, the codecs, the picture size as shown (after the rotation a phone records), and the **playback plan**. Other stages read it too; transcription (M7) runs only for blobs with audio.
+- **The poster** is the most typical of 60 frames (`thumbnail=60`) from 10 % into the video (at most 60 s in), or from the start for short clips, turned upright, made into the usual WebP thumbnails. Audio files use their embedded cover art; without one they keep the type icon. Cover art is not a video stream for planning (`0:V:0`).
+- **The plan** counts only what every current browser plays, so Firefox on Linux gets the same answer as Safari: H.264 (8-bit 4:2:0), VP8, VP9 or AV1 video and AAC, MP3, Opus, Vorbis or FLAC audio. **Direct** files (H.264/AAC in MP4, VP9/Opus in WebM, MP3, FLAC, Ogg, WAV, AAC in M4A) are played from the original. **Remux** files have streams that play in the wrong container (H.264 in a `.mov`, `.mkv` or `.ts`): the streams are copied into MP4 in seconds, with no loss. **Transcode** files need converting (HEVC, 10-bit H.264, MPEG-4 Part 2, MPEG-2, WMV, AC-3, PCM in a video, WMA, ALAC).
+- **The copy** (the transcode stage) is one MP4 per blob at `previews/ab/{sha}/playable.mp4`: the first video and audio streams only, each copied when it plays and otherwise re-encoded with libx264 (`veryfast`, CRF 23, High profile, 4:2:0) and AAC (160 kb/s stereo, 192 kb/s for audio only), `+faststart` so it plays before it's fully loaded, and metadata stripped. Converted video fits within the admin's size (1080p by default, as a 1920 × 1920 box so portrait phone videos keep 1080 × 1920; 720p or the original's size). HDR (PQ, HLG) is tone-mapped to SDR with zscale; if that fails the copy is made without it. Progress is written every 3 s from `-progress` and read by the viewer; it sends no live notice per step, only when the copy is done. A file ffmpeg can't convert is recorded as failed, with ffmpeg's last error for admins, and not retried. One copy at a time by default (`Worker__TranscodeConcurrency`).
+- **When copies are made** is an admin setting: **in the background** (default: queued after upload at the upload's priority, and by the backfill), **when someone opens one** (the viewer asks, at interactive priority, and the first person waits), or **never** (the viewer offers Download). Opening a file whose copy is still waiting moves it ahead of background work. Admins see how many copies exist, their disk use, how many are still to make and how many failed, and can delete them all; they are made again as the setting says.
+- **HLS is not used.** One MP4 with range requests seeks fine in every browser, and is one file to clean up. Hardware encoding (VAAPI, QSV, NVENC) can be added behind the same stage.
+- **A missing ffmpeg doesn't fail jobs.** Outside the image, the worker logs one warning, and files libvips doesn't take are left without a thumbnail record, so the next worker start queues them again once ffmpeg runs. The commands are `Worker:FfmpegCommand` and `Worker:FfprobeCommand`.
+- **For other stages**, the worker's `FFmpeg` service (probe, frame, cover, and a runner with progress and a timeout) is the one way to call ffmpeg, so transcription can make its 16 kHz audio the same way.
 
 Licensing note: NetVips/libvips (LGPL), PDFium (BSD/Apache), PdfPig (Apache) and ffmpeg (LGPL build) are all fine. We avoid ImageSharp (split license) and MuPDF, which is AGPL; MuPDF would be acceptable since we are AGPL, but it isn't needed.
 
@@ -639,15 +649,16 @@ Prepared in M3, built as its own piece after it (decision 26).
 | Images | The original, or the WebP preview for HEIC/TIFF/SVG and huge images; zoom/pan; EXIF info panel later | Same; `expo-image` |
 | PDF | **pdf.js** with page thumbnails, search-in-document, OCR text-layer overlay for scans | `react-native-pdf` (or pdf.js in a WebView) |
 | Office | The server's **PDF rendition** in the PDF viewer | Same |
-| Video | `<video>` with HTTP Range; web rendition if the original isn't playable | `expo-video` |
-| Audio | `<audio>` player with cover art; playlist for a folder | `expo-audio` (background playback) |
+| Video | `<video>` with HTTP Range and the poster; the playable copy if the original isn't playable | `expo-video` |
+| Audio | `<audio>` player with cover art; playlist for a folder later | `expo-audio` (background playback) |
 | Text / code / Markdown | CodeMirror 6 (read-only) / formatted Markdown with a Source toggle | The same views as Expo DOM components (M5) |
 | Other | Metadata + download | Download / "open in…" |
 
 - **Built in M2 (web):** a full-screen viewer at `/files/{id}` for images (zoom steps from 50 % to 400 %, double-click, drag to pan), PDFs (pdf.js with range requests, one page at a time fitted to the width, Page Up/Down), text (the first 1 MiB; see below), and audio and video the browser can play. Everything else shows "No preview" with Download. Arrow keys or a swipe move between the files in the folder; Esc closes. PDF page thumbnails and free search in the document come later.
 - **Text and Markdown, built in M2 (web, decision 31):** text files open in a read-only **CodeMirror 6** editor, loaded only when one is opened: line numbers, folding, syntax highlighting with the language picked from the file name by `@codemirror/language-data` (each language is its own small chunk), and find with Ctrl+F or the top bar's search button. A top-bar toggle wraps long lines and is remembered per browser. Markdown (`text/markdown`) opens **formatted**, with a Formatted / Source toggle in the top bar; Source is the same editor. Markdown is GitHub-flavoured (tables, task lists, strikethrough, autolinks) through `react-markdown`, and raw HTML in a file stays text, so nothing in a file runs in our page. **Images from the web are not loaded** until "Load images" is pressed, so a remote server can't tell the file was opened, and then load with `no-referrer`. Web links open in a new tab with `noopener noreferrer`. Relative links and images (other files in the drive) show as text for now. Code blocks are highlighted by the same language data. Syntax colours are the `code-*` tokens (§16.2). Search hits are marked in both views.
+- **Video and audio, built in M2 (web, decision 32):** grid tiles of video and audio show the duration and the poster or cover art. The viewer plays the original when browsers can, and otherwise `GET /nodes/{id}/preview` serves the playable copy. While the copy is on its way the viewer says so, with its progress (polled every 3 s); opening the file asks for it (`POST /nodes/{id}/playable`), which in the "when opened" mode starts it and otherwise moves it ahead of background work. If no copy can be made, or copies are off, it says the file can't be played here and offers Download. Browsers that say they play HEVC (Safari, some Chromium builds) get the original first, for full quality, with `?original=true`, and fall back to the copy if it fails. Audio shows its cover art.
 - **Built in M3 (web):** opened from search, the viewer marks the hits like a highlighter: on PDF text pages from pdf.js' text layer (positions measured in the page's font), on scanned pages and photos at the recognized word boxes, and in text files inline. It opens on the best page, and a header stepper ("1 of 3") moves between pages with hits; closing the marks keeps the file open.
-- **`GET /nodes/{id}/preview` serves what the viewer shows** and is **not audited** (§18): the WebP preview if there is one, otherwise the original bytes inline, with range support. Markup (HTML, XML, SVG) is served as `text/plain`, with `nosniff` and a `sandbox` CSP, so a preview can never run in our origin. `GET /nodes/{id}/content` stays the audited download. Anyone who can view a file can read its bytes through the preview, so the audit log records downloads, not every way the bytes could leave.
+- **`GET /nodes/{id}/preview` serves what the viewer shows** and is **not audited** (§18): the WebP preview if there is one, then the playable copy of a video or audio file (unless `original=true`), otherwise the original bytes inline, all with range support. Markup (HTML, XML, SVG) is served as `text/plain`, with `nosniff` and a `sandbox` CSP, so a preview can never run in our origin. `GET /nodes/{id}/content` stays the audited download. Anyone who can view a file can read its bytes through the preview, so the audit log records downloads, not every way the bytes could leave.
 - **"Download original" is always available** to anyone with viewer rights (except via no-download links), and returns exact bytes.
 - Folders can be downloaded as a **streamed zip** (built on the fly, never staged on disk).
 
@@ -680,7 +691,7 @@ These are better in React DOM than through React Native Web.
 
 - **Layout:** a left nav rail, a top search bar and a content area. On mobile it collapses to a bottom nav.
   - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter. The phone bottom nav has no room for Trash, so it is in the account menu there.
-  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: search and text recognition, machine learning, virus scanning, trash and versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
+  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: search and text recognition, video and audio, machine learning, virus scanning, trash and versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
 - **Content area:** grid/list toggle, breadcrumbs, sorting, multi-select with a contextual action bar, right-click menu.
 - **Search** (M3, §13.3): the search bar sits in the top bar on every page except admin and settings, with name suggestions as you type and "Narrow it down" chips (PDFs, Images, In this folder). `/search` shows the results; on phones the bottom nav's Search opens it and focuses the bar, which then has a back arrow. The admin page's "Search and text recognition" section has the text recognition switch, progress (files read, waiting, in progress, failed) and "Read all files again".
 - **Starred and Recent** (decision 21):
@@ -1000,7 +1011,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 |---|---|
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
 | **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, folder uploads and live updates. |
-| **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media. the CodeMirror 6 text viewer and formatted Markdown (decision 31). **Still to come:** video posters and playable copies, audio cover art, and Office previews through Gotenberg. |
+| **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media, the CodeMirror 6 text viewer and formatted Markdown (decision 31), and video posters, audio cover art and playable copies with the admin's Video and audio section (decision 32). **Still to come:** Office previews through Gotenberg. |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). **Next, as its own piece:** tags with keyword rules (§13.4). |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
@@ -1041,7 +1052,8 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 25 | Live updates | 2026-10-25: one SignalR hub; notices sent with `pg_notify` inside the changing transaction and forwarded by a `LISTEN`ing server; thin notices (topics and an origin, no ids or names) that make clients refetch; owner's clients only until sharing; per-tab client id to skip echoes; refetch everything after a reconnect; viewer banners instead of swapping the open file; ended sessions sign their clients out; the thumbnail poll stays only as a fallback (§15.4) |
 | 26 | Search (M3) | 2026-10-25: pg_search BM25 over names (words + 3-grams) and page text indexed Swedish-stemmed, English-stemmed and unstemmed together, no language detection; text, metadata and automatic tags keyed by blob; Tesseract (`swe+eng`) in the worker for scans and photos, at background priority with an admin switch (default on), replaced by the ML service in M7; exiftool metadata searchable now, with `camera:` and `taken:`; snippets as text + offsets, one marking rule shared by server and clients; queries never logged. Tags planned as shared per file, sources user / rule / ml, automatic ones per blob and removable per file. Transcription waits for M7 (§6, §10, §13, §14) |
 | 31 | Text and Markdown viewers | 2026-10-25: text opens in a lazy, read-only CodeMirror 6 with the language from the file name, folding, find and a remembered wrap toggle; Markdown opens formatted (GFM via react-markdown, raw HTML as text) with a Formatted / Source toggle; web images load only after "Load images", with no referrer; relative links and images show as text for now; syntax colours are new `code-*` tokens. |
+| 32 | Video and audio | 2026-10-25: ffprobe in the thumbnail stage stores `blob_media` per blob and plans playback by what every current browser plays (direct / remux / transcode); posters from the most typical frame 10 % in, cover art for audio; one MP4 copy per blob only when needed, streams copied when they play, otherwise H.264/AAC at CRF 23 fitted to 1080p (admin: 720p, 1080p or original), HDR tone-mapped, `+faststart`, no HLS; copies made in the background by default, or when opened, or never; failures not retried; HEVC-capable browsers get the original first; progress polled, not pushed (§10.3, §14) |
 
 ## 26. Open questions
 
-1. **Video:** transcode to MP4 once, or generate HLS for large files? MP4-once is simpler and probably sufficient.
+1. ~~**Video:** transcode to MP4 once, or generate HLS for large files?~~ MP4 once, only when needed (decision 32).

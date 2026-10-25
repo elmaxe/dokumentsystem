@@ -1,4 +1,4 @@
-import type { AdminSettings, AdminUser, MlEndpointStatus, StorageReport, TextProgress } from "@dokument/api";
+import type { AdminSettings, AdminUser, CopyStats, MlEndpointStatus, StorageReport, TextProgress } from "@dokument/api";
 import { queryOptions } from "@tanstack/react-query";
 import { api } from "../api";
 import { unwrap } from "../files/drive";
@@ -32,6 +32,13 @@ export const textProgressQuery = queryOptions({
   refetchInterval: (query) => ((query.state.data?.waiting ?? 0) + (query.state.data?.running ?? 0) > 0 ? 5_000 : false),
 });
 
+/** Playable copies of videos, refreshed while some are still to make. */
+export const videoCopiesQuery = queryOptions({
+  queryKey: ["admin", "video-copies"],
+  queryFn: (): Promise<CopyStats> => unwrap(api.GET("/api/v1/admin/videos/copies")),
+  refetchInterval: (query) => ((query.state.data?.waiting ?? 0) > 0 ? 10_000 : false),
+});
+
 export const admin = {
   putStorage: (defaultQuotaBytes: number | null) =>
     unwrap(api.PUT("/api/v1/admin/settings/storage", { body: { defaultQuotaBytes } })),
@@ -43,6 +50,8 @@ export const admin = {
   putTextRecognition: (enabled: boolean) =>
     unwrap(api.PUT("/api/v1/admin/settings/text-recognition", { body: { enabled } })),
   rereadText: () => unwrap(api.POST("/api/v1/admin/text-recognition/reread")),
+  putVideos: (videos: AdminSettings["videos"]) => unwrap(api.PUT("/api/v1/admin/settings/videos", { body: videos })),
+  deleteVideoCopies: () => unwrap(api.DELETE("/api/v1/admin/videos/copies")),
   putScanner: (address: string | null) => unwrap(api.PUT("/api/v1/admin/settings/scanner", { body: { address } })),
   testMl: (url: string, apiKey: string | null) => unwrap(api.POST("/api/v1/admin/ml/test", { body: { url, apiKey } })),
   testScanner: (address: string) => unwrap(api.POST("/api/v1/admin/scanner/test", { body: { address } })),

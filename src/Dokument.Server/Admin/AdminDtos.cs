@@ -1,4 +1,5 @@
 using Dokument.Domain.Identity;
+using Dokument.Domain.Settings;
 using Dokument.Infrastructure.Settings;
 
 namespace Dokument.Server.Admin;
@@ -11,8 +12,13 @@ public sealed record AdminSettingsDto(
     MlSettingsDto Ml,
     ScannerSettingsDto Scanner,
     TextRecognitionDto TextRecognition,
+    VideoSettingsDto Videos,
     SignInInfo SignIn
 );
+
+/// <param name="Copies">When playable copies of videos browsers can't play are made (§14).</param>
+/// <param name="MaxHeight">The copies' size: 720 or 1080, or 0 to keep the original's. Applies to copies made from now on.</param>
+public sealed record VideoSettingsDto(VideoCopies Copies, int MaxHeight);
 
 /// <param name="DefaultQuotaBytes">Null means no limit.</param>
 public sealed record StorageSettingsDto(long? DefaultQuotaBytes);
