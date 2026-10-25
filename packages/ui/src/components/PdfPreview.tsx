@@ -9,6 +9,32 @@ import { Loading, MarkOverlay, ToolbarDivider, ViewerToolbar, ZoomControls, type
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
+// pdf.js fetches some data only when a file needs it: the wasm decoders for CCITT fax, JBIG2 and JPEG 2000 scans, the
+// standard fonts for text without embedded fonts, and CMaps for CJK text. Without them those pages draw blank. Each
+// file is bundled as its own asset and loaded on first use.
+const binaryData: Record<string, Record<string, () => Promise<string>>> = {
+  wasmUrl: byName(import.meta.glob<string>("../../node_modules/pdfjs-dist/wasm/*.wasm", { query: "?url", import: "default" })),
+  standardFontDataUrl: byName(
+    import.meta.glob<string>("../../node_modules/pdfjs-dist/standard_fonts/*.{pfb,ttf}", { query: "?url", import: "default" }),
+  ),
+  cMapUrl: byName(import.meta.glob<string>("../../node_modules/pdfjs-dist/cmaps/*.bcmap", { query: "?url", import: "default" })),
+};
+
+function byName<T>(files: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(Object.entries(files).map(([path, file]) => [path.slice(path.lastIndexOf("/") + 1), file]));
+}
+
+/** pdf.js's BinaryDataFactory, serving its data files from the bundle instead of from base URLs. */
+class BundledBinaryData {
+  async fetch({ kind, filename }: { kind: string; filename: string }): Promise<Uint8Array> {
+    const url = binaryData[kind]?.[filename];
+    if (!url) throw new Error(`pdf.js asked for ${kind} ${filename}, which isn't bundled.`);
+    const response = await fetch(await url());
+    if (!response.ok) throw new Error(`Couldn't load ${filename} (${response.status}).`);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+}
+
 /**
  * PDFs in the viewer (docs/design.md §14), with pdf.js. It reads the file with range requests, so a long PDF opens at
  * page 1 without downloading the rest. One page at a time, fitted to the window's width; Page Up and Page Down turn
@@ -42,7 +68,7 @@ export default function PdfPreview({
   const [width, setWidth] = useState(0);
 
   useEffect(() => {
-    const task = getDocument({ url: src, withCredentials: true });
+    const task = getDocument({ url: src, withCredentials: true, BinaryDataFactory: BundledBinaryData });
     task.promise.then(setDocument, () => setDocument("failed"));
     return () => void task.destroy();
   }, [src]);
