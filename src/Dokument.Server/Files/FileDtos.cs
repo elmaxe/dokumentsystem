@@ -1,6 +1,7 @@
 using Dokument.Domain.Files;
 using Dokument.Domain.Previews;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Jobs;
 
 namespace Dokument.Server.Files;
 
@@ -10,6 +11,10 @@ namespace Dokument.Server.Files;
 /// <param name="Thumbnail">Whether <c>/nodes/{id}/thumbnail</c> has an image yet. Pending means the worker is on it; poll or wait.</param>
 /// <param name="Contents">How many files and folders a folder holds, at any depth. Null for files.</param>
 /// <param name="Starred">Whether the person asking starred it. Stars are each person's own.</param>
+/// <param name="Processing">
+/// The steps the worker still has to do for the current version, in pipeline order; empty when it is done. Files with
+/// any show a "Processing" badge. See <c>/nodes/{id}/processing</c> for every step.
+/// </param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -26,7 +31,8 @@ public sealed record NodeDto(
     int? VersionNumber,
     ThumbnailState Thumbnail,
     FolderCounts? Contents,
-    bool Starred
+    bool Starred,
+    List<ActiveStepDto> Processing
 )
 {
     public static NodeDto From(
@@ -34,7 +40,8 @@ public sealed record NodeDto(
         IReadOnlyDictionary<Guid, string> ownerNames,
         IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails,
         IReadOnlyDictionary<Guid, FolderContents> folders,
-        IReadOnlySet<Guid> starred
+        IReadOnlySet<Guid> starred,
+        IReadOnlyDictionary<ContentHash, List<ActiveStep>> processing
     ) =>
         new(
             node.Id,
@@ -56,9 +63,17 @@ public sealed record NodeDto(
                 ? thumbnails.GetValueOrDefault(version.BlobHash, ThumbnailState.None)
                 : ThumbnailState.None,
             contents is null ? null : new FolderCounts(contents.Files, contents.Folders),
-            starred.Contains(node.Id)
+            starred.Contains(node.Id),
+            node.CurrentVersion is { } current
+            && processing.TryGetValue(current.BlobHash, out var steps)
+                ? steps.Select(s => new ActiveStepDto(JobKinds.Of(s.Type), s.Running)).ToList()
+                : []
         );
 }
+
+/// <summary>A processing step that hasn't finished yet.</summary>
+/// <param name="Running">False while it waits its turn.</param>
+public sealed record ActiveStepDto(JobKind Step, bool Running);
 
 /// <summary>What a folder holds, at any depth.</summary>
 public sealed record FolderCounts(int Files, int Folders);

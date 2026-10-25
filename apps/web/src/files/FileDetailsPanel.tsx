@@ -2,7 +2,9 @@ import { contentUrl, type PathEntry } from "@dokument/api";
 import { DetailsPanel, useSnackbar, type DetailsTab, type FileVersion } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { download, drive, errorMessage, invalidateFolders, pathLabel, versionsQuery, type Item } from "./drive";
+import { sessionQuery } from "../api";
+import { jobs } from "../admin/jobsApi";
+import { download, drive, errorMessage, invalidateFolders, pathLabel, processingQuery, versionsQuery, type Item } from "./drive";
 
 type Props = {
   item: Item;
@@ -49,6 +51,18 @@ export function FileDetailsPanel({
       ),
   });
 
+  const processing = useQuery({ ...processingQuery(item.id, item.node.currentVersionId), enabled: isFile && tab === "info" });
+  const admin = useQuery(sessionQuery).data?.user.role === "admin";
+  const retry = async (jobId: string) => {
+    try {
+      await jobs.retry(jobId);
+      await queryClient.invalidateQueries({ queryKey: ["processing", item.id] });
+      toast(t("processing.retried"));
+    } catch (error) {
+      toast(errorMessage(t, error));
+    }
+  };
+
   const onVersion = async (action: string, version: FileVersion & { id: string }) => {
     try {
       if (action === "download") {
@@ -86,6 +100,7 @@ export function FileDetailsPanel({
       onClose={onClose}
       onManageAccess={() => toast(t("common.notYet"))}
       onStarChange={onStarChange}
+      processing={processing.data && { steps: processing.data.steps, onRetry: admin ? (id) => void retry(id) : undefined }}
       versions={{
         canDelete: false,
         versions: versions.data ?? [],

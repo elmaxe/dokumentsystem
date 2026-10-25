@@ -7,6 +7,7 @@ import { useFileSelection } from "../lib/useFileSelection";
 import { useCoarsePointer } from "../lib/usePointer";
 import { IconButton } from "./Button";
 import { FileFlags } from "./FileFlags";
+import { ProcessingBadge } from "./Processing";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { ActionContextMenu, ActionMenu, type MenuAction } from "./Menu";
@@ -115,6 +116,9 @@ function Tile({ item, selected, itemProps, menuActions, onAction, meta }: TilePr
                   aria-hidden
                   className="absolute inset-0 animate-shimmer bg-linear-100 from-transparent from-30% via-surface-container-lowest/60 to-transparent to-70%"
                 />
+              )}
+              {!!item.processing?.length && (
+                <ProcessingBadge steps={item.processing} className="absolute bottom-2 left-2" />
               )}
               {item.duration && (
                 <span className="tabular absolute right-2 bottom-2 rounded-xs bg-scrim px-1 text-label-sm text-white">
