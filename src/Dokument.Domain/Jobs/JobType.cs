@@ -15,6 +15,9 @@ public sealed record JobType
     /// <summary>Searchable text for one blob: the text layer, then recognition for scans and photos (§10.2, §13.2).</summary>
     public static readonly JobType Text = new("text");
 
+    /// <summary>The types the worker runs, in the order the admin Jobs page shows them (§10.1).</summary>
+    public static readonly IReadOnlyList<JobType> All = [Thumbnail, Metadata, Text];
+
     private JobType(string name) => Name = name;
 
     public string Name { get; }

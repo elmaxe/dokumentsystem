@@ -31,6 +31,9 @@ public sealed class Job
     public DateTimeOffset? LockedUntil { get; private set; }
     public string? LastError { get; private set; }
     public DateTimeOffset CreatedAt { get; init; }
+
+    /// <summary>When the current or last attempt was claimed, for "running for 0:42" on the admin Jobs page.</summary>
+    public DateTimeOffset? StartedAt { get; private set; }
     public DateTimeOffset? FinishedAt { get; private set; }
 
     /// <summary>

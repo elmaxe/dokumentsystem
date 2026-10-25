@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dokument.Domain.Identity;
+using Dokument.Domain.Jobs;
 using Dokument.Domain.Settings;
 
 namespace Dokument.Infrastructure.Settings;
@@ -88,5 +89,26 @@ public static class SettingKeys
         TextRecognitionSettings.Default,
         s => new JsonObject { ["enabled"] = s.Enabled },
         json => new TextRecognitionSettings(json.GetProperty("enabled").GetBoolean())
+    );
+
+    /// <summary>
+    /// Read by the claim query itself (<c>value-&gt;'paused'</c>), so a pause reaches every worker at once. Keep the
+    /// shape in step with <see cref="Infrastructure.Jobs.JobQueue.ClaimAsync"/>.
+    /// </summary>
+    public static readonly SettingKey<JobSettings> Jobs = new(
+        "jobs",
+        JobSettings.Default,
+        s => new JsonObject
+        {
+            ["paused"] = new JsonArray(
+                s.Paused.Select(t => t.Name).Order().Select(n => (JsonNode)n!).ToArray()
+            ),
+        },
+        json => new JobSettings(
+            json.GetProperty("paused")
+                .EnumerateArray()
+                .Select(t => JobType.From(t.GetString()!))
+                .ToHashSet()
+        )
     );
 }

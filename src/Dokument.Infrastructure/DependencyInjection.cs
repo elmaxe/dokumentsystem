@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddScoped<StarService>();
         services.AddScoped<RecentFiles>();
         services.AddScoped<JobQueue>();
+        services.AddScoped<JobMonitor>();
         services.AddSingleton<DerivedStore>();
         services.AddScoped<PreviewService>();
         services.AddScoped<ContentService>();

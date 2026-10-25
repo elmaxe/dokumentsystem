@@ -10,10 +10,11 @@ export const places: { id: Place; icon: string; key: string }[] = [
 ];
 
 /** The admin pages (docs/design.md §4.3). */
-export type AdminPlace = "people" | "storage" | "settings";
+export type AdminPlace = "people" | "storage" | "jobs" | "settings";
 
 export const adminPlaces: { id: AdminPlace; icon: string; key: string }[] = [
   { id: "people", icon: "group", key: "admin.nav.people" },
   { id: "storage", icon: "hard_drive", key: "admin.nav.storage" },
+  { id: "jobs", icon: "pending_actions", key: "admin.nav.jobs" },
   { id: "settings", icon: "settings", key: "admin.nav.settings" },
 ];

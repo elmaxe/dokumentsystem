@@ -1,5 +1,6 @@
 using Dokument.Domain.Files;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Server.Auth;
@@ -9,12 +10,13 @@ using Microsoft.EntityFrameworkCore;
 namespace Dokument.Server.Files;
 
 /// <summary>
-/// Turns nodes into <see cref="NodeDto"/>s, looking up owner names, thumbnail states, folder sizes and the signed-in
-/// person's stars for the whole batch at once.
+/// Turns nodes into <see cref="NodeDto"/>s, looking up owner names, thumbnail states, unfinished processing steps,
+/// folder sizes and the signed-in person's stars for the whole batch at once.
 /// </summary>
 public sealed class NodeDtoMapper(
     DokumentDbContext db,
     PreviewService previews,
+    JobMonitor jobs,
     DriveService drive,
     StarService stars,
     IHttpContextAccessor http
@@ -26,10 +28,9 @@ public sealed class NodeDtoMapper(
         var owners = await db
             .Users.Where(u => ownerIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
-        var thumbnails = await previews.ThumbnailStatesAsync(
-            nodes.Select(n => n.CurrentVersion?.BlobHash).OfType<ContentHash>().ToList(),
-            ct
-        );
+        var hashes = nodes.Select(n => n.CurrentVersion?.BlobHash).OfType<ContentHash>().ToList();
+        var thumbnails = await previews.ThumbnailStatesAsync(hashes, ct);
+        var processing = await jobs.ActiveAsync(hashes, ct);
         var folders = await drive.FolderContentsAsync(nodes, ct);
         var starred =
             http.HttpContext?.User.Identity?.IsAuthenticated == true
@@ -39,7 +40,9 @@ public sealed class NodeDtoMapper(
                     ct
                 )
                 : [];
-        return nodes.Select(n => NodeDto.From(n, owners, thumbnails, folders, starred)).ToList();
+        return nodes
+            .Select(n => NodeDto.From(n, owners, thumbnails, folders, starred, processing))
+            .ToList();
     }
 
     public async Task<NodeDto> MapAsync(Node node, CancellationToken ct) =>
