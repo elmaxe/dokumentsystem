@@ -14,7 +14,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Dokument.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(DokumentDbContext))]
-    [Migration("20261025100709_BlobsPerOwner")]
+    [Migration("20261025101236_BlobsPerOwner")]
     partial class BlobsPerOwner
     {
         /// <inheritdoc />
@@ -432,6 +432,11 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("quota_bytes");
 
+                    b.Property<string>("QuotaSource")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("quota_source");
+
                     b.Property<bool>("QuotaUnlimited")
                         .HasColumnType("boolean")
                         .HasColumnName("quota_unlimited");
@@ -444,6 +449,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("role");
+
+                    b.Property<bool>("ShowSeconds")
+                        .HasColumnType("boolean")
+                        .HasColumnName("show_seconds");
 
                     b.Property<long>("UsedBytes")
                         .HasColumnType("bigint")
