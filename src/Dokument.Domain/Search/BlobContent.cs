@@ -25,7 +25,7 @@ public enum ContentStatus
 public sealed class BlobContent
 {
     /// <summary>Bump when extraction gets better, so every blob is read again in the background.</summary>
-    public const int CurrentPipelineVersion = 2;
+    public const int CurrentPipelineVersion = 1;
 
     public required ContentHash BlobHash { get; init; }
     public required ContentStatus Status { get; set; }
