@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.21** · Last updated: 2026-10-25
+> Status: **Draft v0.25** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -280,7 +280,9 @@ blob_metadata(blob_hash PK, pipeline_version, taken_at NULL, camera NULL, durati
 blob_contents(blob_hash PK, status {ready|empty|unsupported|failed}, pipeline_version, page_count NULL,
               ocr_skipped, ocr_engine NULL, updated_at)   -- what the text stage made of a blob
 content_pages(id, blob_hash, page_no, source {text|ocr|metadata|transcript}, text,
-              words jsonb NULL,                  -- OCR word boxes, [[x, y, w, h, "word"], …] as page fractions
+              words jsonb NULL,                  -- OCR word boxes, [[x, y, w, h, "word"], …] as page fractions;
+                                                 -- for transcripts, word times [[start_ms, end_ms, "word"], …]
+              start_ms NULL, end_ms NULL,        -- transcript pages only: the stretch of sound the page covers
               UNIQUE (blob_hash, page_no))       -- BM25-indexed; page 0 is the metadata text
 embeddings(blob_hash, page_no NULL, model, vector vchord) -- optional (M7)
 
@@ -473,7 +475,7 @@ upload complete (or the backfill)
    │             └─► tag rules (keyword rules → blob_tags)    planned (§13.4)
    ├─► transcode (video/audio only if not browser-playable)
    ├─► embed     (optional, ML)
-   └─► transcribe (optional, ML, M7; audio/video → timed transcript pages)
+   └─► transcribe (optional, ML; audio/video → timed transcript pages, §11.1)  planned, after the M2 video work
 ```
 
 The stages are independent jobs per blob, queued together when an upload finishes; each detects the format from the bytes itself.
@@ -485,8 +487,8 @@ The stages are independent jobs per blob, queued together when an upload finishe
 | JPEG/PNG/WebP/GIF/HEIC/AVIF/TIFF/SVG (RAW later) | exiftool | **NetVips** (libvips + libheif) → WebP thumbs, plus a WebP preview when the browser can't show the original | OCR (Tesseract, ML in M7) |
 | PDF | exiftool | **PDFium** renders page 1 for the thumbs; the viewer renders pages with pdf.js | PDFium text layer per page → OCR of pages without one |
 | DOCX/XLSX/PPTX/ODF/RTF | exiftool | **Gotenberg** (LibreOffice) → PDF rendition → PDFium | The document XML read straight from the zip (one page per slide); RTF and fallbacks from the PDF rendition later |
-| Video | ffprobe | ffmpeg poster frame; **web-playable rendition only if needed** (H.264/AAC MP4, or HLS for large files). Hardware acceleration: VAAPI/QSV/NVENC. | Transcript (ML, optional) |
-| Audio | ffprobe / ID3 | Embedded cover art, or a generic icon | Transcript (ML, optional) |
+| Video | ffprobe | ffmpeg poster frame; **web-playable rendition only if needed** (H.264/AAC MP4, or HLS for large files). Hardware acceleration: VAAPI/QSV/NVENC. | Transcript (ML, optional, §11.1) |
+| Audio | ffprobe / ID3 | Embedded cover art, or a generic icon | Transcript (ML, optional, §11.1) |
 | Text/Markdown/code/CSV/JSON | — | Rendered first lines as thumb (optional) | Raw text (size-capped) |
 | Archives (zip) | entry list | icon | entry names only |
 
@@ -547,10 +549,28 @@ Modeled on Immich's `immich-machine-learning`.
 - **Endpoints (v1):**
   - `POST /ocr`: image → lines with bounding boxes, confidence and detected language. Uses PaddleOCR/RapidOCR ONNX models, with Tesseract as a lightweight engine.
   - `POST /embed/text` and `POST /embed/image`: vectors, from CLIP-style multilingual models for text↔image search.
-  - `POST /transcribe` (later): Whisper (faster-whisper) → timed segments.
+  - `POST /transcribe`: Whisper (faster-whisper) → timed segments, streamed (§11.1). The first endpoint built, ahead of the rest of M7 (decision 30).
   - `GET /health` and `GET /models`.
 - **Results are stored with `engine` + `model` + `version`**, so changing the model triggers re-processing.
 - **No-ML fallback:** the worker image includes **Tesseract** (`swe` + `eng`) for basic OCR, built in M3 (§10.3). A server without an ML service still gets searchable scans.
+
+### 11.1 Transcription (speech to text)
+
+Planned as the first piece of the ML image, built right after the M2 video/audio work, which brings ffmpeg and ffprobe to the worker (decision 30). Mockups: the "Transcription" canvas.
+
+- **The ML side:** the image starts as FastAPI + **faster-whisper** (CTranslate2 rather than ONNX Runtime; Whisper runs best there) with Silero VAD, so music and silence are skipped instead of hallucinated over. `GET /health` and `GET /models` report the loaded model and whether a GPU is used.
+  - `POST /transcribe` takes the audio and an optional `start_ms`, and streams segments back as NDJSON (`{start_ms, end_ms, text, words: [[start_ms, end_ms, "word"], …]}`), then a final line with the detected language and the model.
+- **Languages:** Whisper detects the language per file, limited to Swedish and English (the likelier of the two is used), and the result is stored with the transcript. The index is already Swedish- and English-stemmed, so search needs nothing new.
+- **Models:** by default the best the service can run: `large-v3-turbo` on a GPU, `small` on a CPU. Admins can pick a size, or **KB-Whisper** (the Swedish National Library's fine-tune) for better Swedish.
+- **The worker stage:** a blob whose ffprobe shows an audio stream gets a `transcribe` job at background priority (videos too, unless an admin turns that off). ffmpeg makes 16 kHz mono Opus (about 10 MB an hour), and that is sent, never the original.
+  - **Long files:** the job type gets a long timeout, and each streamed segment renews the lease. Pages are written as they arrive, so an interrupted job resumes from the last stored time instead of starting over.
+  - **No speech** (under a few seconds after VAD) is stored as a result ("no speech found") and isn't retried.
+- **Storage:** segments are grouped into transcript pages of about a minute, cut at pauses: `content_pages` with `source = transcript`, `start_ms`/`end_ms`, and word times in `words`. Like all text, a transcript is keyed by blob, stored with `engine` + `model` + `version`, and the per-version corrections of decision 28 apply to it (fix a misheard name).
+- **Without an ML service:** no transcribe jobs are queued, so nothing piles up; adding an ML URL queues every recording at background priority. With URLs set but none healthy, jobs wait (as above). Whisper isn't added to the worker image: it would add hundreds of MB and hours of NAS CPU, and the NAS can run the ML image itself (`--profile ml`) with the small model.
+- **Admin › Settings › Machine learning:** a "Speech to text" section with an on/off switch (on), the model, "Transcribe the sound in videos too" (on), and the queue's size in recordings and hours. With no service added it says that speech to text needs one.
+- **Search:** a transcript hit shows "At 12:34 · In spoken words" instead of a page number, with the usual snippet (§13.3). `GET /nodes/{id}/matches` returns times instead of boxes for transcript pages.
+- **Viewer:** opened from a hit, the player starts 10 s before it, so the sentence is heard from its start. A transcript panel (a sheet on phones) lists the lines with times, marks the hits, follows along while playing, seeks when a line is clicked and has its own find box; the timeline shows a tick for each hit, and the header stepper moves between them. Videos get **captions** generated from the transcript as WebVTT (`GET /nodes/{id}/captions.vtt`), with a CC toggle.
+- **Details:** a Transcript section (word count, the start, Open transcript, Correct text, download as .txt or .vtt), the detected language under Details, and a "Speech to text" row under Processing (running with the time reached, waiting for the service, no speech found, off on this server).
 
 ---
 
@@ -617,7 +637,7 @@ Built in M3 (decision 26). Two BM25 indexes, created in the migration with pg_se
 - **Privacy:** queries are never logged, audited or sent to telemetry (§22.1), and recent searches aren't stored on the server.
 - **Hybrid search (optional, M7):** BM25 results and vector results are merged with reciprocal rank fusion. Examples: "kvitto från IKEA" finds the receipt even when the OCR is poor, and "beach sunset" finds photos.
 - **Scope:** search *always* applies the same effective-permission predicate as browsing (§9): the candidates are joined with `NodeAccess`, so only files the person could open are found or counted, and `/matches` answers 404 for anyone else's file.
-- **Sound and speech:** audio tags (title, artist, album, comment) are searchable now through the metadata stage. Spoken words wait for transcription in M7: Whisper segments become `transcript` pages with times, and opening a hit plays from there.
+- **Sound and speech:** audio tags (title, artist, album, comment) are searchable now through the metadata stage. Spoken words come with transcription (§11.1, decision 30): Whisper segments become `transcript` pages with times, and opening a hit plays from there.
 
 ### 13.4 Tags (planned)
 
@@ -640,7 +660,7 @@ Prepared in M3, built as its own piece after it (decision 26).
 | PDF | **pdf.js** with page thumbnails, search-in-document, OCR text-layer overlay for scans | `react-native-pdf` (or pdf.js in a WebView) |
 | Office | The server's **PDF rendition** in the PDF viewer | Same |
 | Video | `<video>` with HTTP Range; web rendition if the original isn't playable | `expo-video` |
-| Audio | `<audio>` player with cover art; playlist for a folder | `expo-audio` (background playback) |
+| Audio | `<audio>` player with cover art; playlist for a folder; transcript panel with timed hits (§11.1) | `expo-audio` (background playback) |
 | Text / code / Markdown | CodeMirror (read-only) / rendered Markdown | Rendered text |
 | Other | Metadata + download | Download / "open in…" |
 
@@ -1003,7 +1023,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
-| **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback, transcription of audio and video into searchable, timed text |
+| **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback. Transcription of audio and video into searchable, timed text is pulled ahead as the ML image's first piece, right after the M2 video work (§11.1, decision 30) |
 | **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders) |
 
 ---
@@ -1038,6 +1058,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 24 | Folder uploads | 2026-10-25: one `POST /api/v1/folders/tree` makes all the folders first; a taken top-folder name asks Merge (default) / Keep both / Cancel, and merged folders reuse subfolders with the same names; the whole folder's size is checked against the quota before anything is made; hashing and the duplicate check run in batches so uploading starts early, with one duplicate and one name-clash question per folder; one tray row per folder; OS junk files skipped silently (§8.1) |
 | 25 | Live updates | 2026-10-25: one SignalR hub; notices sent with `pg_notify` inside the changing transaction and forwarded by a `LISTEN`ing server; thin notices (topics and an origin, no ids or names) that make clients refetch; owner's clients only until sharing; per-tab client id to skip echoes; refetch everything after a reconnect; viewer banners instead of swapping the open file; ended sessions sign their clients out; the thumbnail poll stays only as a fallback (§15.4) |
 | 26 | Search (M3) | 2026-10-25: pg_search BM25 over names (words + 3-grams) and page text indexed Swedish-stemmed, English-stemmed and unstemmed together, no language detection; text, metadata and automatic tags keyed by blob; Tesseract (`swe+eng`) in the worker for scans and photos, at background priority with an admin switch (default on), replaced by the ML service in M7; exiftool metadata searchable now, with `camera:` and `taken:`; snippets as text + offsets, one marking rule shared by server and clients; queries never logged. Tags planned as shared per file, sources user / rule / ml, automatic ones per blob and removable per file. Transcription waits for M7 (§6, §10, §13, §14) |
+| 30 | Transcription ahead of M7 | 2026-10-25: speech to text is built as the ML image's first piece, right after the M2 video/audio work (it needs ffmpeg in the worker), superseding decision 26's "waits for M7". faster-whisper with VAD behind `POST /transcribe`, streamed segments; Swedish/English detected per file; 16 kHz Opus sent, never originals; timed transcript pages (`start_ms`/`end_ms`, word times); no jobs without an ML URL, waiting when it's down; no Whisper in the worker image; hits play from 10 s before, transcript panel, captions from the transcript (§6, §10.2, §11.1, §13.3) |
 
 ## 26. Open questions
 
