@@ -155,6 +155,134 @@ public sealed class DriveService(
         return folder;
     }
 
+    /// <summary>
+    /// The folders of a folder upload (§8.1), created in one go before any file is sent. Each path is relative to
+    /// <paramref name="parentId"/>, its names separated by "/"; the folders above a path are made too. A top folder whose
+    /// name is taken follows <paramref name="onConflict"/>; below a merged folder, folders with the same names are reused.
+    /// Nothing is created unless <paramref name="bytes"/>, the size of all the files, fits in the owner's quota.
+    /// </summary>
+    public async Task<List<TreeFolder>> CreateFolderTreeAsync(
+        Actor actor,
+        Guid? parentId,
+        IReadOnlyCollection<string> paths,
+        FolderConflictPolicy onConflict,
+        long bytes,
+        CancellationToken ct = default
+    )
+    {
+        var requested = paths.Select(p => (Path: p, Names: ParsePath(p))).ToList();
+        var parent = await GetFolderAsync(actor, parentId, ct);
+        var ownerId = parent?.OwnerId ?? actor.UserId;
+        await EnsureQuotaFitsAsync(ownerId, bytes, ct);
+
+        // Every folder named, and the folders above them, shallowest first, keyed by their case-insensitive path.
+        var all = requested
+            .SelectMany(r => Enumerable.Range(1, r.Names.Count).Select(n => r.Names[..n]))
+            .DistinctBy(PathKey)
+            .OrderBy(names => names.Count)
+            .ToList();
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var now = time.GetUtcNow();
+        var made = new Dictionary<string, (Node Folder, bool Created)>();
+        foreach (var names in all)
+        {
+            var (under, underCreated) =
+                names.Count == 1 ? (parent, false) : made[PathKey(names[..^1])];
+            var name = names[^1];
+            Node? folder = null;
+
+            // A folder made just now has nothing in it to clash with.
+            if (
+                !underCreated && await FindByNameAsync(ownerId, under?.Id, name, ct) is { } existing
+            )
+            {
+                switch (names.Count == 1 ? onConflict : FolderConflictPolicy.Merge)
+                {
+                    case FolderConflictPolicy.Fail:
+                        throw NameTaken(existing);
+                    case FolderConflictPolicy.Merge when existing.IsFolder:
+                        folder = existing;
+                        break;
+                    default:
+                        name = await FreeNameAsync(ownerId, under?.Id, name, ct);
+                        break;
+                }
+            }
+
+            if (folder is null)
+            {
+                folder = new Node
+                {
+                    OwnerId = ownerId,
+                    Kind = NodeKind.Folder,
+                    Name = name,
+                    CreatedAt = now,
+                    ModifiedAt = now,
+                };
+                folder.PlaceUnder(under);
+                db.Nodes.Add(folder);
+                audit.Add(actor, AuditActions.FolderCreate, folder.Id);
+                made[PathKey(names)] = (folder, true);
+            }
+            else
+            {
+                made[PathKey(names)] = (folder, false);
+            }
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException e)
+            when (e.InnerException
+                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
+            )
+        {
+            db.ChangeTracker.Clear();
+            throw new DriveException(
+                DriveError.NameTaken,
+                "Something with one of these names was added at the same time. Try again."
+            );
+        }
+
+        if (made.Values.Any(m => m.Created))
+        {
+            await live.NotifyAsync(ownerId, LiveTopics.Files, ct);
+        }
+
+        await tx.CommitAsync(ct);
+
+        // What merged folders already hold, so the client can ask about name clashes before uploading.
+        var reused = made.Values.Where(m => !m.Created).Select(m => (Guid?)m.Folder.Id).ToList();
+        var held = (
+            await db
+                .Nodes.AsNoTracking()
+                .Where(n =>
+                    n.OwnerId == ownerId && reused.Contains(n.ParentId) && n.TrashedAt == null
+                )
+                .Select(n => new { n.ParentId, n.Name })
+                .ToListAsync(ct)
+        ).ToLookup(n => n.ParentId!.Value, n => n.Name.Value);
+
+        return requested
+            .Select(r =>
+            {
+                var (folder, created) = made[PathKey(r.Names)];
+                return new TreeFolder(r.Path, folder, created, [.. held[folder.Id]]);
+            })
+            .ToList();
+    }
+
+    private static List<NodeName> ParsePath(string path) =>
+        string.IsNullOrEmpty(path)
+            ? throw new DriveException(DriveError.InvalidRequest, "A folder path is empty.")
+            : path.Split('/').Select(ParseName).ToList();
+
+    private static string PathKey(List<NodeName> names) =>
+        string.Join('/', names.Select(n => n.Key));
+
     public async Task<Node> RenameAsync(
         Actor actor,
         Guid id,
@@ -670,6 +798,34 @@ public sealed class DriveService(
         }
     }
 
+    /// <summary>Checks, without reserving anything, that <paramref name="bytes"/> more would fit in the owner's quota.</summary>
+    internal async Task EnsureQuotaFitsAsync(Guid ownerId, long bytes, CancellationToken ct)
+    {
+        if (bytes <= 0)
+        {
+            return;
+        }
+
+        var defaultQuota = (await settings.GetAsync(SettingKeys.Storage, ct)).DefaultQuota.Bytes;
+        var fits = await db.Users.AnyAsync(
+            u =>
+                u.Id == ownerId
+                && (
+                    u.QuotaUnlimited
+                    || (u.QuotaBytes ?? defaultQuota) == null
+                    || u.UsedBytes + u.ReservedBytes + bytes <= (u.QuotaBytes ?? defaultQuota)
+                ),
+            ct
+        );
+        if (!fits)
+        {
+            throw new DriveException(
+                DriveError.QuotaExceeded,
+                "There isn't enough storage left for these files."
+            );
+        }
+    }
+
     internal Task SettleQuotaAsync(
         Guid ownerId,
         long reservedBytes,
@@ -778,6 +934,10 @@ internal sealed record NewFile(
     DateTimeOffset? ClientModifiedAt,
     NameConflictPolicy OnConflict
 );
+
+/// <summary>A folder of a folder upload: the one made for <see cref="Path"/>, or the existing one it was merged into.</summary>
+/// <param name="ExistingNames">For a folder that was already there, the names of what it holds.</param>
+public sealed record TreeFolder(string Path, Node Folder, bool Created, List<string> ExistingNames);
 
 public sealed record AddedFile(Node Node, FileVersion Version, bool Created, bool NewVersion);
 

@@ -54,6 +54,13 @@ public sealed class LiveTests(PostgresFixture postgres)
         renamed.EnsureSuccessStatusCode();
         Assert.Equal(["files"], (await alice.NextChangeAsync()).Topics);
 
+        var tree = await alice.Browser.PostAsJsonAsync(
+            "/api/v1/folders/tree",
+            new FolderTreeRequest(folder.Id, ["2025", "2025/Mars"])
+        );
+        tree.EnsureSuccessStatusCode();
+        Assert.Equal(["files"], (await alice.NextChangeAsync()).Topics);
+
         var file = await UploadAsync(alice.Browser, "lease.pdf", Bytes(100), folder.Id);
         Assert.Equal(["files", "storage"], (await alice.NextChangeAsync()).Topics);
 

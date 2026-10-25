@@ -18,6 +18,8 @@ export type DuplicateDialogProps = {
   /** How many files were picked. One file gets the single-file wording and buttons. */
   total: number;
   duplicates: DuplicateMatch[];
+  /** For a folder upload: the folder's name, so the title says where the files are from. */
+  folder?: string;
   onSkip: () => void;
   onUploadAll: () => void;
   /** Batch: review them one by one. Single file: open the existing copy. */
@@ -34,6 +36,7 @@ export function DuplicateDialog({
   onOpenChange,
   total,
   duplicates,
+  folder,
   onSkip,
   onUploadAll,
   onSecondary,
@@ -53,7 +56,9 @@ export function DuplicateDialog({
       title={
         single
           ? t("duplicates.singleTitle")
-          : t("duplicates.batchTitle", { count: duplicates.length, total })
+          : folder
+            ? t("duplicates.batchTitleIn", { count: duplicates.length, total, folder })
+            : t("duplicates.batchTitle", { count: duplicates.length, total })
       }
       footer={
         single ? (

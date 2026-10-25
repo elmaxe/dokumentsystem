@@ -27,6 +27,7 @@ import { useLiveOffline, useLiveUpdates } from "./live";
 import { useAccountSettings } from "./settings/account";
 import { NameDialog } from "./files/dialogs";
 import { drive, errorMessage, folderQuery, invalidateFolders, nameKey, storageQuery } from "./files/drive";
+import { canPickFolders, fromDrop, fromFolderInput } from "./files/folderPicking";
 import { UploadProvider } from "./files/uploads";
 import { useUploads } from "./files/uploadsContext";
 
@@ -73,21 +74,36 @@ function Shell() {
   const [dropping, setDropping] = useState(false);
   const [creating, setCreating] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
   const target = inFiles ? folderId : null;
 
   const newActions: MenuAction[] = [
     { id: "folder", icon: "create_new_folder", label: t("files.newFolder") },
     { id: "upload", icon: "upload_file", label: t("files.uploadFiles"), separatorBefore: true },
+    ...(canPickFolders() ? [{ id: "uploadFolder", icon: "drive_folder_upload", label: t("files.uploadFolder") }] : []),
   ];
-  const onNew = (id: string) => (id === "upload" ? fileInput.current?.click() : setCreating(true));
+  const onNew = (id: string) =>
+    id === "upload"
+      ? fileInput.current?.click()
+      : id === "uploadFolder"
+        ? folderInput.current?.click()
+        : setCreating(true);
 
-  const pick = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    uploads.start(Array.from(files), {
-      folderId: target,
-      folderName: inFiles ? folderName : t("nav.myFiles"),
-      existingNames: new Set((inFiles ? (listing.data?.items ?? []) : []).map((item) => nameKey(item.name))),
-    });
+  const uploadTarget = () => ({
+    folderId: target,
+    folderName: inFiles ? folderName : t("nav.myFiles"),
+    existingNames: new Set((inFiles ? (listing.data?.items ?? []) : []).map((item) => nameKey(item.name))),
+  });
+
+  const pick = (files: File[]) => {
+    if (files.length === 0) return;
+    uploads.start(files, uploadTarget());
+    setTrayCollapsed(false);
+  };
+
+  const pickFolders = (folders: ReturnType<typeof fromFolderInput>) => {
+    if (folders.length === 0) return;
+    uploads.startFolders(folders, uploadTarget());
     setTrayCollapsed(false);
   };
 
@@ -104,7 +120,11 @@ function Shell() {
         onDrop: (event: DragEvent) => {
           event.preventDefault();
           setDropping(false);
-          pick(event.dataTransfer.files);
+          // Folders are read through the drop's entries, which only exist during the event.
+          void fromDrop(event.dataTransfer).then(({ folders, files }) => {
+            pick(files);
+            pickFolders(folders);
+          });
         },
       }
     : {};
@@ -197,7 +217,7 @@ function Shell() {
         )}
       </div>
 
-      {inFiles && uploads.items.length === 0 && (
+      {inFiles && uploads.items.length + uploads.groups.length === 0 && (
         <ActionMenu
           actions={newActions}
           onAction={onNew}
@@ -213,9 +233,10 @@ function Shell() {
         />
       )}
 
-      {uploads.items.length > 0 && (
+      {uploads.items.length + uploads.groups.length > 0 && (
         <UploadTray
           items={uploads.items}
+          groups={uploads.groups}
           collapsed={trayCollapsed}
           onCollapsedChange={setTrayCollapsed}
           onClose={uploads.clear}
@@ -223,6 +244,15 @@ function Shell() {
           onResume={uploads.resume}
           onRetry={uploads.retry}
           onCancel={uploads.cancel}
+          onPauseGroup={uploads.pauseGroup}
+          onResumeGroup={uploads.resumeGroup}
+          onRetryGroup={uploads.retryGroup}
+          onDismissGroup={uploads.dismissGroup}
+          onOpenGroup={(group) => {
+            const folderId = uploads.folderOf(group);
+            setTrayCollapsed(true);
+            if (folderId) void navigate({ to: "/folders/$folderId", params: { folderId } });
+          }}
           onShowInFolder={(id) => {
             const result = uploads.resultOf(id);
             setTrayCollapsed(true);
@@ -260,7 +290,17 @@ function Shell() {
         multiple
         hidden
         onChange={(event) => {
-          pick(event.target.files);
+          pick(Array.from(event.target.files ?? []));
+          event.target.value = "";
+        }}
+      />
+      <input
+        ref={folderInput}
+        type="file"
+        hidden
+        {...{ webkitdirectory: "" }}
+        onChange={(event) => {
+          pickFolders(fromFolderInput(event.target.files ?? []));
           event.target.value = "";
         }}
       />
