@@ -205,3 +205,62 @@ public class OfficeTextTests
         }
     }
 }
+
+public class MissingTesseractTests
+{
+    private sealed class MissingRecognizer : ITextRecognizer
+    {
+        public Task<string> EngineAsync(CancellationToken ct) =>
+            throw new ToolMissingException("tesseract", new Exception());
+
+        public Task<OcrResult> RecognizeAsync(
+            byte[] png,
+            int width,
+            int height,
+            CancellationToken ct
+        ) => throw new ToolMissingException("tesseract", new Exception());
+    }
+
+    private static async Task<ExtractResult> ExtractAsync(byte[] bytes)
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(path, bytes, TestContext.Current.CancellationToken);
+            return await new TextExtractor(new MissingRecognizer()).ExtractAsync(
+                path,
+                null,
+                ocr: true,
+                TestContext.Current.CancellationToken
+            );
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Keeps_a_PDFs_text_layer_and_skips_its_scans()
+    {
+        var result = await ExtractAsync(
+            TestFiles.TextPdf("Hyresavtal för lägenheten på Storgatan", "", "Bilaga med villkoren")
+        );
+
+        Assert.Equal(ContentStatus.Ready, result.Status);
+        Assert.Equal([1, 3], result.Pages.Select(p => p.PageNo));
+        Assert.True(result.OcrSkipped);
+        Assert.True(result.OcrUnavailable);
+        Assert.Null(result.OcrEngine);
+    }
+
+    [Fact]
+    public async Task Skips_photos()
+    {
+        var result = await ExtractAsync(TestFiles.TextImage("Kvitto från IKEA"));
+
+        Assert.Equal(ContentStatus.Empty, result.Status);
+        Assert.True(result.OcrSkipped);
+        Assert.True(result.OcrUnavailable);
+    }
+}

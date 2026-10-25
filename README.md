@@ -27,6 +27,14 @@ dotnet run --project src/Dokument.AppHost
 
 The Aspire dashboard opens with Postgres (built from `docker/postgres`), Keycloak, the server, a worker and the Vite dev server. Local files go to `.data/`. Open http://localhost:5173 and sign in as `alice`/`alice` (admin), `bob`/`bob` or `carol`/`carol`. pgAdmin is at http://localhost:5050, and the API reference (Scalar) is at `/scalar` on the server; the dashboard links both.
 
+The server and worker run on your machine, not in a container, so the worker needs two tools on your PATH to read files the way the image does. These are exiftool, for photo and document details, and Tesseract with the Swedish and English language packs, for text in scans and photos.
+
+- Debian or Ubuntu: `sudo apt install libimage-exiftool-perl tesseract-ocr tesseract-ocr-swe tesseract-ocr-eng`
+- macOS: `brew install exiftool tesseract tesseract-lang`
+- Windows: `winget install OliverBetz.ExifTool UB-Mannheim.TesseractOCR`, and tick Swedish under additional languages in the Tesseract installer. That installer doesn't add Tesseract to PATH, so either add `C:\Program Files\Tesseract-OCR` to PATH or set `Worker__TesseractCommand` to the full path of `tesseract.exe`. `Worker__ExifToolCommand` does the same for exiftool.
+
+Without them the worker still runs. It logs a warning and skips what the missing tool would have read, then reads those files on the first start after the tool is installed.
+
 The integration tests run against our Postgres image, so build it once first: `docker build -t dokumentsystem-postgres:ci docker/postgres`.
 
 | Task | Command |

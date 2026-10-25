@@ -73,7 +73,7 @@ public sealed class TesseractOcr(IOptions<WorkerOptions> options) : ITextRecogni
         if (engine is null)
         {
             var output = await ExternalTool.RunAsync(
-                "tesseract",
+                options.Value.TesseractCommand,
                 ["--version"],
                 TimeSpan.FromSeconds(30),
                 ct
@@ -98,7 +98,7 @@ public sealed class TesseractOcr(IOptions<WorkerOptions> options) : ITextRecogni
     )
     {
         var output = await ExternalTool.RunAsync(
-            "tesseract",
+            options.Value.TesseractCommand,
             ["stdin", "stdout", "-l", options.Value.OcrLanguages, "--psm", "3", "tsv"],
             Timeout,
             ct,

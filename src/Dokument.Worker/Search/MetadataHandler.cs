@@ -7,20 +7,26 @@ using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Telemetry;
 using Dokument.Worker.Jobs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Dokument.Worker.Search;
 
 /// <summary>
 /// The metadata stage (docs/design.md §10.2) for one blob: reads it with exiftool, stores the fields search filters on,
-/// and makes the searchable tags page 0 of the blob's content.
+/// and makes the searchable tags page 0 of the blob's content. Without exiftool nothing is stored, so the backfill
+/// reads the blob on a later start, once it's installed.
 /// </summary>
-internal sealed class MetadataHandler(
+internal sealed partial class MetadataHandler(
     DokumentDbContext db,
     BlobStore blobs,
     ExifTool exifTool,
-    TimeProvider time
+    TimeProvider time,
+    ILogger<MetadataHandler> logger
 ) : IJobHandler
 {
+    /// <summary>Set once the missing-exiftool warning is logged, so it isn't repeated for every file.</summary>
+    private static int warnedMissing;
+
     public async Task RunAsync(Job job, CancellationToken ct)
     {
         if (!ContentHash.TryParse(job.Subject, out var hash))
@@ -41,7 +47,19 @@ internal sealed class MetadataHandler(
         using (var activity = DokumentTelemetry.ActivitySource.StartActivity("metadata read"))
         {
             activity?.SetTag("dokument.blob.size", blob.Size);
-            result = await exifTool.ReadAsync(blobs.PathOf(blob.StorageKey), ct);
+            try
+            {
+                result = await exifTool.ReadAsync(blobs.PathOf(blob.StorageKey), ct);
+            }
+            catch (ToolMissingException)
+            {
+                if (Interlocked.Exchange(ref warnedMissing, 1) == 0)
+                {
+                    LogMissing(logger);
+                }
+
+                return;
+            }
         }
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -78,4 +96,11 @@ internal sealed class MetadataHandler(
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
     }
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "exiftool isn't installed or can't be run, so photo and document details aren't read. "
+            + "Install it, or set Worker:ExifToolCommand to its full path; files are read on the next start"
+    )]
+    private static partial void LogMissing(ILogger logger);
 }

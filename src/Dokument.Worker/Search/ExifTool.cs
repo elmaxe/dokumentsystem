@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Dokument.Worker.Jobs;
+using Microsoft.Extensions.Options;
 
 namespace Dokument.Worker.Search;
 
@@ -24,7 +26,7 @@ public sealed record MetadataResult(
 /// from PDF and Office files, and tags from music. Only a fixed list of tags is asked for, so nothing private such as a
 /// serial number is kept. The original is opened read-only.
 /// </summary>
-public sealed partial class ExifTool
+public sealed partial class ExifTool(IOptions<WorkerOptions> options)
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(1);
 
@@ -87,7 +89,12 @@ public sealed partial class ExifTool
         arguments.AddRange(TextTags.Concat(OtherTags).Select(t => "-" + t));
         arguments.Add("--");
         arguments.Add(path);
-        var output = await ExternalTool.RunAsync("exiftool", arguments, Timeout, ct);
+        var output = await ExternalTool.RunAsync(
+            options.Value.ExifToolCommand,
+            arguments,
+            Timeout,
+            ct
+        );
 
         // exiftool exits with 1 when a file has nothing it can read, but still prints JSON.
         return output.Stdout.Length == 0 ? MetadataResult.Unreadable : Parse(output.Stdout);

@@ -82,8 +82,22 @@ public sealed class ContentService(DokumentDbContext db, JobQueue jobs)
         );
 
     /// <summary>
-    /// After text recognition is turned back on: reads again, in the background, every blob that had pages or images it
-    /// skipped while it was off. Returns how many were queued.
+    /// Forgets metadata and text jobs that gave up because exiftool or Tesseract wasn't installed, so the backfill queues
+    /// them again. Workers since then skip a missing tool instead of failing.
+    /// </summary>
+    public Task<int> ForgetToolMissingAsync(CancellationToken ct = default) =>
+        db.Database.ExecuteSqlAsync(
+            $"""
+            DELETE FROM jobs
+            WHERE status = 'failed' AND type IN ({JobType.Metadata.Name}, {JobType.Text.Name})
+              AND last_error LIKE 'ToolMissingException:%'
+            """,
+            ct
+        );
+
+    /// <summary>
+    /// After text recognition is turned back on, or Tesseract is installed: reads again, in the background, every blob
+    /// that had pages or images it skipped. Returns how many were queued.
     /// </summary>
     public Task<int> EnqueueSkippedAsync(DateTimeOffset now, CancellationToken ct = default) =>
         db.Database.ExecuteSqlAsync(

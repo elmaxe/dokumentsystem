@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.16** · Last updated: 2026-10-25
+> Status: **Draft v0.17** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -501,6 +501,7 @@ The stages are independent jobs per blob, queued together when an upload finishe
 - **Plain text:** the first 2 MB, as UTF-8 or Latin-1.
 - **Images** of at least 200 px are turned upright from EXIF and recognized.
 - **Tesseract** (`swe+eng`, `--psm 3`, one thread) reads PNGs from stdin and returns TSV; words under 55 % confidence are dropped, and fewer than 3 words count as no text. Words keep their boxes as page fractions, for marking hits in the viewer (§14). The engine and its version are stored, so the ML `/ocr` endpoint (M7) can replace it behind the same `ITextRecognizer` interface and re-read only what it would improve.
+- **A missing tool doesn't fail jobs.** When the worker runs outside the image (a developer machine) and exiftool or Tesseract isn't installed, it logs one warning. Metadata jobs then store nothing, and text jobs keep a PDF's text layer and mark scans and photos as skipped. The next worker start queues those files again once the tool runs. The commands are `Worker:ExifToolCommand` and `Worker:TesseractCommand`, a name on PATH or a full path.
 - With text recognition turned off (an admin switch, default on), scans and photos are recorded as skipped; turning it on queues them at background priority. "Read all files again" re-queues every blob.
 - The stage replaces a blob's pages in one transaction, so a search never sees half a document.
 

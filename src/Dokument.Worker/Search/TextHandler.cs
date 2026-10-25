@@ -14,7 +14,8 @@ namespace Dokument.Worker.Search;
 /// <summary>
 /// The text stage (docs/design.md §10.2) for one blob: reads its text, recognizing scans and photos when that is on,
 /// and replaces the blob's text pages. A file it can't read is recorded as such and not retried; only unexpected errors
-/// (I/O, the database, Tesseract crashing) make the job fail and retry.
+/// (I/O, the database, Tesseract crashing) make the job fail and retry. A missing Tesseract counts as recognition being
+/// off for that file.
 /// </summary>
 internal sealed partial class TextHandler(
     DokumentDbContext db,
@@ -25,6 +26,9 @@ internal sealed partial class TextHandler(
     ILogger<TextHandler> logger
 ) : IJobHandler
 {
+    /// <summary>Set once the missing-Tesseract warning is logged, so it isn't repeated for every file.</summary>
+    private static int warnedOcrMissing;
+
     public async Task RunAsync(Job job, CancellationToken ct)
     {
         if (!ContentHash.TryParse(job.Subject, out var hash))
@@ -68,6 +72,11 @@ internal sealed partial class TextHandler(
             LogUnreadable(logger, job.Subject, result.Reason);
         }
 
+        if (result.OcrUnavailable && Interlocked.Exchange(ref warnedOcrMissing, 1) == 0)
+        {
+            LogOcrMissing(logger);
+        }
+
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
         // Page 0 is the metadata stage's; everything else is replaced.
@@ -107,6 +116,13 @@ internal sealed partial class TextHandler(
             DokumentTelemetry.OcrPages.Add(recognized);
         }
     }
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Text recognition is on but Tesseract isn't installed or can't be run, so scans and photos are skipped. "
+            + "Install it, or set Worker:TesseractCommand to its full path; skipped files are read on the next start"
+    )]
+    private static partial void LogOcrMissing(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "No text for blob {Hash}: {Reason}")]
     private static partial void LogUnreadable(ILogger logger, string hash, string? reason);

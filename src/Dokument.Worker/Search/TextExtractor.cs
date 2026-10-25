@@ -21,7 +21,8 @@ public sealed record ExtractResult(
     IReadOnlyList<ExtractedPage> Pages,
     bool OcrSkipped = false,
     string? OcrEngine = null,
-    string? Reason = null
+    string? Reason = null,
+    bool OcrUnavailable = false
 )
 {
     public static ExtractResult Unsupported { get; } = new(ContentStatus.Unsupported, null, []);
@@ -33,7 +34,8 @@ public sealed record ExtractResult(
 /// <summary>
 /// Finds a file's searchable text (docs/design.md §10.2, §10.3): a PDF's text layer through PDFium, Office and
 /// OpenDocument XML, and plain text. Images, and PDF pages with no text layer, go to text recognition when it is on.
-/// The format is told by the file's bytes; the stored MIME type only decides whether something is plain text.
+/// The format is told by the file's bytes; the stored MIME type only decides whether something is plain text. When
+/// Tesseract isn't installed, recognition is skipped as if it were off, so the rest of the text is still kept.
 /// </summary>
 public sealed class TextExtractor(ITextRecognizer recognizer)
 {
@@ -262,8 +264,24 @@ public sealed class TextExtractor(ITextRecognizer recognizer)
             return ExtractResult.Failed(e.Message);
         }
 
-        var result = await recognizer.RecognizeAsync(png, width, height, ct);
-        var engine = await recognizer.EngineAsync(ct);
+        OcrResult result;
+        string engine;
+        try
+        {
+            result = await recognizer.RecognizeAsync(png, width, height, ct);
+            engine = await recognizer.EngineAsync(ct);
+        }
+        catch (ToolMissingException)
+        {
+            return new ExtractResult(
+                ContentStatus.Empty,
+                null,
+                [],
+                OcrSkipped: true,
+                OcrUnavailable: true
+            );
+        }
+
         return Result(
             result.Text.Length > 0
                 ? [new ExtractedPage(1, PageSource.Ocr, Cap(result.Text), result.WordsJson())]
@@ -313,11 +331,16 @@ public sealed class TextExtractor(ITextRecognizer recognizer)
             var pages = new List<ExtractedPage>();
             var ocrPages = 0;
             var skipped = false;
+            var unavailable = false;
             string? engine = null;
             for (var index = 0; index < Math.Min(pageCount, MaxPages); index++)
             {
                 ct.ThrowIfCancellationRequested();
-                var (text, scan) = PdfPage(document, index, render: ocr && ocrPages < MaxOcrPages);
+                var (text, scan) = PdfPage(
+                    document,
+                    index,
+                    render: ocr && !unavailable && ocrPages < MaxOcrPages
+                );
                 if (Letters(text) >= MinTextLayerLetters)
                 {
                     pages.Add(new ExtractedPage(index + 1, PageSource.Text, text));
@@ -327,7 +350,7 @@ public sealed class TextExtractor(ITextRecognizer recognizer)
                 if (scan is null)
                 {
                     // No text layer worth the name, and no recognition for it now.
-                    skipped |= !ocr;
+                    skipped |= !ocr || unavailable;
                     if (text.Length > 0)
                     {
                         pages.Add(new ExtractedPage(index + 1, PageSource.Text, text));
@@ -337,13 +360,29 @@ public sealed class TextExtractor(ITextRecognizer recognizer)
                 }
 
                 ocrPages++;
-                var result = await recognizer.RecognizeAsync(
-                    scan.Value.Png,
-                    scan.Value.Width,
-                    scan.Value.Height,
-                    ct
-                );
-                engine ??= await recognizer.EngineAsync(ct);
+                OcrResult result;
+                try
+                {
+                    result = await recognizer.RecognizeAsync(
+                        scan.Value.Png,
+                        scan.Value.Width,
+                        scan.Value.Height,
+                        ct
+                    );
+                    engine ??= await recognizer.EngineAsync(ct);
+                }
+                catch (ToolMissingException)
+                {
+                    // Keep the text layer of this and later pages; the rest is read once Tesseract is installed.
+                    unavailable = skipped = true;
+                    if (text.Length > 0)
+                    {
+                        pages.Add(new ExtractedPage(index + 1, PageSource.Text, text));
+                    }
+
+                    continue;
+                }
+
                 if (result.Text.Length > 0)
                 {
                     pages.Add(
@@ -361,7 +400,10 @@ public sealed class TextExtractor(ITextRecognizer recognizer)
                 }
             }
 
-            return Result(pages, pageCount, skipped, engine);
+            return Result(pages, pageCount, skipped, engine) with
+            {
+                OcrUnavailable = unavailable,
+            };
         }
         finally
         {
