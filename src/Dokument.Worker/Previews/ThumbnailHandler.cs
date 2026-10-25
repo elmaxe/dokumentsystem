@@ -32,7 +32,11 @@ internal sealed partial class ThumbnailHandler(
             throw new InvalidOperationException($"\"{job.Subject}\" isn't a blob hash.");
         }
 
-        var blob = await db.Blobs.AsNoTracking().SingleOrDefaultAsync(b => b.Hash == hash, ct);
+        // Any owner's copy will do: renditions belong to the bytes.
+        var blob = await db
+            .Blobs.AsNoTracking()
+            .OrderByDescending(b => b.RefCount > 0)
+            .FirstOrDefaultAsync(b => b.Hash == hash, ct);
         if (blob is null)
         {
             // Purged since the job was queued.

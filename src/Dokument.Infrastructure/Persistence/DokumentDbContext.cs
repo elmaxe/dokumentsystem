@@ -156,10 +156,6 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(p => p.Height).HasColumnName("height");
             e.Property(p => p.PageCount).HasColumnName("page_count");
             e.Property(p => p.UpdatedAt).HasColumnName("updated_at");
-            e.HasOne<Blob>()
-                .WithOne()
-                .HasForeignKey<BlobPreview>(p => p.BlobHash)
-                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Rendition>(e =>
@@ -179,10 +175,6 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(r => r.Width).HasColumnName("width");
             e.Property(r => r.Height).HasColumnName("height");
             e.Property(r => r.CreatedAt).HasColumnName("created_at");
-            e.HasOne<Blob>()
-                .WithMany()
-                .HasForeignKey(r => r.BlobHash)
-                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 
@@ -253,10 +245,6 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
                 .WithMany()
                 .HasForeignKey(v => v.NodeId)
                 .OnDelete(DeleteBehavior.Cascade);
-            e.HasOne<Blob>()
-                .WithMany()
-                .HasForeignKey(v => v.BlobHash)
-                .OnDelete(DeleteBehavior.Restrict);
             e.HasOne<User>()
                 .WithMany()
                 .HasForeignKey(v => v.UploadedBy)
@@ -267,8 +255,16 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
 
         modelBuilder.Entity<Blob>(e =>
         {
+            // One row per owner's copy (§7). Versions, previews and renditions refer to blobs by hash alone, so they
+            // have no foreign key here; the purge removes the renditions with the last copy.
             e.ToTable("blobs");
-            e.HasKey(b => b.Hash);
+            e.HasKey(b => new { b.OwnerId, b.Hash });
+            e.Property(b => b.OwnerId).HasColumnName("owner_id");
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(b => b.OwnerId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(b => b.Hash);
             e.Property(b => b.Hash).HasColumnName("hash").HasConversion(contentHash);
             e.Property(b => b.Size).HasColumnName("size");
             e.Property(b => b.StorageKey)

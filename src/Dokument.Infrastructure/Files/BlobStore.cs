@@ -6,7 +6,8 @@ namespace Dokument.Infrastructure.Files;
 
 /// <summary>
 /// The originals volume (docs/design.md §7): in-flight uploads in <c>tmp/</c>, finished files content-addressed in
-/// <c>blobs/</c>. Both are on the same filesystem, so committing a blob is an atomic rename. Blobs are write-once.
+/// <c>blobs/</c>, one folder per owner. Both are on the same filesystem, so committing a blob is an atomic rename. Blobs
+/// are write-once.
 /// </summary>
 public sealed class BlobStore(IOptions<StorageOptions> options)
 {
@@ -89,14 +90,35 @@ public sealed class BlobStore(IOptions<StorageOptions> options)
     }
 
     /// <summary>
-    /// Moves a finished upload into <c>blobs/</c> under its hash: fsync, then rename. If the blob is already there the
-    /// temp file is dropped, because identical bytes are stored once.
+    /// Moves a finished upload into the owner's <c>blobs/</c> folder under its hash: fsync, then rename. If the owner
+    /// already has the blob the temp file is dropped, because identical bytes are stored once per owner.
     /// </summary>
-    public StorageKey Commit(Guid uploadId, ContentHash hash)
+    public StorageKey Commit(Guid uploadId, Guid ownerId, ContentHash hash) =>
+        MoveIn(TempPathOf(uploadId), StorageKey.For(ownerId, hash));
+
+    /// <summary>
+    /// Copies another owner's blob into <paramref name="ownerId"/>'s folder, for bytes they get without uploading them
+    /// (a copy of a file shared with them). Copied to a temp file first, so the blob appears whole or not at all.
+    /// </summary>
+    public StorageKey CopyIn(StorageKey source, Guid ownerId, ContentHash hash)
     {
-        var key = StorageKey.For(hash);
+        var key = StorageKey.For(ownerId, hash);
+        if (File.Exists(PathOf(key)))
+        {
+            return key;
+        }
+
+        var temp = TempPathOf(Guid.NewGuid());
+        Directory.CreateDirectory(Path.GetDirectoryName(temp)!);
+        File.Copy(PathOf(source), temp);
+        return MoveIn(temp, key);
+    }
+
+    public bool Exists(StorageKey key) => File.Exists(PathOf(key));
+
+    private StorageKey MoveIn(string temp, StorageKey key)
+    {
         var target = PathOf(key);
-        var temp = TempPathOf(uploadId);
         if (File.Exists(target))
         {
             File.Delete(temp);

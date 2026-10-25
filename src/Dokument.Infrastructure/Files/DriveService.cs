@@ -271,7 +271,12 @@ public sealed class DriveService(
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await PurgeService.LockBlobAsync(db, old.BlobHash, ct);
-        if (!await db.Blobs.AnyAsync(b => b.Hash == old.BlobHash && b.RefCount > 0, ct))
+        if (
+            !await db.Blobs.AnyAsync(
+                b => b.OwnerId == node.OwnerId && b.Hash == old.BlobHash && b.RefCount > 0,
+                ct
+            )
+        )
         {
             // The purge job removed this version a moment ago.
             throw DriveException.NotFound("version");
@@ -350,7 +355,9 @@ public sealed class DriveService(
                 .FileVersions.AsNoTracking()
                 .SingleOrDefaultAsync(v => v.NodeId == node.Id && v.Id == wanted, ct)
             ?? throw DriveException.NotFound("version");
-        var blob = await db.Blobs.AsNoTracking().SingleAsync(b => b.Hash == version.BlobHash, ct);
+        var blob = await db
+            .Blobs.AsNoTracking()
+            .SingleAsync(b => b.OwnerId == node.OwnerId && b.Hash == version.BlobHash, ct);
         if (audited)
         {
             audit.Add(actor, AuditActions.FileDownload, node.Id, version.Id);
@@ -430,29 +437,22 @@ public sealed class DriveService(
     /// <summary>
     /// Records bytes that are already in the blob store as a new file, or a new version of an existing one, and settles
     /// the quota: the reservation is released and the size counts once per blob per owner (§17).
-    /// <paramref name="storeBytes"/> moves the bytes into the blob store; it runs under the blob's lock, so the purge job
-    /// can't delete a blob file that is being reused (§12). Without it, the blob must already be stored.
+    /// <paramref name="storeBytes"/> moves the bytes into the owner's folder of the blob store; it runs under the blob's
+    /// lock, so the purge job can't delete a blob file that is being reused (§12). Without it, the bytes must already be
+    /// stored: the owner's own copy is reused, or another owner's is copied in (a copy of a file shared with them).
     /// </summary>
     internal async Task<AddedFile> AddFileAsync(
         Actor actor,
         NewFile file,
         long reservedBytes,
         string auditAction,
-        Action? storeBytes,
+        Action<Guid>? storeBytes,
         CancellationToken ct
     )
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var now = time.GetUtcNow();
         await PurgeService.LockBlobAsync(db, file.Hash, ct);
-        if (storeBytes is not null)
-        {
-            storeBytes();
-        }
-        else if (!File.Exists(blobs.PathOf(StorageKey.For(file.Hash))))
-        {
-            throw DriveException.NotFound("file with that content");
-        }
 
         Node? existing;
         Guid ownerId;
@@ -483,8 +483,9 @@ public sealed class DriveService(
             }
         }
 
+        await StoreAsync(ownerId, file.Hash, storeBytes, ct);
         await db.Database.ExecuteSqlAsync(
-            $"INSERT INTO blobs (hash, size, storage_key, ref_count, created_at) VALUES ({file.Hash.ToArray()}, {file.Size}, {StorageKey.For(file.Hash).Value}, 0, {now}) ON CONFLICT (hash) DO NOTHING",
+            $"INSERT INTO blobs (owner_id, hash, size, storage_key, ref_count, created_at) VALUES ({ownerId}, {file.Hash.ToArray()}, {file.Size}, {StorageKey.For(ownerId, file.Hash).Value}, 0, {now}) ON CONFLICT (owner_id, hash) DO NOTHING",
             ct
         );
 
@@ -553,6 +554,38 @@ public sealed class DriveService(
         );
     }
 
+    /// <summary>
+    /// Makes sure the owner has their own copy of the bytes on disk, under the blob's lock: the upload's, the one they
+    /// already have, or one copied from another owner who has it.
+    /// </summary>
+    private async Task StoreAsync(
+        Guid ownerId,
+        ContentHash hash,
+        Action<Guid>? storeBytes,
+        CancellationToken ct
+    )
+    {
+        if (storeBytes is not null)
+        {
+            storeBytes(ownerId);
+            return;
+        }
+
+        if (blobs.Exists(StorageKey.For(ownerId, hash)))
+        {
+            return;
+        }
+
+        var source =
+            await db
+                .Blobs.AsNoTracking()
+                .Where(b => b.Hash == hash && b.RefCount > 0)
+                .Select(b => b.StorageKey)
+                .FirstOrDefaultAsync(ct)
+            ?? throw DriveException.NotFound("file with that content");
+        blobs.CopyIn(source, ownerId, hash);
+    }
+
     /// <summary>Adds the next version of a file and makes it current. The caller saves.</summary>
     private async Task<FileVersion> AddVersionAsync(
         Node node,
@@ -595,7 +628,7 @@ public sealed class DriveService(
         node.CurrentVersion = version;
         node.ModifiedAt = now;
         await db
-            .Blobs.Where(b => b.Hash == hash)
+            .Blobs.Where(b => b.OwnerId == node.OwnerId && b.Hash == hash)
             .ExecuteUpdateAsync(s => s.SetProperty(b => b.RefCount, b => b.RefCount + 1), ct);
         await previews.RequestAsync(hash, JobPriority.Interactive, ct);
         return version;

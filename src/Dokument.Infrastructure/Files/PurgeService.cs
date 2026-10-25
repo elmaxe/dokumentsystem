@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Text.Json.Nodes;
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
+using Dokument.Domain.Previews;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Settings;
@@ -210,34 +211,38 @@ public sealed partial class PurgeService(
         }
     }
 
-    /// <summary>Deletes blobs whose reference count reached zero: the row, the original and its renditions.</summary>
+    /// <summary>
+    /// Deletes blobs whose reference count reached zero: the row and the owner's file, and the renditions too once nobody
+    /// has those bytes any more.
+    /// </summary>
     internal async Task<int> DeleteUnusedBlobsAsync(CancellationToken ct)
     {
         var total = 0;
-        var failed = new HashSet<ContentHash>();
+        var failed = new HashSet<(Guid, ContentHash)>();
         while (true)
         {
-            var hashes = (
+            var unused = (
                 await db
                     .Blobs.AsNoTracking()
                     .Where(b => b.RefCount <= 0)
                     .OrderBy(b => b.CreatedAt)
-                    .Select(b => b.Hash)
+                    .Select(b => new { b.OwnerId, b.Hash })
                     .Take(BatchSize + failed.Count)
                     .ToListAsync(ct)
             )
-                .Where(h => !failed.Contains(h))
+                .Select(b => (b.OwnerId, b.Hash))
+                .Where(b => !failed.Contains(b))
                 .ToList();
-            if (hashes.Count == 0)
+            if (unused.Count == 0)
             {
                 return total;
             }
 
-            foreach (var hash in hashes)
+            foreach (var (ownerId, hash) in unused)
             {
                 try
                 {
-                    if (await DeleteBlobAsync(hash, ct))
+                    if (await DeleteBlobAsync(ownerId, hash, ct))
                     {
                         total++;
                     }
@@ -246,31 +251,36 @@ public sealed partial class PurgeService(
                 {
                     // Left for the next run; the row stays, so nothing is lost track of.
                     LogBlobDeleteFailed(e, hash.Hex);
-                    failed.Add(hash);
+                    failed.Add((ownerId, hash));
                 }
             }
         }
     }
 
-    private async Task<bool> DeleteBlobAsync(ContentHash hash, CancellationToken ct)
+    private async Task<bool> DeleteBlobAsync(Guid ownerId, ContentHash hash, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await LockBlobAsync(db, hash, ct);
-        var renditions = await db
-            .Renditions.AsNoTracking()
-            .Where(r => r.BlobHash == hash)
-            .Select(r => r.StorageKey)
-            .ToListAsync(ct);
-
-        // Renditions and preview state cascade with the row.
         var keys = await db
             .Database.SqlQuery<string>(
-                $"""DELETE FROM blobs WHERE hash = {hash.ToArray()} AND ref_count <= 0 RETURNING storage_key AS "Value" """
+                $"""DELETE FROM blobs WHERE owner_id = {ownerId} AND hash = {hash.ToArray()} AND ref_count <= 0 RETURNING storage_key AS "Value" """
             )
             .ToListAsync(ct);
         if (keys.Count == 0)
         {
             return false;
+        }
+
+        // Renditions belong to the bytes, not to an owner, so they go with the last copy.
+        List<DerivedKey> renditions = [];
+        if (!await db.Blobs.AnyAsync(b => b.Hash == hash, ct))
+        {
+            renditions = await db
+                .Renditions.Where(r => r.BlobHash == hash)
+                .Select(r => r.StorageKey)
+                .ToListAsync(ct);
+            await db.Renditions.Where(r => r.BlobHash == hash).ExecuteDeleteAsync(ct);
+            await db.BlobPreviews.Where(p => p.BlobHash == hash).ExecuteDeleteAsync(ct);
         }
 
         // The files go while the lock is held: an upload of the same bytes waits, then finds no file and stores its own.
@@ -286,7 +296,7 @@ public sealed partial class PurgeService(
 
     /// <summary>
     /// Lowers the reference count of each released blob, and the owner's used storage for each blob they no longer have
-    /// any version of (storage counts a blob once per owner, §17). Call after the versions are deleted.
+    /// any version of (each owner has their own copy, §7, §17). Call after the versions are deleted.
     /// </summary>
     private async Task ReleaseAsync(List<ReleasedBlob> released, CancellationToken ct)
     {
@@ -300,8 +310,11 @@ public sealed partial class PurgeService(
         await db.Database.ExecuteSqlAsync(
             $"""
             UPDATE blobs b SET ref_count = b.ref_count - x.n
-            FROM (SELECT h, count(*)::int AS n FROM unnest({hashes}) AS h GROUP BY h) x
-            WHERE b.hash = x.h
+            FROM (
+                SELECT owner_id, hash, count(*)::int AS n
+                FROM unnest({owners}, {hashes}) AS t(owner_id, hash) GROUP BY owner_id, hash
+            ) x
+            WHERE b.owner_id = x.owner_id AND b.hash = x.hash
             """,
             ct
         );
@@ -311,7 +324,7 @@ public sealed partial class PurgeService(
             FROM (
                 SELECT o.owner_id, sum(b.size) AS freed
                 FROM (SELECT DISTINCT owner_id, hash FROM unnest({owners}, {hashes}) AS t(owner_id, hash)) o
-                JOIN blobs b ON b.hash = o.hash
+                JOIN blobs b ON b.owner_id = o.owner_id AND b.hash = o.hash
                 WHERE NOT EXISTS (
                     SELECT 1 FROM file_versions v JOIN nodes n ON n.id = v.node_id
                     WHERE v.blob_hash = o.hash AND n.owner_id = o.owner_id)

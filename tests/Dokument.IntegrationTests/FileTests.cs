@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
+using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Server.Auth;
 using Dokument.Server.Files;
@@ -189,13 +190,36 @@ public sealed class FileTests(PostgresFixture postgres)
         var copied = (await copy.Content.ReadFromJsonAsync<NodeDto>(Json.Options))!;
         Assert.Equal(bytes, await alice.GetByteArrayAsync($"/api/v1/nodes/{copied.Id}/content"));
 
-        // Bob uploads the same bytes for real: stored once on disk, but counted against his own quota.
-        await UploadAsync(bob, "mine.txt", bytes, null);
+        // Bob uploads the same bytes for real: he gets his own copy in his own folder, counted against his quota.
+        var bobs = await UploadAsync(bob, "mine.txt", bytes, null);
         await using var scope = app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<DokumentDbContext>();
-        var blob = await db.Blobs.SingleAsync();
-        Assert.Equal(3, blob.RefCount);
-        Assert.All(await db.Users.ToListAsync(), u => Assert.Equal(bytes.Length, u.UsedBytes));
+        var users = await db.Users.ToDictionaryAsync(u => u.Email!);
+        var blobs = await db.Blobs.ToDictionaryAsync(b => b.OwnerId);
+        var aliceId = users[Alice.Email].Id;
+        var bobId = users[Bob.Email].Id;
+        Assert.Equal(2, blobs[aliceId].RefCount);
+        Assert.Equal(1, blobs[bobId].RefCount);
+        Assert.All(users.Values, u => Assert.Equal(bytes.Length, u.UsedBytes));
+        var hex = Sha256(bytes);
+        foreach (var owner in new[] { aliceId, bobId })
+        {
+            var key = $"blobs/{owner}/{hex[..2]}/{hex[2..4]}/{hex}";
+            Assert.Equal(key, blobs[owner].StorageKey.Value);
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(app.OriginalsPath, key)));
+        }
+
+        // Deleting Bob's file removes only his copy.
+        (
+            await bob.PostAsJsonAsync("/api/v1/nodes/trash", new NodeIdsRequest([bobs]))
+        ).EnsureSuccessStatusCode();
+        (
+            await bob.PostAsJsonAsync("/api/v1/trash/delete", new NodeIdsRequest([bobs]))
+        ).EnsureSuccessStatusCode();
+        await scope.ServiceProvider.GetRequiredService<PurgeService>().RunAsync();
+        Assert.Equal(aliceId, (await db.Blobs.AsNoTracking().SingleAsync()).OwnerId);
+        Assert.False(File.Exists(Path.Combine(app.OriginalsPath, blobs[bobId].StorageKey.Value)));
+        Assert.Equal(bytes, await alice.GetByteArrayAsync($"/api/v1/nodes/{copied.Id}/content"));
     }
 
     [Fact]

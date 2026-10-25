@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.14** · Last updated: 2026-10-25
+> Status: **Draft v0.15** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -159,6 +159,7 @@ services:
       - ${ORIGINALS_LOCATION}:/data/originals:ro
       - ${DERIVED_LOCATION}:/data/derived
       - ${BACKUP_LOCATION}:/data/backups
+      - ${EXPORT_LOCATION}:/data/exports   # optional: where export jobs write (§7.1)
   postgres:
     image: ghcr.io/elmaxe/dokumentsystem-postgres:${DOKUMENT_VERSION}
     volumes: [ "${DB_DATA_LOCATION}:/var/lib/postgresql/data" ]
@@ -262,7 +263,8 @@ file_versions(id, node_id, version_no, blob_hash, size, mime_type, original_name
               uploaded_by, uploaded_at, client_modified_at, restored_from NULL, keep_forever,
               comment NULL)
 
-blobs(hash = sha256 PRIMARY KEY, size, storage_key, ref_count, created_at)
+blobs(owner_id, hash = sha256, size, storage_key, ref_count, created_at,
+      PRIMARY KEY (owner_id, hash))   -- one copy per owner (§7)
 
 uploads(id, user_id, owner_id, parent_id NULL, target_node_id NULL, name, size, upload_offset,
         claimed_hash NULL, mime_type, client_modified_at, on_conflict {fail|keepBoth|newVersion},
@@ -301,11 +303,12 @@ api_keys(id, user_id, name, token_hash, scopes, created_at, last_used_at, revoke
 
 Notes:
 - **`nodes` vs `file_versions` vs `blobs`.** A node is the logical file in the tree. A version is one upload of it. A blob is the bytes on disk.
-  - Uploading identical bytes **reuses the existing blob** (dedup by SHA-256).
+  - Uploading identical bytes **reuses the owner's existing blob** (dedup by SHA-256, per owner). The same bytes from two people are two blobs.
+  - Versions, previews and renditions refer to blobs by hash, so they have no foreign key to `blobs`; a version's blob is `(node.owner_id, blob_hash)`.
   - Re-uploading identical content to the same file does **not** create a new version.
 - **Name uniqueness within a folder:** NFC-normalized and case-insensitive (`name_key`). The top of each user's "My files" (parent NULL) counts as one folder, hence `NULLS NOT DISTINCT`. Conflicts are resolved like Drive: either "file (1).pdf" or "upload as new version", chosen by the user.
 - **Names** (`NodeName` in the domain) are trimmed, NFC, at most 255 UTF-8 bytes, never "." or "..", and contain no slashes or control characters, so `dokument export` can write any of them to disk.
-- **Renditions belong to blobs, not versions** (decision 15): identical bytes are rendered once, and a copy or a restored version has its thumbnail at once.
+- **Renditions belong to the bytes, not versions or owners** (decisions 15 and 23): identical bytes are rendered once, even for two people, and a copy or a restored version has its thumbnail at once.
 - **`path ltree`** makes subtree operations cheap: permission inheritance, "trash folder", "folder size", "search in folder".
 
 ---
@@ -315,22 +318,39 @@ Notes:
 ```
 /data/originals/            # PRECIOUS — back this up
   keys/                     # ASP.NET Data Protection keys that encrypt secrets in settings (§21)
-  blobs/ab/cd/abcdef…sha256 # content-addressed, write-once, never modified
+  blobs/{owner_id}/ab/cd/abcdef…sha256   # per person, content-addressed, write-once, never modified
   tmp/{upload_id}           # in-flight uploads (tus), same filesystem for atomic rename
 /data/derived/              # REGENERABLE — backup optional
   thumbs/ab/{sha256}/{kind}.webp   # thumb_s, thumb_m, preview; keyed by blob like the originals
   previews/ab/{sha256}/…           # later: PDF renditions of Office files, web-playable video, posters
-/data/backups/              # DB dumps (see §13)
+/data/backups/              # DB dumps and name manifests (§7.1, §19)
+/data/exports/              # optional: readable copies written by export jobs (§7.1)
 ```
 
 - **Write path:**
   1. Append each tus chunk to `tmp/{upload_id}` at the recorded offset.
   2. When the last byte arrives, hash the temp file and compare it with the SHA-256 the client sent. A mismatch discards the upload. (Hashing as bytes arrive doesn't survive a resume, since a SHA-256 state can't be saved between requests, so the file is read once more instead.)
-  3. `fsync`, then `rename()` to `blobs/…`. If the blob already exists, drop the temp file.
-  4. Commit the DB transaction: the blob row (`ON CONFLICT DO NOTHING`), the node or version, `ref_count + 1`, the quota and the audit event.
+  3. `fsync`, then `rename()` to `blobs/{owner_id}/…`, where the owner is the file's owner (the folder owner for uploads into a shared folder, §9). If the owner already has the blob, drop the temp file.
+  4. Commit the DB transaction: the blob row (`ON CONFLICT (owner_id, hash) DO NOTHING`), the node or version, `ref_count + 1`, the quota and the audit event.
 - **Blob deletion** happens only in the purge job (§12): when `ref_count` drops to 0, the blob is deleted **after** the DB commit (outbox pattern).
 - **Integrity job:** a scheduled sweep finds orphaned blobs, missing blobs and checksum mismatches (bit rot), and reports to admins.
-- **Export:** `dokument export --user X --to /path` writes the real folder tree with original names and mtimes. This is the "if the app dies, my files are still mine" guarantee.
+- **Each person's files are in their own folder** (decision 23), named by their user id. Only the bytes they own are there, so the folder's size is their used storage (§17), and one person can be backed up, moved or removed on their own. Access is still decided in the database: every node has an `owner_id`, every request goes through `NodeAccess`, and downloads go by node id, never by hash.
+  - The cost: the same bytes from two people are stored twice. Copying a file someone shared with you, and later transferring ownership, copy the bytes into the new owner's folder (to a temp file, then renamed) instead of being instant.
+- **The pool stays unreadable on purpose.** Blobs have no names or extensions; names, types and the tree are in the DB. That is what makes renames and moves a single DB update, keeps writes atomic, and makes versions, trash and dedup plain rows. Readable files come from exports instead (§7.1).
+
+### 7.1 Export and manifests
+
+Decided 2026-10-24 (decision 22) over a live mirror of hardlinks, real paths on disk (as in Nextcloud) and sidecar files next to each blob. This is the "if the app dies, my files are still mine" guarantee.
+
+- **Name manifest:** right after each scheduled DB dump (§19), the worker writes `manifest-{timestamp}.jsonl.gz` beside it in `/data/backups`, with the same retention as the dumps. It has one line per version that isn't purged: owner (id, email, display name), path of folder names from the top of My files, name, version number, whether it's current, trashed or kept forever, blob hash, size, MIME type and modified time. Written to a temp file, then renamed, so a half-written manifest never replaces a good one.
+  - With the blobs and a manifest, the tree can be rebuilt with no Postgres at all. `dokument export --manifest <file>` does that, and the format is documented so a short script can too.
+- **Export job:** writes a person's files (or everyone's, one folder per person) as an ordinary folder tree with original names and modified times.
+  - Runs on the job queue in the worker, which only reads originals, into the optional `/data/exports` volume. Admins start it from the admin Storage page, and the CLI `dokument export --user X --to /path` runs the same code.
+  - Writes current versions by default; "include old versions" adds them as `name (v3).ext` in a `.versions/` folder beside each file. Trash is left out.
+  - Exports are **real copies** and take real space. Running one again into the same folder is incremental: files whose size and modified time match are skipped, and files gone from the app are removed from the export.
+  - Names that Windows or SMB can't hold (`: ? * " < > |`, trailing dots and spaces) are escaped, and names that clash only in case get " (2)" in the export. The app's names are never changed.
+  - Progress is on the job; an export that fails says which file and why. Each run writes an `export.start` and `export.finish` audit event, but not one per file.
+  - Can be put on a schedule like the DB dump, **off by default**.
 
 ---
 
@@ -371,7 +391,7 @@ Also:
 
 ### 8.3 Duplicate detection
 
-On disk, identical bytes are always stored once (§6). On top of that, **users are told** when they upload a file they already have.
+On disk, identical bytes are always stored once per person (§6, §7). On top of that, **users are told** when they upload a file they already have.
 
 - **Before transfer:** the client computes SHA-256 locally, streamed so large files don't fill memory (`hash-wasm` in a Web Worker on web; a native streaming hash on mobile).
   - It then calls `POST /api/v1/uploads/check` with `[{name, size, sha256}]` for the whole batch.
@@ -384,7 +404,7 @@ On disk, identical bytes are always stored once (§6). On top of that, **users a
 - **Fallback:** if the client couldn't hash in advance (older client, huge file on a weak phone), the server detects the duplicate on completion. The upload tray then shows "Duplicate of …" with a **Remove this copy** action.
 - **Privacy rule:** matches are reported **only against nodes the user can already access**, whether owned or shared with them.
   - A user must never learn that *someone else* has a file.
-  - The "instant, no transfer" shortcut is allowed only in that same case. Otherwise the client has to upload the real bytes, which prevents the classic "I know the hash, give me the file" dedup attack. The server still dedups on disk after verifying the hash.
+  - The "instant, no transfer" shortcut is allowed only in that same case. Otherwise the client has to upload the real bytes, which prevents the classic "I know the hash, give me the file" dedup attack. The server still dedups on disk, per owner, after verifying the hash.
 - **Folder uploads** are checked file by file, and the summary covers the whole folder.
 - An optional **"Duplicates" view** under Storage lists groups of identical files across the user's library, for cleanup.
 
@@ -509,9 +529,9 @@ Built in M1 (decision 18).
 - **The purge** runs in the server role, because it deletes originals and the worker mounts them read-only (§10.4). It runs on start, **every hour** (so the countdown holds to the hour), and right after a delete forever. Each run, in batches of 200:
   1. Deletes trash groups older than the retention, a whole subtree per transaction, with a `node.purge` audit event.
   2. Deletes versions past the version policy (§8.2), with a `version.purge` audit event each. It is the same rule as the API's "Removed in N days", written as one SQL query with window functions.
-  3. For each deleted version, lowers `blobs.ref_count`, and lowers the owner's `used_bytes` by the blob's size once they have no version left with those bytes.
-  4. Deletes blobs whose `ref_count` is zero: the row (its renditions and preview state cascade), the original and its thumbnails.
-- **Blob lock:** uploads and the purge take the same transaction-scoped advisory lock per blob hash. The upload holds it while it moves its temp file into `blobs/` and records the version; the purge holds it while it deletes the row and the files. So a file that someone uploads again at the moment the purge deletes it is never lost: the upload either finds the old file still referenced or stores its own copy.
+  3. For each deleted version, lowers the owner's `blobs.ref_count`, and lowers the owner's `used_bytes` by the blob's size once they have no version left with those bytes.
+  4. Deletes blobs whose `ref_count` is zero: the row and that owner's original, and, once no one has those bytes any more, their preview state, renditions and thumbnails.
+- **Blob lock:** uploads and the purge take the same transaction-scoped advisory lock per blob hash (for all owners, so the last copy and its renditions are deleted safely). The upload holds it while it moves its temp file into the owner's folder and records the version; the purge holds it while it deletes the row and the files. So a file that someone uploads again at the moment the purge deletes it is never lost: the upload either finds the old file still referenced or stores its own copy.
 - An email warning "N items will be permanently deleted in 3 days" waits for notifications (§20).
 
 ---
@@ -782,6 +802,7 @@ People who are managed in an IdP can get their storage from it instead of from t
   - `/data/derived` can be skipped.
   - Order: dump the DB first, then snapshot the files. Orphan blobs after a restore are harmless (the integrity job cleans them up); missing blobs are not.
 - **Restore procedure** documented and tested in CI: restore the dump, start, run an integrity check.
+- **If the DB is lost with no usable dump,** the newest name manifest plus `/data/originals/blobs` still give back every file with its name and folder (§7.1).
 
 ---
 
@@ -886,7 +907,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
-| **M6: Ops** | DB dump schedule, integrity job, admin system page, export CLI, docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
+| **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search), remote ML URLs with fallback, transcription |
 | **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders) |
 
@@ -901,7 +922,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 3 | Audit preview opens? | **No.** Downloads are audited, previews are not (§18). |
 | 4 | Duplicate uploads | **Tell the user**: a pre-upload check with Skip / Upload anyway / Open existing, limited to files the user can access (§8.3) |
 | 5 | Public links with upload ("file requests") | **Later** (roadmap) |
-| 6 | Storage layout | App-owned, content-addressed (§7) |
+| 6 | Storage layout | App-owned, content-addressed, one folder per person (§7, decision 23); readable copies come from exports (decision 22) |
 | 7 | Sharing model | Personal folders shared to users; no team drives (§9) |
 | 8 | Virus scanning | Not in v1; hook for optional ClamAV (§21) |
 | 9 | WebDAV | Later |
@@ -917,6 +938,8 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 19 | Sizes and times in file lists | 2026-10-24: binary units (KiB, MiB, GiB, TiB, 1 KiB = 1024 B) everywhere, including quota inputs, with no setting; folders show the size of their live contents (current versions only) and their file and folder counts; list rows show thumbnails instead of type icons when one is ready; a per-person "Show seconds in times" switch on a new Settings page (`/settings`, linked from the account menu, which also holds the language choice), and full timestamps on hover (§16.4, §16.5, §17) |
 | 20 | Quota from an OIDC claim | 2026-10-24: `OIDC_QUOTA_CLAIM` sets each person's quota at every login from a byte count, a binary size (`GB` = `GiB` = 1024³) or `unlimited`; unreadable values are ignored with a warning; the claim wins and locks the admin dialog; a missing claim falls back to the default; changes are audited as `system` with the source `claim` (§17.1) |
 | 21 | Starred and Recent | 2026-10-25: stars are per person, on files and folders; Starred is sortable with a Location column; Recent is files only, newest first by the person's own last open, download, upload or version restore (not renames or moves), at most 100; Recent is a private per-person table, not the audit log, so preview opens stay unaudited (§6, §15.2, §18) |
+| 22 | Readable files on disk | 2026-10-24: keep the hash-named pool as the only store; no real paths on disk, sidecars or live mirror. A name manifest is written beside each DB dump, so the tree can be rebuilt without Postgres, and an export job (worker, into `/data/exports`, also the `export` CLI) writes readable copies, incrementally, optionally with old versions, on a schedule that starts off. Lands in M6 (§7.1, §19) |
+| 23 | Blobs per person | 2026-10-25: `blobs/{owner_id}/ab/cd/{sha256}`, keyed `(owner_id, hash)`, deduplicated per person only; renditions stay keyed by hash and go with the last copy; one blob lock per hash; copies across owners copy the bytes. No data migration, since nothing is in use yet (§6, §7, §12) |
 
 ## 26. Open questions
 

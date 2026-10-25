@@ -81,6 +81,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Dokument.Domain.Files.Blob", b =>
                 {
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
                     b.Property<byte[]>("Hash")
                         .HasColumnType("bytea")
                         .HasColumnName("hash");
@@ -102,7 +106,9 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("storage_key");
 
-                    b.HasKey("Hash");
+                    b.HasKey("OwnerId", "Hash");
+
+                    b.HasIndex("Hash");
 
                     b.ToTable("blobs", (string)null);
                 });
@@ -675,14 +681,17 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("settings", (string)null);
                 });
 
-            modelBuilder.Entity("Dokument.Domain.Files.FileVersion", b =>
+            modelBuilder.Entity("Dokument.Domain.Files.Blob", b =>
                 {
-                    b.HasOne("Dokument.Domain.Files.Blob", null)
+                    b.HasOne("Dokument.Domain.Identity.User", null)
                         .WithMany()
-                        .HasForeignKey("BlobHash")
+                        .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
 
+            modelBuilder.Entity("Dokument.Domain.Files.FileVersion", b =>
+                {
                     b.HasOne("Dokument.Domain.Files.Node", null)
                         .WithMany()
                         .HasForeignKey("NodeId")
@@ -765,24 +774,6 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Dokument.Domain.Previews.BlobPreview", b =>
-                {
-                    b.HasOne("Dokument.Domain.Files.Blob", null)
-                        .WithOne()
-                        .HasForeignKey("Dokument.Domain.Previews.BlobPreview", "BlobHash")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Dokument.Domain.Previews.Rendition", b =>
-                {
-                    b.HasOne("Dokument.Domain.Files.Blob", null)
-                        .WithMany()
-                        .HasForeignKey("BlobHash")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }
