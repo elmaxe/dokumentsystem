@@ -890,6 +890,120 @@
         }
       }
     },
+    "/api/v1/nodes/star": {
+      "post": {
+        "tags": [
+          "Starred and recent"
+        ],
+        "description": "Stars files and folders for the person asking. Stars are each person's own.",
+        "operationId": "StarNodes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeIdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/unstar": {
+      "post": {
+        "tags": [
+          "Starred and recent"
+        ],
+        "operationId": "UnstarNodes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeIdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/starred": {
+      "get": {
+        "tags": [
+          "Starred and recent"
+        ],
+        "description": "What the person starred, trashed items left out. Unsorted: clients sort.",
+        "operationId": "ListStarred",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StarredListing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/opened": {
+      "post": {
+        "tags": [
+          "Starred and recent"
+        ],
+        "description": "The viewer calls this when the person opens a file, for their Recent page. Private to them and not audited (§18).",
+        "operationId": "MarkOpened",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/recent": {
+      "get": {
+        "tags": [
+          "Starred and recent"
+        ],
+        "description": "The files the person last opened, downloaded, uploaded or restored a version of, newest first, at most 100.",
+        "operationId": "ListRecent",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentListing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/uploads/{id}": {
       "get": {
         "tags": [
@@ -1864,7 +1978,8 @@
           "currentVersionId",
           "versionNumber",
           "thumbnail",
-          "contents"
+          "contents",
+          "starred"
         ],
         "type": "object",
         "properties": {
@@ -1945,6 +2060,9 @@
                 "$ref": "#/components/schemas/FolderCounts"
               }
             ]
+          },
+          "starred": {
+            "type": "boolean"
           }
         }
       },
@@ -2034,6 +2152,55 @@
           "admin",
           "claim"
         ]
+      },
+      "RecentAction": {
+        "enum": [
+          "opened",
+          "downloaded",
+          "uploaded",
+          "restored"
+        ]
+      },
+      "RecentItem": {
+        "required": [
+          "node",
+          "path",
+          "at",
+          "action"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeDto"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "$ref": "#/components/schemas/RecentAction"
+          }
+        }
+      },
+      "RecentListing": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecentItem"
+            }
+          }
+        }
       },
       "RenameRequest": {
         "required": [
@@ -2212,6 +2379,38 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "StarredItem": {
+        "required": [
+          "node",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeDto"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          }
+        }
+      },
+      "StarredListing": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StarredItem"
+            }
           }
         }
       },
@@ -2636,6 +2835,9 @@
     },
     {
       "name": "Trash"
+    },
+    {
+      "name": "Starred and recent"
     },
     {
       "name": "Uploads"

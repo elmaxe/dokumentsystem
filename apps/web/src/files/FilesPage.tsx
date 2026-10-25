@@ -1,4 +1,4 @@
-import { contentUrl } from "@dokument/api";
+import { contentUrl, type PathEntry, type RecentAction } from "@dokument/api";
 import {
   ActionBar,
   Breadcrumbs,
@@ -6,15 +6,17 @@ import {
   FileGrid,
   FileList,
   IconButton,
+  Icon,
   ActionMenu,
   isFolder,
   sortItems,
+  useFormat,
   useSnackbar,
   type DetailsTab,
+  type FileColumn,
   type MenuAction,
   type Sort,
   type SortKey,
-  useFormat,
 } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -28,13 +30,22 @@ import {
   errorMessage,
   folderQuery,
   invalidateFolders,
+  invalidateStars,
   invalidateTrash,
+  recentQuery,
+  starredQuery,
   toItem,
   type Item,
 } from "./drive";
 import { useUploads } from "./uploadsContext";
 
 type View = "grid" | "list";
+
+/** What the page lists: one folder of My files, or everything starred or recent wherever it is (§15.2). */
+export type FilesSource = { place: "folder"; folderId: string | null } | { place: "starred" } | { place: "recent" };
+
+/** An item with where it lives, which Starred and Recent show because their items come from many folders. */
+type Row = Item & { path?: PathEntry[]; recent?: { at: string; action: RecentAction } };
 
 function stored<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
   try {
@@ -53,15 +64,29 @@ function store(key: string, value: string) {
   }
 }
 
-/** My files: one folder's contents, with selection, the action bar, menus and the details panel (§15.2). */
-export function FilesPage({ folderId }: { folderId: string | null }) {
+const activityIcons: Record<RecentAction, string> = {
+  opened: "visibility",
+  downloaded: "download",
+  uploaded: "upload",
+  restored: "history",
+};
+
+/**
+ * My files, Starred and Recent: a folder's contents, or the person's starred or recent items, with selection, the
+ * action bar, menus and the details panel (§15.2).
+ */
+export function FilesPage({ source }: { source: FilesSource }) {
   const { t, i18n } = useTranslation();
   const format = useFormat();
   const toast = useSnackbar();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const uploads = useUploads();
-  const listing = useQuery(folderQuery(folderId));
+  const folderId = source.place === "folder" ? source.folderId : null;
+  const listing = useQuery({ ...folderQuery(folderId), enabled: source.place === "folder" });
+  const starred = useQuery({ ...starredQuery, enabled: source.place === "starred" });
+  const recent = useQuery({ ...recentQuery, enabled: source.place === "recent" });
+  const query = source.place === "folder" ? listing : source.place === "starred" ? starred : recent;
   const [selected, setSelected] = useState<string[]>([]);
   const [view, setView] = useState<View>(() => stored("dokument.view", "grid", ["grid", "list"] as const));
   const [sort, setSort] = useState<Sort>({ key: "name", dir: "asc" });
@@ -70,15 +95,29 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
   const [moving, setMoving] = useState<Item[]>([]);
   const versionInput = useRef<HTMLInputElement>(null);
 
-  const items = sortItems((listing.data?.items ?? []).map(toItem), sort, i18n.language);
+  const rows: Row[] =
+    source.place === "folder"
+      ? (listing.data?.items ?? []).map(toItem)
+      : source.place === "starred"
+        ? (starred.data?.items ?? []).map((s) => ({ ...toItem(s.node), path: s.path }))
+        : (recent.data?.items ?? []).map((r) => ({
+            ...toItem(r.node),
+            path: r.path,
+            recent: { at: r.at, action: r.action },
+          }));
+  // Recent keeps the server's newest-first order; the others sort like a folder.
+  const items = source.place === "recent" ? rows : sortItems(rows, sort, i18n.language);
   const byId = new Map(items.map((item) => [item.id, item]));
-  const chosen = selected.map((id) => byId.get(id)).filter((item): item is Item => !!item);
+  const chosen = selected.map((id) => byId.get(id)).filter((item): item is Row => !!item);
   const single = chosen.length === 1 ? chosen[0] : undefined;
 
   const folderPath = listing.data?.path ?? [];
   const path = [{ id: "root", name: t("nav.myFiles") }, ...folderPath];
   const open = (id: string | null) =>
     void (id ? navigate({ to: "/folders/$folderId", params: { folderId: id } }) : navigate({ to: "/" }));
+  /** The folders above an item: the folder's path in My files, or the item's own in Starred and Recent. */
+  const pathOf = (item: Row) => item.path ?? folderPath;
+  const where = (item: Row) => pathOf(item).at(-1)?.name ?? t("nav.myFiles");
 
   const downloadFiles = (targets: Item[]) => {
     const files = targets.filter((item) => !isFolder(item));
@@ -105,13 +144,38 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
     await invalidateTrash(queryClient);
   };
 
-  const act = (action: string, targets: Item[]) => {
+  const star = async (targets: Item[], on: boolean) => {
+    const ids = targets.map((item) => item.id);
+    try {
+      await drive.star(ids, on);
+      // Unstarring on the Starred page takes the items off it.
+      if (!on && source.place === "starred") setSelected([]);
+      toast(t(on ? "toasts.starred" : "toasts.unstarred", { count: ids.length }), {
+        label: t("common.undo"),
+        onClick: () =>
+          void drive
+            .star(ids, !on)
+            .catch((error: unknown) => toast(errorMessage(t, error)))
+            .finally(() => void invalidateStars(queryClient)),
+      });
+    } catch (error) {
+      toast(errorMessage(t, error));
+    }
+    await invalidateStars(queryClient);
+  };
+
+  const act = (action: string, targets: Row[]) => {
     const first = targets[0];
     if (!first) return;
     switch (action) {
       case "open":
         if (isFolder(first)) open(first.id);
-        else void navigate({ to: "/files/$fileId", params: { fileId: first.id } });
+        else
+          void navigate({
+            to: "/files/$fileId",
+            params: { fileId: first.id },
+            search: source.place === "folder" ? {} : { from: source.place },
+          });
         break;
       case "download":
         downloadFiles(targets);
@@ -121,6 +185,13 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
         break;
       case "move":
         setMoving(targets);
+        break;
+      case "star":
+      case "unstar":
+        void star(targets, action === "star");
+        break;
+      case "showInFolder":
+        open(first.node.parentId ?? null);
         break;
       case "details":
         setSelected([first.id]);
@@ -134,31 +205,116 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
     }
   };
 
-  const menu = (item: Item): MenuAction[] => [
+  const starAction = (targets: Item[]): MenuAction =>
+    targets.every((item) => item.starred)
+      ? { id: "unstar", icon: "star", label: t("actions.unstar") }
+      : { id: "star", icon: "star", label: t("actions.star") };
+
+  const menu = (item: Row): MenuAction[] => [
     { id: "open", icon: isFolder(item) ? "folder_open" : "open_in_new", label: t("actions.open") },
     ...(isFolder(item) ? [] : [{ id: "download", icon: "download", label: t("actions.download"), separatorBefore: true }]),
     { id: "rename", icon: "edit", label: t("actions.rename"), separatorBefore: isFolder(item) },
     { id: "move", icon: "drive_file_move", label: t("actions.move") },
+    starAction([item]),
+    ...(source.place === "folder" ? [] : [{ id: "showInFolder", icon: "folder_open", label: t("actions.showInFolder") }]),
     { id: "details", icon: "info", label: t("actions.details") },
     { id: "trash", icon: "delete", label: t("actions.trash"), separatorBefore: true },
   ];
 
-  const meta = (item: Item) =>
-    t("files.modifiedOn", { date: format.date(item.modified, { inSentence: true }) });
-  const sortKeys: SortKey[] = ["name", "modified", "size", "owner"];
+  const activity = (item: Row) =>
+    item.recent &&
+    t(`files.activity.${item.recent.action}`, { date: format.date(item.recent.at, { inSentence: true }) });
+  const meta = (item: Row) =>
+    source.place === "recent"
+      ? activity(item)
+      : t("files.modifiedOn", { date: format.date(item.modified, { inSentence: true }) });
+
+  const locationColumn: FileColumn<Row> = {
+    id: "location",
+    label: t("files.columns.location"),
+    className: "w-[20%] truncate @max-[600px]:hidden",
+    cell: (item) => {
+      const crumbs = [t("nav.myFiles"), ...pathOf(item).map((p) => p.name)];
+      return (
+        <button
+          type="button"
+          title={crumbs.join(" › ")}
+          onClick={(event) => {
+            event.stopPropagation();
+            open(item.node.parentId ?? null);
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
+          className="inline-flex max-w-full cursor-pointer items-center gap-2 rounded-xs text-inherit hover:underline"
+        >
+          <Icon name="folder" size={18} />
+          <span className="truncate">{crumbs.length > 1 ? crumbs.slice(1).join(" › ") : crumbs[0]}</span>
+        </button>
+      );
+    },
+  };
+  const sizeColumn: FileColumn<Row> = {
+    id: "size",
+    label: t("files.columns.size"),
+    className: "w-[11%] tabular truncate text-right @max-[600px]:hidden",
+    // An empty folder has nothing to measure, as in My files.
+    cell: (item) =>
+      item.size !== undefined && !(item.contents?.files === 0 && item.contents.folders === 0)
+        ? format.bytes(item.size)
+        : "—",
+    sortKey: "size",
+  };
+  const columns: FileColumn<Row>[] | undefined =
+    source.place === "starred"
+      ? [
+          locationColumn,
+          {
+            id: "modified",
+            label: t("files.columns.modified"),
+            className: "w-[16%] tabular truncate @max-[600px]:hidden",
+            cell: (item) => <span title={format.fullDate(item.modified)}>{format.date(item.modified)}</span>,
+            sortKey: "modified",
+          },
+          sizeColumn,
+        ]
+      : source.place === "recent"
+        ? [
+            locationColumn,
+            {
+              id: "activity",
+              label: t("files.columns.activity"),
+              className: "w-[28%] tabular truncate @max-[600px]:hidden",
+              cell: (item) =>
+                item.recent && (
+                  <span title={format.fullDate(item.recent.at)} className="inline-flex max-w-full items-center gap-2">
+                    <Icon name={activityIcons[item.recent.action]} size={18} />
+                    <span className="truncate">{activity(item)}</span>
+                  </span>
+                ),
+            },
+            { ...sizeColumn, sortKey: undefined },
+          ]
+        : undefined;
+
+  const sortKeys: SortKey[] = source.place === "starred" ? ["name", "modified", "size"] : ["name", "modified", "size", "owner"];
   const viewProps = {
     items,
     selected,
     onSelectedChange: setSelected,
-    onOpen: (item: Item) => act("open", [item]),
-    onTrash: (ids: string[]) => act("trash", ids.map((id) => byId.get(id)).filter((item): item is Item => !!item)),
+    onOpen: (item: Row) => act("open", [item]),
+    onTrash: (ids: string[]) => act("trash", ids.map((id) => byId.get(id)).filter((item): item is Row => !!item)),
     menuActions: menu,
-    onAction: (action: string, item: Item) =>
-      act(action, selected.includes(item.id) ? chosen : [item]),
+    onAction: (action: string, item: Row) => act(action, selected.includes(item.id) ? chosen : [item]),
     meta,
   };
 
   const showDetails = details.open && single;
+  const title = source.place === "starred" ? t("nav.starred") : t("nav.recent");
+  const empty =
+    source.place === "folder"
+      ? { icon: "folder_open", title: t("files.empty.folderTitle"), text: t("files.empty.folderText") }
+      : source.place === "starred"
+        ? { icon: "star", title: t("files.empty.starredTitle"), text: t("files.empty.starredText") }
+        : { icon: "schedule", title: t("files.empty.recentTitle"), text: t("files.empty.recentText") };
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
@@ -174,6 +330,7 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
                   { id: "trash", icon: "delete", label: t("actions.trash") },
                 ]}
                 moreActions={[
+                  starAction(chosen),
                   ...(single ? [{ id: "rename", icon: "edit", label: t("actions.rename") }] : []),
                   { id: "details", icon: "info", label: t("actions.details") },
                 ]}
@@ -182,13 +339,19 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
                 className="flex-1 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-23 max-sm:z-20 max-sm:h-14 max-sm:shadow-elevation-1"
               />
             )}
-            <Breadcrumbs
-              path={path}
-              onNavigate={(id) => open(id === "root" ? null : id)}
-              className={chosen.length > 0 ? "flex-1 max-sm:flex-1 sm:hidden" : "flex-1"}
-            />
+            {source.place === "folder" ? (
+              <Breadcrumbs
+                path={path}
+                onNavigate={(id) => open(id === "root" ? null : id)}
+                className={chosen.length > 0 ? "flex-1 max-sm:flex-1 sm:hidden" : "flex-1"}
+              />
+            ) : (
+              <h1 className={chosen.length > 0 ? "m-0 flex-1 text-headline-sm max-sm:block sm:hidden" : "m-0 flex-1 text-headline-sm"}>
+                {title}
+              </h1>
+            )}
             <div className={chosen.length > 0 ? "flex items-center gap-1 max-sm:flex sm:hidden" : "flex items-center gap-1"}>
-              {view === "grid" && (
+              {view === "grid" && source.place !== "recent" && (
                 <ActionMenu
                   actions={sortKeys.map((key) => ({
                     id: key,
@@ -218,19 +381,19 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
             </div>
           </div>
 
-          {listing.isError ? (
-            <EmptyState icon="error" title={errorMessage(t, listing.error)} className="mt-4" />
-          ) : listing.isPending ? null : items.length === 0 ? (
-            <EmptyState
-              icon="folder_open"
-              title={t("files.empty.folderTitle")}
-              text={t("files.empty.folderText")}
-              className="mt-4"
-            />
+          {query.isError ? (
+            <EmptyState icon="error" title={errorMessage(t, query.error)} className="mt-4" />
+          ) : query.isPending ? null : items.length === 0 ? (
+            <EmptyState icon={empty.icon} title={empty.title} text={empty.text} className="mt-4" />
           ) : view === "grid" ? (
             <FileGrid {...viewProps} />
           ) : (
-            <FileList {...viewProps} sort={sort} onSortChange={setSort} />
+            <FileList
+              {...viewProps}
+              sort={source.place === "recent" ? undefined : sort}
+              onSortChange={source.place === "recent" ? undefined : setSort}
+              columns={columns}
+            />
           )}
         </div>
       </main>
@@ -238,11 +401,12 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
       {showDetails && (
         <FileDetailsPanel
           item={single}
-          folderPath={folderPath}
+          folderPath={pathOf(single)}
           tab={details.tab}
           onTabChange={(tab) => setDetails({ open: true, tab })}
           onClose={() => setDetails({ ...details, open: false })}
           onUploadVersion={() => versionInput.current?.click()}
+          onStarChange={(on) => void star([single], on)}
           className="lg:mr-4 lg:mb-4 lg:rounded-lg max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-elevation-3 max-sm:w-full"
         />
       )}
@@ -259,7 +423,7 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
           if (!renaming) return null;
           try {
             await drive.rename(renaming.id, name);
-            await invalidateFolders(queryClient, [folderId]);
+            await invalidateFolders(queryClient, [renaming.node.parentId ?? null]);
             toast(t("toasts.renamed"));
             return null;
           } catch (error) {
@@ -273,7 +437,7 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
         open={moving.length > 0}
         onOpenChange={(isOpen) => !isOpen && setMoving([])}
         items={moving}
-        startIn={folderId}
+        startIn={moving[0]?.node.parentId ?? folderId}
         onMove={async (target) => {
           try {
             for (const item of moving) await drive.move(item.id, target);
@@ -283,7 +447,7 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
             toast(errorMessage(t, error));
           }
           setMoving([]);
-          await invalidateFolders(queryClient, [folderId, target]);
+          await invalidateFolders(queryClient, [...moving.map((item) => item.node.parentId ?? null), target]);
         }}
       />
 
@@ -296,8 +460,8 @@ export function FilesPage({ folderId }: { folderId: string | null }) {
           if (file && single) {
             uploads.start([file], {
               nodeId: single.id,
-              folderId,
-              folderName: listing.data?.folder?.name ?? t("nav.myFiles"),
+              folderId: single.node.parentId ?? null,
+              folderName: where(single),
             });
           }
           event.target.value = "";

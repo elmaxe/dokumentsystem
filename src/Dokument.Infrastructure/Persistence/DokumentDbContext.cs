@@ -22,6 +22,8 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<BlobPreview> BlobPreviews => Set<BlobPreview>();
     public DbSet<Rendition> Renditions => Set<Rendition>();
+    public DbSet<Star> Stars => Set<Star>();
+    public DbSet<RecentFile> RecentFiles => Set<RecentFile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -306,6 +308,48 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(u => u.UserId);
             e.HasIndex(u => u.ExpiresAt);
+        });
+
+        modelBuilder.Entity<Star>(e =>
+        {
+            e.ToTable("stars");
+            e.HasKey(s => new { s.UserId, s.NodeId });
+            e.Property(s => s.UserId).HasColumnName("user_id");
+            e.Property(s => s.NodeId).HasColumnName("node_id");
+            e.Property(s => s.StarredAt).HasColumnName("starred_at");
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Node>()
+                .WithMany()
+                .HasForeignKey(s => s.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(s => s.NodeId);
+        });
+
+        modelBuilder.Entity<RecentFile>(e =>
+        {
+            e.ToTable("recent_files");
+            e.HasKey(r => new { r.UserId, r.NodeId });
+            e.Property(r => r.UserId).HasColumnName("user_id");
+            e.Property(r => r.NodeId).HasColumnName("node_id");
+            e.Property(r => r.At).HasColumnName("at");
+            e.Property(r => r.Action)
+                .HasColumnName("action")
+                .HasConversion(LowercaseEnum<RecentAction>());
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(r => r.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Node>()
+                .WithMany()
+                .HasForeignKey(r => r.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The Recent page reads one person's newest rows.
+            e.HasIndex(r => new { r.UserId, r.At }).IsDescending(false, true);
+            e.HasIndex(r => r.NodeId);
         });
 
         modelBuilder.Entity<AuditEvent>(e =>

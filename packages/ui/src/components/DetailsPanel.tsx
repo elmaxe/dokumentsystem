@@ -31,6 +31,8 @@ export type DetailsPanelProps = {
   onTabChange: (tab: DetailsTab) => void;
   onClose: () => void;
   onManageAccess?: () => void;
+  /** Shows a star toggle in the header, filled when the item is starred. */
+  onStarChange?: (starred: boolean) => void;
   versions?: VersionHistoryProps;
   className?: string;
 };
@@ -52,6 +54,7 @@ export function DetailsPanel({
   onTabChange,
   onClose,
   onManageAccess,
+  onStarChange,
   versions,
   className,
 }: DetailsPanelProps) {
@@ -76,6 +79,14 @@ export function DetailsPanel({
         <h2 title={item.name} className="m-0 min-w-0 flex-1 truncate text-title-md">
           {item.name}
         </h2>
+        {onStarChange && (
+          <IconButton
+            icon="star"
+            label={item.starred ? t("actions.unstar") : t("actions.star")}
+            selected={!!item.starred}
+            onClick={() => onStarChange(!item.starred)}
+          />
+        )}
         <IconButton icon="close" label={t("details.close")} onClick={onClose} />
       </div>
       <Tabs.Root

@@ -497,6 +497,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/star": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Stars files and folders for the person asking. Stars are each person's own. */
+        post: operations["StarNodes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/unstar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["UnstarNodes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/starred": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What the person starred, trashed items left out. Unsorted: clients sort. */
+        get: operations["ListStarred"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/opened": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The viewer calls this when the person opens a file, for their Recent page. Private to them and not audited (§18). */
+        post: operations["MarkOpened"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The files the person last opened, downloaded, uploaded or restored a version of, newest first, at most 100. */
+        get: operations["ListRecent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads/{id}": {
         parameters: {
             query?: never;
@@ -864,6 +948,7 @@ export interface components {
             versionNumber: null | number;
             thumbnail: components["schemas"]["ThumbnailState"];
             contents: null | components["schemas"]["FolderCounts"];
+            starred: boolean;
         };
         NodeIdsRequest: {
             ids: string[];
@@ -887,6 +972,18 @@ export interface components {
         };
         /** @enum {unknown} */
         QuotaSource: "admin" | "claim";
+        /** @enum {unknown} */
+        RecentAction: "opened" | "downloaded" | "uploaded" | "restored";
+        RecentItem: {
+            node: components["schemas"]["NodeDto"];
+            path: components["schemas"]["PathEntry"][];
+            /** Format: date-time */
+            at: string;
+            action: components["schemas"]["RecentAction"];
+        };
+        RecentListing: {
+            items: components["schemas"]["RecentItem"][];
+        };
         RenameRequest: {
             name: string;
         };
@@ -930,6 +1027,13 @@ export interface components {
             userGroup: null | string;
             adminGroup: string;
             quotaClaim: null | string;
+        };
+        StarredItem: {
+            node: components["schemas"]["NodeDto"];
+            path: components["schemas"]["PathEntry"][];
+        };
+        StarredListing: {
+            items: components["schemas"]["StarredItem"][];
         };
         StorageReport: {
             /** Format: int64 */
@@ -1738,6 +1842,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EmptyTrashResponse"];
+                };
+            };
+        };
+    };
+    StarNodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeIdsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UnstarNodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeIdsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ListStarred: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StarredListing"];
+                };
+            };
+        };
+    };
+    MarkOpened: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ListRecent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentListing"];
                 };
             };
         };

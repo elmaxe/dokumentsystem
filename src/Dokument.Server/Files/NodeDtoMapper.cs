@@ -2,12 +2,23 @@ using Dokument.Domain.Files;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
+using Dokument.Server.Auth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dokument.Server.Files;
 
-/// <summary>Turns nodes into <see cref="NodeDto"/>s, looking up owner names, thumbnail states and folder sizes for the whole batch at once.</summary>
-public sealed class NodeDtoMapper(DokumentDbContext db, PreviewService previews, DriveService drive)
+/// <summary>
+/// Turns nodes into <see cref="NodeDto"/>s, looking up owner names, thumbnail states, folder sizes and the signed-in
+/// person's stars for the whole batch at once.
+/// </summary>
+public sealed class NodeDtoMapper(
+    DokumentDbContext db,
+    PreviewService previews,
+    DriveService drive,
+    StarService stars,
+    IHttpContextAccessor http
+)
 {
     public async Task<List<NodeDto>> MapAsync(IReadOnlyCollection<Node> nodes, CancellationToken ct)
     {
@@ -20,7 +31,15 @@ public sealed class NodeDtoMapper(DokumentDbContext db, PreviewService previews,
             ct
         );
         var folders = await drive.FolderContentsAsync(nodes, ct);
-        return nodes.Select(n => NodeDto.From(n, owners, thumbnails, folders)).ToList();
+        var starred =
+            http.HttpContext?.User.Identity?.IsAuthenticated == true
+                ? await stars.StarredAsync(
+                    http.HttpContext.User.UserId(),
+                    nodes.Select(n => n.Id).ToList(),
+                    ct
+                )
+                : [];
+        return nodes.Select(n => NodeDto.From(n, owners, thumbnails, folders, starred)).ToList();
     }
 
     public async Task<NodeDto> MapAsync(Node node, CancellationToken ct) =>

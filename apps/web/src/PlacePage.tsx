@@ -1,14 +1,12 @@
 import { EmptyState, type Place } from "@dokument/ui";
 import { useTranslation } from "react-i18next";
 
-const empty: Record<Exclude<Place, "files" | "trash">, [title: string, text: string, icon: string]> = {
+const empty: Record<Extract<Place, "shared">, [title: string, text: string, icon: string]> = {
   shared: ["sharedTitle", "sharedText", "folder_shared"],
-  recent: ["folderTitle", "folderText", "schedule"],
-  starred: ["starredTitle", "starredText", "star"],
 };
 
-/** Shared with me, Recent and Starred arrive in later milestones (docs/design.md §24); until then they are empty. */
-export function PlacePage({ place }: { place: Exclude<Place, "files" | "trash"> }) {
+/** Shared with me arrives with sharing in M4 (docs/design.md §24); until then it is empty. */
+export function PlacePage({ place }: { place: Extract<Place, "shared"> }) {
   const { t } = useTranslation();
   const [title, text, icon] = empty[place];
   return (
