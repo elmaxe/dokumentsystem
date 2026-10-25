@@ -92,14 +92,28 @@ public sealed class JobQueue(DokumentDbContext db, TimeProvider time)
         CancellationToken ct = default
     )
     {
+        ForgetOtherChanges(job);
         job.Fail(error, retry, time.GetUtcNow());
         await db.SaveChangesAsync(ct);
     }
 
     public async Task ReleaseAsync(Job job, CancellationToken ct = default)
     {
+        ForgetOtherChanges(job);
         job.Release();
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Drops what a failed handler left unsaved, so saving the job's state doesn't run into the same error and leave
+    /// the job running.
+    /// </summary>
+    private void ForgetOtherChanges(Job job)
+    {
+        foreach (var entry in db.ChangeTracker.Entries().Where(e => e.Entity != job).ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
     }
 
     /// <summary>Forgets finished jobs after <paramref name="age"/>. Failed ones stay until an admin retries or clears them.</summary>

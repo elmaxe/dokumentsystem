@@ -291,7 +291,8 @@ public sealed class TagRules(
 
         var wanted = matched.DistinctBy(r => r.TagKey).ToList();
         var before = await db
-            .BlobTags.Where(b => b.BlobHash == hash && b.Source == TagSource.Rule)
+            .BlobTags.AsNoTracking()
+            .Where(b => b.BlobHash == hash && b.Source == TagSource.Rule)
             .ToListAsync(ct);
 
         // Tags the blob keeps stay as they were, so their time says when the blob got them.
@@ -306,25 +307,31 @@ public sealed class TagRules(
             return;
         }
 
+        // The text and metadata stages can both get here for the same bytes at once, so this mustn't trip over rows
+        // the other one just removed or added.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        db.BlobTags.RemoveRange(gone);
-        await db.SaveChangesAsync(ct);
+        foreach (var row in gone)
+        {
+            await db
+                .BlobTags.Where(b =>
+                    b.BlobHash == hash && b.TagKey == row.TagKey && b.Source == TagSource.Rule
+                )
+                .ExecuteDeleteAsync(ct);
+        }
+
         var now = time.GetUtcNow();
         foreach (var rule in added)
         {
-            db.BlobTags.Add(
-                new BlobTag
-                {
-                    BlobHash = hash,
-                    Tag = rule.Tag,
-                    Source = TagSource.Rule,
-                    RuleId = rule.Id,
-                    CreatedAt = now,
-                }
+            await db.Database.ExecuteSqlAsync(
+                $"""
+                INSERT INTO blob_tags (blob_hash, tag, tag_key, source, rule_id, created_at)
+                VALUES ({bytes}, {rule.Tag.Value}, {rule.TagKey}, 'rule', {rule.Id}, {now})
+                ON CONFLICT DO NOTHING
+                """,
+                ct
             );
         }
 
-        await db.SaveChangesAsync(ct);
         if (added.Count > 0)
         {
             await filing.RequestForBlobsAsync([hash], JobPriority.Interactive, ct);
