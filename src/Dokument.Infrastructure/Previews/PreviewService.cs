@@ -49,6 +49,47 @@ public sealed class PreviewService(DokumentDbContext db, JobQueue jobs, DerivedS
             ct
         );
 
+    /// <summary>
+    /// After Office previews are turned on: queues the Office and OpenDocument files recorded as unsupported while
+    /// they were off, at background priority. Returns how many were queued.
+    /// </summary>
+    public Task<int> EnqueueOfficeAsync(DateTimeOffset now, CancellationToken ct = default)
+    {
+        var types = OfficeFormats.MimeTypes.Select(t => t.ToLowerInvariant()).ToArray();
+        return db.Database.ExecuteSqlAsync(
+            $"""
+            INSERT INTO jobs (id, type, subject, status, priority, attempts, run_after, created_at)
+            SELECT gen_random_uuid(), {JobType.Thumbnail.Name}, encode(p.blob_hash, 'hex'), 'queued', {(int)
+                JobPriority.Background}, 0, {now}, {now}
+            FROM blob_previews p
+            WHERE p.status = 'unsupported'
+              AND EXISTS (SELECT 1 FROM blobs b WHERE b.hash = p.blob_hash AND b.ref_count > 0)
+              AND EXISTS (SELECT 1 FROM file_versions v WHERE v.blob_hash = p.blob_hash AND lower(v.mime_type) = ANY({types}))
+              AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.type = {JobType.Thumbnail.Name} AND j.subject = encode(p.blob_hash, 'hex')
+                              AND j.status IN ('queued', 'running'))
+            """,
+            ct
+        );
+    }
+
+    /// <summary>Which of these blobs the viewer shows as a PDF made of them (Office documents).</summary>
+    public async Task<HashSet<ContentHash>> DocumentsAsync(
+        IReadOnlyCollection<ContentHash> hashes,
+        CancellationToken ct = default
+    )
+    {
+        var distinct = hashes.Distinct().ToList();
+        return distinct.Count == 0
+            ? []
+            : (
+                await db
+                    .Renditions.AsNoTracking()
+                    .Where(r => distinct.Contains(r.BlobHash) && r.Kind == RenditionKind.Document)
+                    .Select(r => r.BlobHash)
+                    .ToListAsync(ct)
+            ).ToHashSet();
+    }
+
     /// <summary>For a folder listing: which of these blobs have a thumbnail, and which are still being worked on.</summary>
     public async Task<Dictionary<ContentHash, ThumbnailState>> ThumbnailStatesAsync(
         IReadOnlyCollection<ContentHash> hashes,

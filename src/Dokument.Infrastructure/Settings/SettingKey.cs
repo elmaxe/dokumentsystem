@@ -127,4 +127,16 @@ public static class SettingKeys
             json.GetProperty("maxHeight").GetInt32()
         )
     );
+
+    public static readonly SettingKey<OfficeSettings> Office = new(
+        "office",
+        OfficeSettings.Default,
+        s => new JsonObject { ["gotenbergUrl"] = s.GotenbergUrl?.Value },
+        json => new OfficeSettings(
+            json.TryGetProperty("gotenbergUrl", out var url)
+            && url.ValueKind == JsonValueKind.String
+                ? ServiceUrl.Parse(url.GetString()!)
+                : null
+        )
+    );
 }

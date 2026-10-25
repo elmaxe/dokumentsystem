@@ -1,8 +1,10 @@
 using Dokument.Domain.Files;
 using Dokument.Domain.Jobs;
+using Dokument.Domain.Previews;
 using Dokument.Domain.Search;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Persistence;
+using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Tags;
 using Dokument.Infrastructure.Telemetry;
@@ -21,6 +23,7 @@ namespace Dokument.Worker.Search;
 internal sealed partial class TextHandler(
     DokumentDbContext db,
     BlobStore blobs,
+    DerivedStore derived,
     TextExtractor extractor,
     SettingsStore settings,
     TagRules rules,
@@ -61,6 +64,25 @@ internal sealed partial class TextHandler(
         {
             activity?.SetTag("dokument.blob.size", blob.Size);
             result = await extractor.ExtractAsync(blobs.PathOf(blob.StorageKey), mimeType, ocr, ct);
+            if (
+                result.Status == ContentStatus.Unsupported
+                && await db
+                    .Renditions.AsNoTracking()
+                    .Where(r => r.BlobHash == hash && r.Kind == RenditionKind.Document)
+                    .Select(r => r.StorageKey)
+                    .FirstOrDefaultAsync(ct)
+                    is { } pdf
+                && File.Exists(derived.PathOf(pdf))
+            )
+            {
+                // .doc, .xls, .ppt and RTF are read from the PDF that Gotenberg made of them (§10.3).
+                result = await extractor.ExtractAsync(
+                    derived.PathOf(pdf),
+                    "application/pdf",
+                    ocr,
+                    ct
+                );
+            }
             activity?.SetTag("dokument.text.status", result.Status.ToString().ToLowerInvariant());
             activity?.SetTag("dokument.text.pages", result.Pages.Count);
             activity?.SetTag(

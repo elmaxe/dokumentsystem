@@ -245,3 +245,29 @@ public sealed class FFmpegTests : IDisposable
         Assert.Null(await ffmpeg.ProbeAsync(png, ct));
     }
 }
+
+public sealed class OfficeFormatsTests
+{
+    [Theory]
+    [InlineData("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx")]
+    [InlineData("application/vnd.ms-excel", "xls")]
+    [InlineData("application/vnd.oasis.opendocument.presentation", "odp")]
+    [InlineData("text/rtf; charset=utf-8", "rtf")]
+    [InlineData("application/pdf", null)]
+    [InlineData("text/plain", null)]
+    [InlineData(null, null)]
+    public void Knows_the_formats_Gotenberg_converts(string? mimeType, string? extension) =>
+        Assert.Equal(extension, OfficeFormats.ExtensionFor(mimeType));
+
+    [Fact]
+    public void Checks_the_bytes_so_a_renamed_file_never_reaches_LibreOffice()
+    {
+        Assert.True(OfficeFormats.LooksLike("docx", "PK\x03\x04"u8));
+        Assert.True(
+            OfficeFormats.LooksLike("doc", [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1])
+        );
+        Assert.True(OfficeFormats.LooksLike("rtf", "{\\rtf1\\ansi"u8));
+        Assert.False(OfficeFormats.LooksLike("docx", "Hello"u8));
+        Assert.False(OfficeFormats.LooksLike("xls", "PK\x03\x04"u8));
+    }
+}

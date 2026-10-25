@@ -566,6 +566,7 @@ export const en = {
     unplayableTitle: "This file can't be played here",
     unplayableText: "Browsers can't play it as it is, and no copy that plays can be made. Download it to play it in another app.",
     cover: "Cover art",
+    shownAsPdf: "Shown as a PDF, so the layout may differ a little. Download the original to edit it.",
     failedTitle: "The preview couldn't be shown",
     failedText: "The file may be damaged or password-protected. You can still download it.",
     truncated: "Showing the first {{size}}. Download the file to see all of it.",
@@ -736,6 +737,7 @@ export const en = {
       scanning: "Virus scanning",
       textRecognition: "Search and text recognition",
       videos: "Video and audio",
+      office: "Office documents",
       versions: "Trash and versions",
       users: "Users and storage",
       storage: "Storage",
@@ -897,6 +899,16 @@ export const en = {
       offNote: "Scans and photos uploaded while this is off are read when you turn it on.",
       reread: "Read all files again",
       rereadStarted: "All files will be read again in the background",
+    },
+    office: {
+      intro:
+        "Word, Excel, PowerPoint and OpenDocument files are previewed as PDFs, made by Gotenberg in a separate container. Leave the address empty to keep these previews off.",
+      address: "Gotenberg address",
+      addressHint: "Such as http://gotenberg:3000. Leave empty to keep Office previews off.",
+      connected: "Connected · {{version}}",
+      failed: "Can't reach Gotenberg: {{error}}",
+      off: "Office previews are off. Documents show their type icon and can be downloaded.",
+      backfill: "Documents uploaded while previews were off get them in the background once you save.",
     },
     videos: {
       intro:

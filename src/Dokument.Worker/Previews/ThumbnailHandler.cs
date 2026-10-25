@@ -1,6 +1,7 @@
 using Dokument.Domain.Files;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Previews;
+using Dokument.Domain.Search;
 using Dokument.Domain.Settings;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Jobs;
@@ -11,6 +12,7 @@ using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Telemetry;
 using Dokument.Worker.Jobs;
 using Dokument.Worker.Media;
+using Dokument.Worker.Office;
 using Dokument.Worker.Search;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -20,7 +22,8 @@ namespace Dokument.Worker.Previews;
 /// <summary>
 /// The thumbnail stage (docs/design.md §10.2) for one blob: renders, writes the WebPs to the derived volume, then
 /// records them. Video and audio get a poster frame or their cover art from ffmpeg, what ffprobe found is kept as
-/// <see cref="BlobMedia"/>, and a playable copy is queued when browsers can't play the original. A file that isn't an
+/// <see cref="BlobMedia"/>, and a playable copy is queued when browsers can't play the original. Office and
+/// OpenDocument files become a PDF through Gotenberg, when an admin has set it up, and get thumbnails of its page 1. A file that isn't an
 /// image, a PDF or media, or can't be decoded, is recorded as such and not retried; only unexpected errors (I/O, the
 /// database) make the job fail and retry.
 /// </summary>
@@ -30,6 +33,7 @@ internal sealed partial class ThumbnailHandler(
     DerivedStore derived,
     Thumbnailer thumbnailer,
     FFmpeg ffmpeg,
+    Gotenberg gotenberg,
     JobQueue jobs,
     SettingsStore settings,
     LiveChanges live,
@@ -57,6 +61,7 @@ internal sealed partial class ThumbnailHandler(
 
         RenderResult result;
         BlobMedia? media;
+        DerivedKey? document = null;
         using (var render = DokumentTelemetry.ActivitySource.StartActivity("thumbnail render"))
         {
             render?.SetTag("dokument.blob.size", blob.Size);
@@ -65,7 +70,20 @@ internal sealed partial class ThumbnailHandler(
                 ct
             );
             BlobMedia? probed = null;
-            if (result.Status == PreviewStatus.Unsupported)
+            if (
+                result.Status == PreviewStatus.Unsupported
+                && await OfficeExtensionAsync(hash, blobs.PathOf(blob.StorageKey), ct)
+                    is { } extension
+            )
+            {
+                (result, document) = await RenderOfficeAsync(
+                    hash,
+                    blobs.PathOf(blob.StorageKey),
+                    extension,
+                    ct
+                );
+            }
+            else if (result.Status == PreviewStatus.Unsupported)
             {
                 RenderResult? fromMedia;
                 (fromMedia, probed) = await RenderMediaAsync(
@@ -93,6 +111,22 @@ internal sealed partial class ThumbnailHandler(
 
         var now = time.GetUtcNow();
         var renditions = new List<Rendition>();
+        if (document is not null)
+        {
+            renditions.Add(
+                new Rendition
+                {
+                    BlobHash = hash,
+                    Kind = RenditionKind.Document,
+                    StorageKey = document,
+                    MimeType = "application/pdf",
+                    Width = result.Width ?? 0,
+                    Height = result.Height ?? 0,
+                    CreatedAt = now,
+                }
+            );
+        }
+
         foreach (var image in result.Images)
         {
             var key = DerivedKey.For(hash, image.Kind);
@@ -131,6 +165,18 @@ internal sealed partial class ThumbnailHandler(
         preview.PageCount = result.PageCount;
         preview.UpdatedAt = now;
         await SaveMediaAsync(job, media, now, ct);
+        if (
+            document is not null
+            && await db.BlobContents.AnyAsync(
+                c => c.BlobHash == hash && c.Status == ContentStatus.Unsupported,
+                ct
+            )
+        )
+        {
+            // .doc, .xls, .ppt and RTF: the text stage couldn't read them, but it can read the PDF.
+            await jobs.EnqueueAsync(JobType.Text, job.Subject, job.Priority, ct);
+        }
+
         await db.SaveChangesAsync(ct);
 
         // Everyone with a file of these bytes sees its thumbnail appear (§16.4).
@@ -158,6 +204,80 @@ internal sealed partial class ThumbnailHandler(
     }
 
     private static int toolMissingLogged;
+
+    /// <summary>The extension to give Gotenberg, for Office and OpenDocument files. Null for anything else.</summary>
+    private async Task<string?> OfficeExtensionAsync(
+        ContentHash hash,
+        string path,
+        CancellationToken ct
+    )
+    {
+        // Any version with these bytes will do: they share the type.
+        var mimeType = await db
+            .FileVersions.Where(v => v.BlobHash == hash)
+            .OrderByDescending(v => v.UploadedAt)
+            .Select(v => v.MimeType)
+            .FirstOrDefaultAsync(ct);
+        if (OfficeFormats.ExtensionFor(mimeType) is not { } extension)
+        {
+            return null;
+        }
+
+        var head = new byte[8];
+        await using (var file = File.OpenRead(path))
+        {
+            await file.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, ct);
+        }
+
+        return OfficeFormats.LooksLike(extension, head) ? extension : null;
+    }
+
+    /// <summary>
+    /// The PDF of an Office file and thumbnails of its page 1, or Unsupported while Office previews are off. A file
+    /// Gotenberg can't read is Failed; Gotenberg being down throws, so the job retries.
+    /// </summary>
+    private async Task<(RenderResult, DerivedKey?)> RenderOfficeAsync(
+        ContentHash hash,
+        string path,
+        string extension,
+        CancellationToken ct
+    )
+    {
+        if ((await settings.GetAsync(SettingKeys.Office, ct)).GotenbergUrl is not { } url)
+        {
+            return (RenderResult.Unsupported, null);
+        }
+
+        var key = DerivedKey.For(hash, RenditionKind.Document);
+        var target = derived.PathOf(key);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        var temp = $"{target}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            using (var activity = DokumentTelemetry.ActivitySource.StartActivity("office convert"))
+            {
+                activity?.SetTag("dokument.office.format", extension);
+                await gotenberg.ConvertAsync(url, path, extension, temp, ct);
+            }
+
+            var result = await Task.Run(() => thumbnailer.Render(temp, ct), ct);
+            if (result.Status != PreviewStatus.Ready)
+            {
+                return (result, null);
+            }
+
+            File.Move(temp, target, overwrite: true);
+            return (result, key);
+        }
+        catch (DocumentUnreadableException e)
+        {
+            return (RenderResult.Failed(e.Message), null);
+        }
+        finally
+        {
+            File.Delete(temp);
+        }
+    }
 
     /// <summary>
     /// A poster or cover for video and audio, and what ffprobe found; Unsupported, with no media, for anything else.

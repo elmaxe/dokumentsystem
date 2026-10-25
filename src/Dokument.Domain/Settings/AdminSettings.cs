@@ -120,3 +120,9 @@ public sealed record VideoSettings(VideoCopies Copies, int MaxHeight)
             _ => null,
         };
 }
+
+/// <summary>Office previews (§10.3, §14): Gotenberg's address, or null when they're off.</summary>
+public sealed record OfficeSettings(ServiceUrl? GotenbergUrl)
+{
+    public static readonly OfficeSettings Default = new((ServiceUrl?)null);
+}
