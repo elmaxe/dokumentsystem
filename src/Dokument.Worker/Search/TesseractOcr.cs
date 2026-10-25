@@ -107,7 +107,7 @@ public sealed class TesseractOcr(IOptions<WorkerOptions> options) : ITextRecogni
     {
         var output = await ExternalTool.RunAsync(
             options.Value.TesseractCommand,
-            ["stdin", "stdout", "-l", options.Value.OcrLanguages, "--psm", "3", "tsv"],
+            ["stdin", "stdout", "-l", options.Value.OcrLanguages, "--psm", "1", "tsv"],
             Timeout,
             ct,
             stdin: png

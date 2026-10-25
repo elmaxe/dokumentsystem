@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.19** · Last updated: 2026-10-25
+> Status: **Draft v0.20** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -500,7 +500,7 @@ The stages are independent jobs per blob, queued together when an upload finishe
 - **Office and OpenDocument:** the XML is read from the zip with a 64 MiB uncompressed budget, so a zip bomb can't fill memory: Word paragraphs, one page per PowerPoint slide, Excel sheet names, shared and inline strings, and ODF `content.xml`. DTDs are refused.
 - **Plain text:** the first 2 MB, as UTF-8 or Latin-1.
 - **Images** of at least 200 px are turned upright from EXIF and recognized.
-- **Tesseract** (`swe+eng`, `--psm 3`, one thread) reads PNGs from stdin and returns TSV; words under 55 % confidence are dropped, and fewer than 3 words count as no text unless one word of 4+ letters is at least 85 % sure (a title or a sign). When a photo gives fewer than 3 words, it gets a second look inverted with a white margin, which finds light text on dark or busy backgrounds and text up against the edge; the pass with more words wins. Words keep their boxes as page fractions, for marking hits in the viewer (§14). The engine and its version are stored, so the ML `/ocr` endpoint (M7) can replace it behind the same `ITextRecognizer` interface and re-read only what it would improve.
+- **Tesseract** (`swe+eng`, `--psm 1`, one thread; page segmentation with orientation detection, so sideways or upside-down photos and scans are read the right way up, with word boxes still in the image's own coordinates) reads PNGs from stdin and returns TSV; words under 55 % confidence are dropped, and fewer than 3 words count as no text unless one word of 4+ letters is at least 85 % sure (a title or a sign). When a photo gives fewer than 3 words, it gets a second look inverted with a white margin, which finds light text on dark or busy backgrounds and text up against the edge; the pass with more words wins. Words keep their boxes as page fractions, for marking hits in the viewer (§14). The engine and its version are stored, so the ML `/ocr` endpoint (M7) can replace it behind the same `ITextRecognizer` interface and re-read only what it would improve.
 - **In development the worker runs in the image.** The Aspire AppHost builds the image's `runtime` stage (the app without the web UI) and runs the worker from it, so exiftool, Tesseract and libvips match production on any machine. `--WorkerOnHost=true` runs it as a project instead, for debugging.
 - **A missing tool doesn't fail jobs.** When the worker runs outside the image (`--WorkerOnHost`) and exiftool or Tesseract isn't installed, it logs one warning. Metadata jobs then store nothing, and text jobs keep a PDF's text layer and mark scans and photos as skipped. The next worker start queues those files again once the tool runs. The commands are `Worker:ExifToolCommand` and `Worker:TesseractCommand`, a name on PATH or a full path.
 - With text recognition turned off (an admin switch, default on), scans and photos are recorded as skipped; turning it on queues them at background priority. "Read all files again" re-queues every blob.
