@@ -260,35 +260,49 @@ public sealed class TagRules(
             }
         }
 
+        var wanted = matched.DistinctBy(r => r.TagKey).ToList();
         var before = await db
-            .BlobTags.Where(b => b.BlobHash == hash && b.Source == TagSource.Rule)
-            .Select(b => b.RuleId)
+            .BlobTags.AsNoTracking()
+            .Where(b => b.BlobHash == hash && b.Source == TagSource.Rule)
             .ToListAsync(ct);
-        if (before.ToHashSet().SetEquals(matched.Select(r => (Guid?)r.Id)))
+
+        // Tags the blob keeps stay as they were, so their time says when the blob got them.
+        var gone = before
+            .Where(b => !wanted.Any(r => r.Id == b.RuleId && r.Tag.Equals(b.Tag)))
+            .ToList();
+        var added = wanted
+            .Where(r => !before.Any(b => b.RuleId == r.Id && r.Tag.Equals(b.Tag)))
+            .ToList();
+        if (gone.Count + added.Count == 0)
         {
             return;
         }
 
+        // The text and metadata stages can both get here for the same bytes at once, so this mustn't trip over rows
+        // the other one just removed or added.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        await db
-            .BlobTags.Where(b => b.BlobHash == hash && b.Source == TagSource.Rule)
-            .ExecuteDeleteAsync(ct);
-        var now = time.GetUtcNow();
-        foreach (var rule in matched.DistinctBy(r => r.TagKey))
+        foreach (var row in gone)
         {
-            db.BlobTags.Add(
-                new BlobTag
-                {
-                    BlobHash = hash,
-                    Tag = rule.Tag,
-                    Source = TagSource.Rule,
-                    RuleId = rule.Id,
-                    CreatedAt = now,
-                }
+            await db
+                .BlobTags.Where(b =>
+                    b.BlobHash == hash && b.TagKey == row.TagKey && b.Source == TagSource.Rule
+                )
+                .ExecuteDeleteAsync(ct);
+        }
+
+        var now = time.GetUtcNow();
+        foreach (var rule in added)
+        {
+            await db.Database.ExecuteSqlAsync(
+                $"""
+                INSERT INTO blob_tags (blob_hash, tag, tag_key, source, rule_id, created_at)
+                VALUES ({bytes}, {rule.Tag.Value}, {rule.TagKey}, 'rule', {rule.Id}, {now})
+                ON CONFLICT DO NOTHING
+                """,
+                ct
             );
         }
 
-        await db.SaveChangesAsync(ct);
         var owners = await db
             .Nodes.Where(n => n.CurrentVersion != null && n.CurrentVersion.BlobHash == hash)
             .Select(n => n.OwnerId)
