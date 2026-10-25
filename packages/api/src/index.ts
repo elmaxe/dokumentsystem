@@ -1,5 +1,8 @@
 import createClient, { type Middleware } from "openapi-fetch";
+import { liveClientHeader } from "./live";
 import type { components, paths } from "./schema";
+
+export * from "./live";
 
 export type { components, paths };
 export type ServerInfo = components["schemas"]["ServerInfo"];
@@ -83,7 +86,13 @@ export function loginUrl(returnTo: string, baseUrl = ""): string {
  * before each mutation; mobile passes a base URL and bearer token.
  */
 export function createApiClient(
-  options: { baseUrl?: string; token?: string; csrfToken?: () => string | null | undefined } = {},
+  options: {
+    baseUrl?: string;
+    token?: string;
+    csrfToken?: () => string | null | undefined;
+    /** Names this client on mutations, so it can skip live notices about its own changes (§15.4). */
+    clientId?: string;
+  } = {},
 ) {
   const client = createClient<paths>({
     baseUrl: options.baseUrl ?? "",
@@ -91,18 +100,18 @@ export function createApiClient(
     headers: options.token ? { Authorization: `Bearer ${options.token}` } : undefined,
   });
 
-  const { csrfToken } = options;
-  if (csrfToken) {
-    const csrf: Middleware = {
+  const { csrfToken, clientId } = options;
+  if (csrfToken || clientId) {
+    const mutations: Middleware = {
       onRequest({ request }) {
-        const token = csrfToken();
-        if (token && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
-          request.headers.set(csrfHeader, token);
-        }
+        if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return request;
+        const token = csrfToken?.();
+        if (token) request.headers.set(csrfHeader, token);
+        if (clientId) request.headers.set(liveClientHeader, clientId);
         return request;
       },
     };
-    client.use(csrf);
+    client.use(mutations);
   }
 
   return client;

@@ -399,6 +399,17 @@ export const en = {
     truncated: "Showing the first {{size}}. Download the file to see all of it.",
     loading: "Loading preview",
   },
+  live: {
+    offline: "Can't reach the server. Changes made on other devices will show up when it's back.",
+    fileGone: "This file was moved to the trash or deleted, maybe on another device or tab.",
+    newerVersion: "A newer version was uploaded {{date}}. You're still looking at the one you opened.",
+    showNewest: "Show newest",
+    folderGoneTitle: "This folder was moved to the trash or deleted",
+    folderGoneText: "Maybe on another device or tab. If it's in the trash, you can restore it from there.",
+    openTrash: "Open trash",
+    goToMyFiles: "Go to My files",
+    sessionEnded: "You were signed out because this session was ended. Sign in again to continue.",
+  },
   account: {
     menu: "Account",
     admin: "Admin settings",

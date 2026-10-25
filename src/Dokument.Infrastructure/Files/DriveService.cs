@@ -4,6 +4,7 @@ using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
 using Dokument.Domain.Identity;
 using Dokument.Domain.Jobs;
+using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Settings;
@@ -20,6 +21,7 @@ public sealed class DriveService(
     PreviewService previews,
     SettingsStore settings,
     RecentFiles recent,
+    LiveChanges live,
     TimeProvider time
 )
 {
@@ -149,6 +151,7 @@ public sealed class DriveService(
         db.Nodes.Add(folder);
         audit.Add(actor, AuditActions.FolderCreate, folder.Id);
         await SaveAsync(ownerId, parentId, folderName, ct);
+        await live.NotifyAsync(ownerId, LiveTopics.Files, ct);
         return folder;
     }
 
@@ -244,6 +247,11 @@ public sealed class DriveService(
             );
         }
 
+        if (made.Values.Any(m => m.Created))
+        {
+            await live.NotifyAsync(ownerId, LiveTopics.Files, ct);
+        }
+
         await tx.CommitAsync(ct);
 
         // What merged folders already hold, so the client can ask about name clashes before uploading.
@@ -300,6 +308,7 @@ public sealed class DriveService(
             details: new JsonObject { ["from"] = oldName.Value, ["to"] = newName.Value }
         );
         await SaveAsync(node.OwnerId, node.ParentId, newName, ct);
+        await live.NotifyAsync(node.OwnerId, LiveTopics.Files, ct);
         return node;
     }
 
@@ -355,6 +364,7 @@ public sealed class DriveService(
             details: new JsonObject { ["from"] = fromId?.ToString(), ["to"] = folderId?.ToString() }
         );
         await SaveAsync(node.OwnerId, folderId, node.Name, ct);
+        await live.NotifyAsync(node.OwnerId, LiveTopics.Files, ct);
         await tx.CommitAsync(ct);
         return node;
     }
@@ -425,6 +435,7 @@ public sealed class DriveService(
         );
         await recent.RecordAsync(actor.UserId, node.Id, RecentAction.Restored, ct);
         await db.SaveChangesAsync(ct);
+        await live.NotifyAsync([node.OwnerId, actor.UserId], LiveTopics.Files, ct);
         await tx.CommitAsync(ct);
         return version;
     }
@@ -454,6 +465,7 @@ public sealed class DriveService(
                 new JsonObject { ["keepForever"] = keepForever }
             );
             await db.SaveChangesAsync(ct);
+            await live.NotifyAsync(node.OwnerId, LiveTopics.Files, ct);
         }
 
         return version;
@@ -486,6 +498,7 @@ public sealed class DriveService(
             audit.Add(actor, AuditActions.FileDownload, node.Id, version.Id);
             await recent.RecordAsync(actor.UserId, node.Id, RecentAction.Downloaded, ct);
             await db.SaveChangesAsync(ct);
+            await live.NotifyAsync(actor.UserId, LiveTopics.Recent, ct);
         }
 
         return new FileContent(node, version, blobs.PathOf(blob.StorageKey));
@@ -616,6 +629,7 @@ public sealed class DriveService(
         if (existing?.CurrentVersion?.BlobHash == file.Hash)
         {
             await SettleQuotaAsync(ownerId, reservedBytes, addedBytes: 0, ct);
+            await live.NotifyAsync(ownerId, LiveTopics.Storage, ct);
             await tx.CommitAsync(ct);
             return new AddedFile(
                 existing,
@@ -668,6 +682,7 @@ public sealed class DriveService(
         );
         await db.SaveChangesAsync(ct);
         await recent.RecordAsync(actor.UserId, node.Id, RecentAction.Uploaded, ct);
+        await live.NotifyAsync([ownerId, actor.UserId], LiveTopics.Files | LiveTopics.Storage, ct);
         await tx.CommitAsync(ct);
         return new AddedFile(
             node,

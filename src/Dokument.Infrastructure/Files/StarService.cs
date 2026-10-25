@@ -1,5 +1,6 @@
 using Dokument.Application.Files;
 using Dokument.Domain.Files;
+using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,7 +10,7 @@ namespace Dokument.Infrastructure.Files;
 /// Each person's stars and the Starred page (docs/design.md §15.2). Trashed items keep their star but drop out of the
 /// page until restored; deleting forever removes it with the node.
 /// </summary>
-public sealed class StarService(DokumentDbContext db, TimeProvider time)
+public sealed class StarService(DokumentDbContext db, LiveChanges live, TimeProvider time)
 {
     private IQueryable<Node> Live(Actor actor) =>
         db.Nodes.VisibleTo(actor).Where(n => n.TrashedAt == null);
@@ -47,6 +48,9 @@ public sealed class StarService(DokumentDbContext db, TimeProvider time)
                 .Stars.Where(s => s.UserId == actor.UserId && wanted.Contains(s.NodeId))
                 .ExecuteDeleteAsync(ct);
         }
+
+        // Stars are the person's own, so only their clients hear about it.
+        await live.NotifyAsync(actor.UserId, LiveTopics.Files, ct);
     }
 
     /// <summary>The live items this person starred, in no particular order: the page sorts them.</summary>

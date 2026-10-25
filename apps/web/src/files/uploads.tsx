@@ -1,5 +1,6 @@
 import {
   csrfHeader,
+  liveClientHeader,
   uploadNodeIdHeader,
   uploadsPath,
   type DuplicateMatch,
@@ -21,7 +22,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import * as tus from "tus-js-client";
-import { getCsrfToken } from "../api";
+import { clientId, getCsrfToken } from "../api";
 import { ApiError, drive, errorMessage, invalidateFolders, nameKey, pathLabel, storageQuery } from "./drive";
 import { validName, type PickedFolder } from "./folderPicking";
 import { sha256 } from "./hash";
@@ -157,6 +158,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       onBeforeRequest: (request) => {
         const token = getCsrfToken();
         if (token) request.setHeader(csrfHeader, token);
+        request.setHeader(liveClientHeader, clientId);
       },
       onShouldRetry: (error) => {
         const status = error.originalResponse?.getStatus() ?? 0;

@@ -7,7 +7,7 @@ import type { SignInSearch } from "./router";
 const knownErrors = ["not_allowed", "disabled", "failed"] as const;
 
 /** Sign-in is delegated to the household's IdP (docs/design.md §5): one button that starts the OIDC login. */
-export function SignInPage({ returnTo, error }: SignInSearch) {
+export function SignInPage({ returnTo, error, reason }: SignInSearch) {
   const { t } = useTranslation();
   const config = useQuery(authConfigQuery);
   const errorKey = knownErrors.find((e) => e === error) ?? (error ? "failed" : undefined);
@@ -21,6 +21,12 @@ export function SignInPage({ returnTo, error }: SignInSearch) {
           <h1 className="text-headline-sm">{t("auth.title")}</h1>
           <p className="text-body-lg text-on-surface-variant">{t("auth.body")}</p>
         </div>
+
+        {reason === "ended" && !errorKey && (
+          <p role="status" className="rounded-sm bg-secondary-container p-3 text-body-md text-on-secondary-container">
+            {t("live.sessionEnded")}
+          </p>
+        )}
 
         {errorKey && (
           <p

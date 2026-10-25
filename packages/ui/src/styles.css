@@ -108,7 +108,21 @@
   }
 }
 
+/* Something that just arrived from another device: tinted and outlined, fading to normal (§15.4). */
+@keyframes arrive {
+  from {
+    background-color: var(--color-secondary-container);
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+  to {
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+  }
+}
+
 @theme {
+  --animate-arrive: arrive 2s var(--ease-emphasized) both;
   --animate-shimmer: shimmer 1.4s linear infinite;
   --animate-indeterminate: indeterminate 1.2s var(--ease-emphasized) infinite;
 }

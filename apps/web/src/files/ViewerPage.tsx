@@ -1,21 +1,47 @@
 import { contentUrl, previewUrl, type NodeDto } from "@dokument/api";
-import { EmptyState, FileViewer, previewTypeOf, sortItems, useSnackbar, type DetailsTab, type PreviewSource } from "@dokument/ui";
+import {
+  Banner,
+  Button,
+  EmptyState,
+  FileViewer,
+  previewTypeOf,
+  sortItems,
+  useFormat,
+  useSnackbar,
+  type DetailsTab,
+  type PreviewSource,
+} from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { download, drive, errorMessage, folderQuery, invalidateStars, nodeQuery, recentQuery, starredQuery, toItem } from "./drive";
+import { onRemoteFileChange } from "../live";
+import {
+  ApiError,
+  download,
+  drive,
+  errorMessage,
+  folderQuery,
+  invalidateStars,
+  nodeQuery,
+  recentQuery,
+  starredQuery,
+  toItem,
+} from "./drive";
 import { FileDetailsPanel } from "./FileDetailsPanel";
 
 /** Images every browser shows from the original. Others (HEIC, TIFF, SVG) wait for the worker's WebP preview. */
 const webImage = /^image\/(jpeg|png|webp|gif|avif)$/;
 
-function previewOf(node: NodeDto): PreviewSource {
+function previewOf(node: NodeDto, versionId: string | null | undefined): PreviewSource {
   const type = previewTypeOf(node.mimeType);
   if (type === "none") return { type };
   if (type === "image" && !webImage.test(node.mimeType ?? "") && node.thumbnail === "pending") return { type: "preparing" };
-  return { type, src: previewUrl(node.id, node.currentVersionId) };
+  return { type, src: previewUrl(node.id, versionId) };
 }
+
+/** The version being looked at when a change arrived from elsewhere, and when the file was last fetched before it. */
+type Pin = { fileId: string; versionId: string; fetchedAt: number };
 
 /**
  * A file opened from the grid or list (§14): full screen, with its siblings a key or swipe away. Opened from Starred
@@ -32,6 +58,32 @@ export function ViewerPage({ fileId, from }: { fileId: string; from?: "starred" 
   const starred = useQuery({ ...starredQuery, enabled: from === "starred" });
   const recent = useQuery({ ...recentQuery, enabled: from === "recent" });
   const [panel, setPanel] = useState<{ open: boolean; tab: DetailsTab }>({ open: false, tab: "info" });
+  const format = useFormat();
+  const current = details.data?.node.currentVersionId ?? null;
+
+  // A newer version uploaded elsewhere doesn't replace what the person is reading: the open version stays until they
+  // ask for the newest (§15.4). Their own uploads and restores show at once, since no notice comes for them.
+  const [pinned, setPinned] = useState<Pin | null>(null);
+  // Once the file is fetched again with the same version, the change was about something else.
+  const pin =
+    pinned?.fileId === fileId && !(details.dataUpdatedAt > pinned.fetchedAt && current === pinned.versionId)
+      ? pinned
+      : null;
+  const latest = useRef({ fileId, current, fetchedAt: details.dataUpdatedAt, pin });
+  useEffect(() => {
+    latest.current = { fileId, current, fetchedAt: details.dataUpdatedAt, pin };
+  });
+  useEffect(
+    () =>
+      onRemoteFileChange(() => {
+        const { fileId, current, fetchedAt, pin } = latest.current;
+        if (current && !pin) setPinned({ fileId, versionId: current, fetchedAt });
+      }),
+    [],
+  );
+  const shownVersion = pin?.versionId ?? current;
+  const newer = !!pin && !!current && pin.versionId !== current;
+  const gone = details.isError && details.error instanceof ApiError && details.error.status === 404;
 
   // For the person's Recent page only; opening a preview is never audited (§18).
   useEffect(() => {
@@ -45,7 +97,7 @@ export function ViewerPage({ fileId, from }: { fileId: string; from?: "starred" 
         ? navigate({ to: "/folders/$folderId", params: { folderId: parentId } })
         : navigate({ to: "/" }));
 
-  if (details.isError) {
+  if (details.isError && !(gone && details.data)) {
     return (
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-surface-container-highest">
         <EmptyState icon="error" title={errorMessage(t, details.error)} className="m-4 max-w-md bg-surface-container-low" />
@@ -83,14 +135,40 @@ export function ViewerPage({ fileId, from }: { fileId: string; from?: "starred" 
   return (
     <div className="fixed inset-0 z-40">
       <FileViewer
-        key={`${item.id}-${item.node.currentVersionId}`}
+        key={`${item.id}-${shownVersion}`}
         item={item}
-        preview={previewOf(details.data.node)}
+        preview={previewOf(details.data.node, shownVersion)}
         onClose={close}
         onDownload={() => {
-          download(contentUrl(item.id));
+          download(contentUrl(item.id, pin ? (shownVersion ?? undefined) : undefined));
           toast(t("toasts.downloading", { count: 1 }));
         }}
+        banner={
+          gone ? (
+            <Banner
+              tone="warning"
+              icon="delete"
+              action={
+                <Button variant="text" onClick={() => void navigate({ to: "/trash" })}>
+                  {t("live.openTrash")}
+                </Button>
+              }
+            >
+              {t("live.fileGone")}
+            </Banner>
+          ) : newer ? (
+            <Banner
+              icon="history"
+              action={
+                <Button variant="text" onClick={() => setPinned(null)}>
+                  {t("live.showNewest")}
+                </Button>
+              }
+            >
+              {t("live.newerVersion", { date: format.date(item.modified, { inSentence: true }) })}
+            </Banner>
+          ) : undefined
+        }
         menuActions={[
           item.starred
             ? { id: "unstar", icon: "star", label: t("actions.unstar") }

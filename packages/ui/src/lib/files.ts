@@ -33,6 +33,8 @@ export type FileItem = {
   duration?: string;
   shared?: boolean;
   starred?: boolean;
+  /** Just appeared because of a change made elsewhere: briefly outlined so it's noticed (§15.4). */
+  arrived?: boolean;
 };
 
 export type FolderContents = { files: number; folders: number };

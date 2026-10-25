@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
 using Dokument.Domain.Previews;
+using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Settings;
@@ -21,6 +22,7 @@ public sealed partial class PurgeService(
     BlobStore blobs,
     DerivedStore derived,
     AuditLog audit,
+    LiveChanges live,
     SettingsStore settings,
     TimeProvider time,
     ILogger<PurgeService> logger
@@ -127,6 +129,7 @@ public sealed partial class PurgeService(
                         }
                     );
                     await db.SaveChangesAsync(ct);
+                    await live.NotifyAsync(root.OwnerId, LiveTopics.Trash | LiveTopics.Storage, ct);
                 }
 
                 await tx.CommitAsync(ct);
@@ -206,6 +209,11 @@ public sealed partial class PurgeService(
             }
 
             await db.SaveChangesAsync(ct);
+            await live.NotifyAsync(
+                due.Select(v => v.OwnerId),
+                LiveTopics.Files | LiveTopics.Storage,
+                ct
+            );
             await tx.CommitAsync(ct);
             total += due.Count;
         }
