@@ -41,9 +41,8 @@ public sealed class PreviewService(DokumentDbContext db, JobQueue jobs, DerivedS
             INSERT INTO jobs (id, type, subject, status, priority, attempts, run_after, created_at)
             SELECT gen_random_uuid(), {JobType.Thumbnail.Name}, encode(b.hash, 'hex'), 'queued', {(int)
                 JobPriority.Background}, 0, {now}, {now}
-            FROM blobs b
-            WHERE b.ref_count > 0
-              AND NOT EXISTS (SELECT 1 FROM blob_previews p WHERE p.blob_hash = b.hash AND p.pipeline_version >= {BlobPreview.CurrentPipelineVersion})
+            FROM (SELECT DISTINCT hash FROM blobs WHERE ref_count > 0) b
+            WHERE NOT EXISTS (SELECT 1 FROM blob_previews p WHERE p.blob_hash = b.hash AND p.pipeline_version >= {BlobPreview.CurrentPipelineVersion})
               AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.type = {JobType.Thumbnail.Name} AND j.subject = encode(b.hash, 'hex')
                               AND j.status IN ('queued', 'running', 'failed'))
             """,

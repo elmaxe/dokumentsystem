@@ -1,8 +1,9 @@
 namespace Dokument.Domain.Files;
 
 /// <summary>
-/// Where a blob lives, relative to the originals volume: <c>blobs/ab/cd/abcd…</c> (docs/design.md §7). Fanning out by
-/// the first two bytes keeps directories small at a million files.
+/// Where a blob lives, relative to the originals volume: <c>blobs/{owner id}/ab/cd/abcd…</c> (docs/design.md §7). Each
+/// person's files sit under their own folder; fanning out by the first two bytes keeps directories small at a million
+/// files.
 /// </summary>
 public sealed record StorageKey
 {
@@ -10,10 +11,10 @@ public sealed record StorageKey
 
     public string Value { get; }
 
-    public static StorageKey For(ContentHash hash)
+    public static StorageKey For(Guid ownerId, ContentHash hash)
     {
         var hex = hash.Hex;
-        return new StorageKey($"blobs/{hex[..2]}/{hex[2..4]}/{hex}");
+        return new StorageKey($"blobs/{ownerId:D}/{hex[..2]}/{hex[2..4]}/{hex}");
     }
 
     /// <summary>For values read back from the database.</summary>

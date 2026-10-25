@@ -82,7 +82,8 @@ public class ContentHashTests
             TestContext.Current.CancellationToken
         );
         Assert.Equal(Hex, hash.Hex);
-        Assert.Equal($"blobs/e3/b0/{Hex}", StorageKey.For(hash).Value);
+        var owner = Guid.Parse("0b9f6a2e-3c1d-4e5f-8a7b-9c0d1e2f3a4b");
+        Assert.Equal($"blobs/{owner}/e3/b0/{Hex}", StorageKey.For(owner, hash).Value);
     }
 }
 
