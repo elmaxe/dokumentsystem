@@ -9,6 +9,8 @@
 // and worker's traces, metrics and logs show up in the dashboard. Outside Aspire it stays off until that variable is
 // set (docs/design.md §22.1).
 
+using Microsoft.Extensions.Configuration;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 var dataRoot = Path.GetFullPath(Path.Combine(builder.AppHostDirectory, "../../.data"));
@@ -54,11 +56,40 @@ server.WithUrl(
     ReferenceExpression.Create($"{server.GetEndpoint("http")}/scalar"),
     "API reference (Scalar)"
 );
-AddRole("worker", launchProfile: null)
-    .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
-    .WithHttpEndpoint(env: "HTTP_PORTS")
-    .WithHttpHealthCheck("/health/ready")
-    .WaitFor(server);
+
+// The worker runs in the app's image by default, so exiftool, Tesseract and libvips are there on any machine, the same
+// as in production. Start with `-- --WorkerOnHost=true` to run it as a project instead, e.g. to debug it; it then needs
+// those tools installed (README, Develop).
+if (builder.Configuration.GetValue<bool>("WorkerOnHost"))
+{
+    AddRole("worker", launchProfile: null)
+        .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+        .WithHttpEndpoint(env: "HTTP_PORTS")
+        .WithHttpHealthCheck("/health/ready")
+        .WaitFor(server);
+}
+else
+{
+    var worker = builder
+        .AddDockerfile("worker", "../..", stage: "runtime")
+        .WithEnvironment("ROLE", "worker")
+        .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+        .WithBindMount(dataRoot, "/data")
+        .WithEnvironment("Storage__OriginalsPath", "/data/originals")
+        .WithEnvironment("Storage__DerivedPath", "/data/derived")
+        .WithEnvironment("Storage__BackupsPath", "/data/backups")
+        .WithReference(database)
+        .WithOtlpExporter()
+        .WithHttpEndpoint(targetPort: 8080)
+        .WithHttpHealthCheck("/health/ready")
+        .WaitFor(server);
+
+    // On Linux and macOS the container writes thumbnails as you, so the server on the host can clean them up.
+    if (!OperatingSystem.IsWindows())
+    {
+        worker.WithContainerRuntimeArgs("--user", $"{Unix.getuid()}:{Unix.getgid()}");
+    }
+}
 
 // A fixed port, because the dev realm's redirect URI names it.
 var web = builder
@@ -72,3 +103,12 @@ var web = builder
 server.WithEnvironment("PUBLIC_URL", web.GetEndpoint("http"));
 
 builder.Build().Run();
+
+static class Unix
+{
+    [System.Runtime.InteropServices.DllImport("libc")]
+    internal static extern uint getuid();
+
+    [System.Runtime.InteropServices.DllImport("libc")]
+    internal static extern uint getgid();
+}
