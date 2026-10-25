@@ -129,6 +129,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(j => j.LastError).HasColumnName("last_error");
             e.Property(j => j.CreatedAt).HasColumnName("created_at");
             e.Property(j => j.FinishedAt).HasColumnName("finished_at");
+            e.Property(j => j.StartedAt).HasColumnName("started_at");
             e.Property(j => j.TraceParent).HasColumnName("trace_parent");
 
             // The claim query's index: what is due, best first. Finished jobs stay out of it.

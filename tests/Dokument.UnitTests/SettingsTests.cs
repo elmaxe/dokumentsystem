@@ -1,5 +1,8 @@
+using System.Text.Json;
 using Dokument.Domain.Identity;
+using Dokument.Domain.Jobs;
 using Dokument.Domain.Settings;
+using Dokument.Infrastructure.Settings;
 
 namespace Dokument.UnitTests;
 
@@ -33,6 +36,19 @@ public class SettingsTests
     [InlineData("tcp://clamav:3310/scan")]
     public void Clamd_addresses_must_be_plain_tcp(string input) =>
         Assert.Null(ClamdAddress.TryParse(input, out _));
+
+    [Fact]
+    public void Paused_queues_round_trip_in_the_shape_the_claim_query_reads()
+    {
+        var paused = JobSettings.Default.With(JobType.Text, true).With(JobType.Thumbnail, true);
+        var json = SettingKeys.Jobs.Write(paused).ToJsonString();
+        Assert.Equal("""{"paused":["text","thumbnail"]}""", json);
+
+        var read = SettingKeys.Jobs.Read(JsonDocument.Parse(json).RootElement);
+        Assert.True(read.IsPaused(JobType.Text));
+        Assert.False(read.IsPaused(JobType.Metadata));
+        Assert.False(read.With(JobType.Text, false).IsPaused(JobType.Text));
+    }
 
     [Fact]
     public void A_quota_resolves_against_the_default()

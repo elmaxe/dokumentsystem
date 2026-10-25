@@ -348,6 +348,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/processing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Where the worker is with the file's current version: thumbnail, metadata and text. Admins also get each failed step's job and error. */
+        get: operations["GetProcessing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/versions/{versionId}/restore": {
         parameters: {
             query?: never;
@@ -909,10 +926,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/jobs/queues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminGetJobQueues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/jobs/queues/{type}/paused": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Paused queues start no new jobs; running ones finish. */
+        put: operations["AdminPauseJobQueue"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Running jobs longest-running first, queued ones in the order they will run, failed ones latest first. */
+        get: operations["AdminListJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/jobs/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminRetryJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/jobs/retry-failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Every failed job, or those of one type, with fresh attempts. */
+        post: operations["AdminRetryFailedJobs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Forgets a failed job without running it again. */
+        delete: operations["AdminClearJob"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ActiveStepDto: {
+            step: components["schemas"]["JobKind"];
+            running: boolean;
+        };
         AdminSettingsDto: {
             storage: components["schemas"]["StorageSettingsDto"];
             versions: components["schemas"]["VersionSettingsDto"];
@@ -989,6 +1110,9 @@ export interface components {
             /** Format: int32 */
             items: number;
         };
+        FileProcessing: {
+            steps: components["schemas"]["ProcessingStepDto"][];
+        };
         /**
          * @default fail
          * @enum {unknown}
@@ -1038,6 +1162,64 @@ export interface components {
                 [key: string]: string[];
             };
         };
+        JobDto: {
+            /** Format: uuid */
+            id: string;
+            type: components["schemas"]["JobKind"];
+            status: components["schemas"]["JobStatus"];
+            priority: components["schemas"]["JobPriority"];
+            /** Format: int32 */
+            attempts: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt: null | string;
+            /** Format: date-time */
+            finishedAt: null | string;
+            /** Format: date-time */
+            runAfter: string;
+            error: null | string;
+            /** Format: int64 */
+            size: null | number;
+            mimeType: null | string;
+            files: components["schemas"]["JobFileDto"][];
+        };
+        JobFileDto: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            /** Format: uuid */
+            ownerId: string;
+            ownerName: string;
+            use: components["schemas"]["JobFileUse"];
+            /** Format: int32 */
+            versionNumber: number;
+            path: components["schemas"]["PathEntry"][];
+        };
+        /** @enum {unknown} */
+        JobFileUse: "current" | "trashed" | "olderVersion";
+        /** @enum {unknown} */
+        JobKind: "thumbnail" | "metadata" | "text";
+        JobList: {
+            items: components["schemas"]["JobDto"][];
+            more: boolean;
+        };
+        /** @enum {unknown} */
+        JobPriority: "background" | "interactive";
+        JobQueueDto: {
+            type: components["schemas"]["JobKind"];
+            /** Format: int32 */
+            running: number;
+            /** Format: int32 */
+            waiting: number;
+            /** Format: int32 */
+            failed: number;
+            /** Format: int32 */
+            doneLastWeek: number;
+            paused: boolean;
+        };
+        /** @enum {unknown} */
+        JobStatus: "queued" | "running" | "done" | "failed";
         KeepForeverRequest: {
             keepForever: boolean;
         };
@@ -1101,6 +1283,7 @@ export interface components {
             thumbnail: components["schemas"]["ThumbnailState"];
             contents: null | components["schemas"]["FolderCounts"];
             starred: boolean;
+            processing: components["schemas"]["ActiveStepDto"][];
         };
         NodeIdsRequest: {
             ids: string[];
@@ -1120,9 +1303,25 @@ export interface components {
             id: string;
             name: string;
         };
+        PauseQueueRequest: {
+            paused: boolean;
+        };
         ProbeResult: {
             reachable: boolean;
             version: null | string;
+            error: null | string;
+        };
+        ProcessingStepDto: {
+            step: components["schemas"]["JobKind"];
+            state: components["schemas"]["StepState"];
+            /** Format: date-time */
+            at: null | string;
+            /** Format: int32 */
+            ahead: null | number;
+            /** Format: uuid */
+            jobId: null | string;
+            /** Format: int32 */
+            attempts: null | number;
             error: null | string;
         };
         QuotaDto: {
@@ -1225,6 +1424,8 @@ export interface components {
         StarredListing: {
             items: components["schemas"]["StarredItem"][];
         };
+        /** @enum {unknown} */
+        StepState: "notStarted" | "waiting" | "paused" | "running" | "done" | "nothingFound" | "skipped" | "unsupported" | "unreadable" | "failed";
         StorageReport: {
             /** Format: int64 */
             filesBytes: number;
@@ -1851,6 +2052,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionDto"][];
+                };
+            };
+        };
+    };
+    GetProcessing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileProcessing"];
                 };
             };
         };
@@ -2699,6 +2922,178 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminGetJobQueues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueueDto"][];
+                };
+            };
+        };
+    };
+    AdminPauseJobQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PauseQueueRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueueDto"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminListJobs: {
+        parameters: {
+            query?: {
+                status?: string;
+                type?: string;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminRetryJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminRetryFailedJobs: {
+        parameters: {
+            query?: {
+                type?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueueDto"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminClearJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Not Found */
             404: {
