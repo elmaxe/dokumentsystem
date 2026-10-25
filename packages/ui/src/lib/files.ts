@@ -1,4 +1,5 @@
 import type { TFunction } from "i18next";
+import type { TagInfo } from "../components/Tags";
 
 /** The MIME groups that get their own icon and colour (docs/design.md §16.2). */
 export type FileKind =
@@ -33,6 +34,8 @@ export type FileItem = {
   duration?: string;
   shared?: boolean;
   starred?: boolean;
+  /** The file's tags (§13.4). */
+  tags?: TagInfo[];
   /** Just appeared because of a change made elsewhere: briefly outlined so it's noticed (§15.4). */
   arrived?: boolean;
 };

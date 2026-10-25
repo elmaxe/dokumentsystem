@@ -3,6 +3,7 @@ using Dokument.Application.Files;
 using Dokument.Domain.Files;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Search;
+using Dokument.Domain.Tags;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Telemetry;
 using Microsoft.EntityFrameworkCore;
@@ -23,18 +24,20 @@ public sealed record SearchRequest(
     DateTimeOffset? ModifiedBefore = null,
     Guid? FolderId = null,
     bool Starred = false,
+    IReadOnlyList<string>? Tags = null,
     SearchSort Sort = SearchSort.Relevance,
     int Offset = 0,
     int Limit = 50
 );
 
-/// <summary>Where a file's best hit was: its name, its text, text recognized in a scan or photo, or its metadata.</summary>
+/// <summary>Where a file's best hit was: its name, its text, text recognized in a scan or photo, its metadata, or its tags.</summary>
 public enum MatchSource
 {
     Name,
     Text,
     Ocr,
     Metadata,
+    Tag,
 }
 
 /// <param name="PageNo">The best page, from 1; null for a name match or a format without pages.</param>
@@ -79,6 +82,9 @@ public sealed class SearchService(DokumentDbContext db)
 
     /// <summary>A name match counts this much more than a page match: people usually remember names.</summary>
     private const double NameWeight = 2;
+
+    /// <summary>What a word found through a file's tags adds, about as much as a good name match.</summary>
+    private const double TagWeight = 8;
 
     public async Task<SearchResults> SearchAsync(
         Actor actor,
@@ -131,6 +137,7 @@ public sealed class SearchService(DokumentDbContext db)
                             Camera = null,
                             Taken = new(null, null),
                             Starred = false,
+                            Tags = [],
                         },
                         ct
                     )
@@ -210,6 +217,16 @@ public sealed class SearchService(DokumentDbContext db)
                 request.ModifiedBefore ?? query.Modified.To
             ),
             Starred = request.Starred || query.Starred,
+            Tags =
+            [
+                .. query
+                    .Tags.Concat(
+                        (request.Tags ?? [])
+                            .Select(t => TagName.TryCreate(t, out var tag, out _) ? tag.Key : null)
+                            .OfType<string>()
+                    )
+                    .Distinct(),
+            ],
         };
 
     private async Task<IQueryable<Node>> FilterAsync(
@@ -241,6 +258,13 @@ public sealed class SearchService(DokumentDbContext db)
         if (query.Modified.To is { } to)
         {
             nodes = nodes.Where(n => n.ModifiedAt < to);
+        }
+
+        foreach (var tag in query.Tags)
+        {
+            nodes = nodes.Where(n =>
+                db.EffectiveTags.Any(t => t.NodeId == n.Id && t.TagKey == tag)
+            );
         }
 
         if (query.Starred)
@@ -323,8 +347,91 @@ public sealed class SearchService(DokumentDbContext db)
         return nodes;
     }
 
-    /// <summary>Every node in <paramref name="scope"/> whose name or text matches, with its scores and best page.</summary>
+    /// <summary>
+    /// Every node in <paramref name="scope"/> that matches, with its scores and best page. A word also counts as found
+    /// when the file has a tag with that word (§13.4), so "receipt" finds a Swedish receipt tagged receipt, and
+    /// "receipt hornstull" finds it when "hornstull" is in its text.
+    /// </summary>
     private async Task<Dictionary<Guid, Candidate>> MatchAsync(
+        IQueryable<Node> scope,
+        SearchQuery query,
+        CancellationToken ct
+    )
+    {
+        var candidates = await MatchTextAsync(scope, query, ct);
+        var tagTerms = await TagTermsAsync(scope, query, ct);
+        var terms = tagTerms.Keys.ToList();
+        for (var mask = 1; mask < 1 << terms.Count; mask++)
+        {
+            var byTag = terms.Where((_, i) => (mask & (1 << i)) != 0).ToList();
+            var tagged = scope;
+            foreach (var term in byTag)
+            {
+                var keys = tagTerms[term];
+                tagged = tagged.Where(n =>
+                    db.EffectiveTags.Any(t => t.NodeId == n.Id && keys.Contains(t.TagKey))
+                );
+            }
+
+            var rest = query with { Terms = [.. query.Terms.Except(byTag)] };
+            var found = rest.HasText
+                ? await MatchTextAsync(tagged, rest, ct)
+                : (await tagged.Select(n => n.Id).Take(MaxCandidates).ToListAsync(ct)).ToDictionary(
+                    id => id,
+                    id => new Candidate(id)
+                );
+            foreach (var (id, candidate) in found)
+            {
+                candidate.TagScore = byTag.Count * TagWeight;
+                if (
+                    !candidates.TryGetValue(id, out var existing)
+                    || candidate.Score > existing.Score
+                )
+                {
+                    candidates[id] = candidate;
+                }
+            }
+        }
+
+        return candidates;
+    }
+
+    /// <summary>
+    /// The search words that are words of tags on files in scope, each with those tags' keys. At most three, which
+    /// keeps the combinations to try small.
+    /// </summary>
+    private async Task<Dictionary<string, List<string>>> TagTermsAsync(
+        IQueryable<Node> scope,
+        SearchQuery query,
+        CancellationToken ct
+    )
+    {
+        if (query.Terms.Count == 0)
+        {
+            return [];
+        }
+
+        var keys = await db
+            .EffectiveTags.Where(t => scope.Any(n => n.Id == t.NodeId))
+            .Select(t => t.TagKey)
+            .Distinct()
+            .Take(5000)
+            .ToListAsync(ct);
+        var words = keys.ToDictionary(k => k, k => SearchQuery.Words(k));
+        return query
+            .Terms.Select(term =>
+                (
+                    term,
+                    keys: keys.Where(k => words[k].Any(w => Highlighter.Matches(w, term))).ToList()
+                )
+            )
+            .Where(t => t.keys.Count > 0)
+            .Take(3)
+            .ToDictionary(t => t.term, t => t.keys);
+    }
+
+    /// <summary>Every node in <paramref name="scope"/> whose name or text matches, with its scores and best page.</summary>
+    private async Task<Dictionary<Guid, Candidate>> MatchTextAsync(
         IQueryable<Node> scope,
         SearchQuery query,
         CancellationToken ct
@@ -436,9 +543,9 @@ public sealed class SearchService(DokumentDbContext db)
                     : null;
                 return new SearchHit(
                     node,
-                    best is null
-                        ? MatchSource.Name
-                        : Enum.Parse<MatchSource>(best.Source, ignoreCase: true),
+                    best is not null ? Enum.Parse<MatchSource>(best.Source, ignoreCase: true)
+                        : c.NameScore == 0 && c.TagScore > 0 ? MatchSource.Tag
+                        : MatchSource.Name,
                     best is { PageNo: > 0 } && count is not null ? best.PageNo : null,
                     count,
                     c.PagesWithHits,
@@ -497,6 +604,7 @@ public sealed class SearchService(DokumentDbContext db)
         public double NameScore { get; init; }
         public PageHit? Page { get; set; }
         public int PagesWithHits { get; set; }
-        public double Score => (NameScore * NameWeight) + (Page?.Score ?? 0);
+        public double TagScore { get; set; }
+        public double Score => (NameScore * NameWeight) + (Page?.Score ?? 0) + TagScore;
     }
 }

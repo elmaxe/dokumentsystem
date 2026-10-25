@@ -771,6 +771,177 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("content_pages", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Tags.BlobTag", b =>
+                {
+                    b.Property<byte[]>("BlobHash")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob_hash");
+
+                    b.Property<string>("TagKey")
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("RuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rule_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.HasKey("BlobHash", "TagKey");
+
+                    b.HasIndex("RuleId");
+
+                    b.HasIndex("TagKey");
+
+                    b.ToTable("blob_tags", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.EffectiveTag", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<Guid?>("RuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rule_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.Property<string>("TagKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.ToTable((string)null);
+
+                    b.ToView("effective_node_tags", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.NodeTag", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<string>("TagKey")
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at");
+
+                    b.Property<Guid>("AddedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("added_by");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.HasKey("NodeId", "TagKey");
+
+                    b.HasIndex("TagKey");
+
+                    b.ToTable("node_tags", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.NodeTagRemoval", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<string>("TagKey")
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.Property<DateTimeOffset>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
+                    b.Property<Guid>("RemovedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("removed_by");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.HasKey("NodeId", "TagKey");
+
+                    b.ToTable("node_tag_removals", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.TagRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.Property<string>("TagKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Words")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("words");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TagKey")
+                        .IsUnique();
+
+                    b.ToTable("tag_rules", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Infrastructure.Persistence.Setting", b =>
                 {
                     b.Property<string>("Key")
@@ -890,6 +1061,24 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.NodeTag", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.NodeTagRemoval", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

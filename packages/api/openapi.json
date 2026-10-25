@@ -1040,7 +1040,7 @@
         "tags": [
           "Search"
         ],
-        "description": "Files and folders whose name, text or metadata match. `q` takes words, \"exact phrases\", -excluded words and the operators type:, in:, after:, before:, camera:, taken: and is:starred; the other parameters are the filter chips and override the operators.",
+        "description": "Files and folders whose name, text or metadata match. `q` takes words, \"exact phrases\", -excluded words and the operators type:, in:, after:, before:, camera:, taken:, tag: and is:starred; the other parameters are the filter chips and override the operators. A word also finds files with a tag that has it.",
         "operationId": "Search",
         "parameters": [
           {
@@ -1087,6 +1087,16 @@
             "schema": {
               "type": "boolean",
               "default": false
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           {
@@ -1145,7 +1155,7 @@
         "tags": [
           "Search"
         ],
-        "description": "Name matches as someone types, best first.",
+        "description": "Tags and name matches as someone types, best first.",
         "operationId": "SearchSuggest",
         "parameters": [
           {
@@ -1202,6 +1212,101 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MatchesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/tags": {
+      "get": {
+        "tags": [
+          "Tags"
+        ],
+        "description": "A file's tags, and the automatic tags someone took off it, for the details panel.",
+        "operationId": "GetFileTags",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileTags"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/tags": {
+      "post": {
+        "tags": [
+          "Tags"
+        ],
+        "description": "Adds and removes tags on one or more files at once. Removing an automatic tag is remembered for each file, so keyword rules don't add it back.",
+        "operationId": "ChangeTags",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeTagsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/tags": {
+      "get": {
+        "tags": [
+          "Tags"
+        ],
+        "description": "Tags on files the person can see, most used first, with how many files have each. `q` keeps those that start with it, or have a word that does.",
+        "operationId": "SuggestTags",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagSuggestions"
                 }
               }
             }
@@ -1733,6 +1838,151 @@
           }
         }
       }
+    },
+    "/api/v1/admin/tag-rules": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminListTagRules",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagRuleListing"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Adds a rule and runs it over every stored file in the background.",
+        "operationId": "AdminCreateTagRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagRuleDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/tag-rules/{id}": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Changing the tag or words runs the rule again over every file in the background; turning it off takes its tags off at once.",
+        "operationId": "AdminUpdateTagRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagRuleDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Deletes the rule and takes its tags off every file.",
+        "operationId": "AdminDeleteTagRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/tag-rules/preview": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "How many files a rule would tag, with a few examples. Changes nothing.",
+        "operationId": "AdminPreviewTagRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagRulePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagRulePreviewDto"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1847,6 +2097,41 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "ChangeTagsRequest": {
+        "required": [
+          "ids",
+          "add",
+          "remove"
+        ],
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "add": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "remove": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -2028,6 +2313,27 @@
           "items": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "FileTags": {
+        "required": [
+          "tags",
+          "removed"
+        ],
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagDto"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -2245,7 +2551,8 @@
           "name",
           "text",
           "ocr",
-          "metadata"
+          "metadata",
+          "tag"
         ]
       },
       "MlEndpointDto": {
@@ -2372,7 +2679,8 @@
           "versionNumber",
           "thumbnail",
           "contents",
-          "starred"
+          "starred",
+          "tags"
         ],
         "type": "object",
         "properties": {
@@ -2456,6 +2764,12 @@
           },
           "starred": {
             "type": "boolean"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagDto"
+            }
           }
         }
       },
@@ -3050,7 +3364,8 @@
       "SuggestResponse": {
         "required": [
           "items",
-          "terms"
+          "terms",
+          "tags"
         ],
         "type": "object",
         "properties": {
@@ -3064,6 +3379,214 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagSuggestion"
+            }
+          }
+        }
+      },
+      "TagDto": {
+        "required": [
+          "name",
+          "source",
+          "ruleId"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/TagSource"
+          },
+          "ruleId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "TagRuleDto": {
+        "required": [
+          "id",
+          "tag",
+          "words",
+          "enabled",
+          "files",
+          "running",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "words": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TagRuleExampleDto": {
+        "required": [
+          "nodeId",
+          "name",
+          "mimeType",
+          "snippet"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "snippet": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SnippetDto"
+              }
+            ]
+          }
+        }
+      },
+      "TagRuleListing": {
+        "required": [
+          "rules"
+        ],
+        "type": "object",
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagRuleDto"
+            }
+          }
+        }
+      },
+      "TagRulePreviewDto": {
+        "required": [
+          "files",
+          "examples"
+        ],
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagRuleExampleDto"
+            }
+          }
+        }
+      },
+      "TagRulePreviewRequest": {
+        "required": [
+          "tag",
+          "words"
+        ],
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "words": {
+            "type": "string"
+          }
+        }
+      },
+      "TagRuleRequest": {
+        "required": [
+          "tag",
+          "words"
+        ],
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "words": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "TagSource": {
+        "enum": [
+          "user",
+          "rule",
+          "ml"
+        ]
+      },
+      "TagSuggestion": {
+        "required": [
+          "name",
+          "files"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TagSuggestions": {
+        "required": [
+          "tags"
+        ],
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagSuggestion"
             }
           }
         }
@@ -3474,6 +3997,9 @@
     },
     {
       "name": "Search"
+    },
+    {
+      "name": "Tags"
     },
     {
       "name": "Uploads"

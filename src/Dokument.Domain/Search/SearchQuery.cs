@@ -11,7 +11,7 @@ public sealed record DateRange(DateTimeOffset? From, DateTimeOffset? To)
 
 /// <summary>
 /// What someone typed in the search bar (docs/design.md §13.3), taken apart: words, "exact phrases", -excluded words,
-/// and operators such as <c>type:pdf</c>, <c>in:Kvitton</c>, <c>after:2025-01-01</c>, <c>camera:fujifilm</c>,
+/// and operators such as <c>type:pdf</c>, <c>tag:receipt</c>, <c>in:Kvitton</c>, <c>after:2025-01-01</c>, <c>camera:fujifilm</c>,
 /// <c>taken:2024</c> and <c>is:starred</c>. The filter chips are the same operators. Words are split the way the index
 /// splits text (on anything that isn't a letter or digit) and lowercased. Unknown operators are searched as words.
 /// </summary>
@@ -33,6 +33,9 @@ public sealed partial record SearchQuery
     public DateRange Taken { get; init; } = new(null, null);
     public bool Starred { get; init; }
 
+    /// <summary>Tag keys every result must have, as in <c>tag:receipt</c> or <c>tag:"tax 2026"</c> (§13.4).</summary>
+    public IReadOnlyList<string> Tags { get; init; } = [];
+
     /// <summary>Whether there is anything to match as text, rather than only filters.</summary>
     public bool HasText => Terms.Count > 0 || Phrases.Count > 0;
 
@@ -42,7 +45,8 @@ public sealed partial record SearchQuery
         || InFolderNamed is not null
         || Camera is not null
         || !Taken.IsEmpty
-        || Starred;
+        || Starred
+        || Tags.Count > 0;
 
     /// <summary>The words to mark in snippets and the viewer: the terms and the phrases' words.</summary>
     public IReadOnlyList<string> HighlightTerms =>
@@ -124,6 +128,13 @@ public sealed partial record SearchQuery
                 return Day(value) is { } taken ? query with { Taken = taken } : null;
             case "is" when value.Equals("starred", StringComparison.OrdinalIgnoreCase):
                 return query with { Starred = true };
+            case "tag":
+                return Dokument.Domain.Tags.TagName.TryCreate(value, out var tag, out _)
+                    ? query with
+                    {
+                        Tags = [.. query.Tags.Append(tag.Key).Distinct().Take(MaxTerms)],
+                    }
+                    : null;
             default:
                 return null;
         }

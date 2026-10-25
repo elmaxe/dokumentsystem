@@ -42,6 +42,9 @@ public static class AuditActions
     public const string NodeDeleteForever = "node.delete_forever";
     public const string TrashEmpty = "trash.empty";
 
+    /// <summary>Tags added to or removed from a file (§13.4), naming the tags.</summary>
+    public const string FileTagsChange = "file.tags_change";
+
     /// <summary>The purge job removed trash past its retention (§12). Written by the system.</summary>
     public const string NodePurge = "node.purge";
 
@@ -49,4 +52,7 @@ public static class AuditActions
     public const string VersionPurge = "version.purge";
     public const string SettingsChange = "settings.change";
     public const string QuotaChange = "user.quota_change";
+
+    /// <summary>An admin added, changed or deleted a keyword rule (§13.4).</summary>
+    public const string TagRuleChange = "admin.tag_rule";
 }

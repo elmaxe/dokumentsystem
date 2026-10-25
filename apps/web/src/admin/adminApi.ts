@@ -1,7 +1,7 @@
-import type { AdminSettings, AdminUser, MlEndpointStatus, StorageReport, TextProgress } from "@dokument/api";
+import type { AdminSettings, AdminUser, MlEndpointStatus, StorageReport, TagRule, TagRulePreview, TextProgress } from "@dokument/api";
 import { queryOptions } from "@tanstack/react-query";
 import { api } from "../api";
-import { unwrap } from "../files/drive";
+import { send, unwrap } from "../files/drive";
 
 export const adminSettingsQuery = queryOptions({
   queryKey: ["admin", "settings"],
@@ -32,7 +32,21 @@ export const textProgressQuery = queryOptions({
   refetchInterval: (query) => ((query.state.data?.waiting ?? 0) + (query.state.data?.running ?? 0) > 0 ? 5_000 : false),
 });
 
+/** Keyword rules (§13.4). Polled while one runs over every file, so its count fills in. */
+export const tagRulesQuery = queryOptions({
+  queryKey: ["admin", "tag-rules"],
+  queryFn: async (): Promise<TagRule[]> => (await unwrap(api.GET("/api/v1/admin/tag-rules"))).rules,
+  refetchInterval: (query) => (query.state.data?.some((rule) => rule.running) ? 2_000 : false),
+});
+
 export const admin = {
+  createTagRule: (tag: string, words: string, enabled: boolean) =>
+    unwrap(api.POST("/api/v1/admin/tag-rules", { body: { tag, words, enabled } })),
+  updateTagRule: (id: string, tag: string, words: string, enabled: boolean) =>
+    unwrap(api.PUT("/api/v1/admin/tag-rules/{id}", { params: { path: { id } }, body: { tag, words, enabled } })),
+  deleteTagRule: (id: string) => send(api.DELETE("/api/v1/admin/tag-rules/{id}", { params: { path: { id } } })),
+  previewTagRule: (tag: string, words: string): Promise<TagRulePreview> =>
+    unwrap(api.POST("/api/v1/admin/tag-rules/preview", { body: { tag: tag || null, words } })),
   putStorage: (defaultQuotaBytes: number | null) =>
     unwrap(api.PUT("/api/v1/admin/settings/storage", { body: { defaultQuotaBytes } })),
   putVersions: (keepDays: number, maxVersions: number) =>

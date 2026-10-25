@@ -49,6 +49,7 @@ export function SearchBox({
   const suggest = useQuery({ ...suggestQuery(typed.trim()), enabled: focused && typed.trim().length >= 2 });
   const open = focused && value.trim().length >= 2 && value !== urlQuery;
   const items = open ? (suggest.data?.items ?? []) : [];
+  const tags = open ? (suggest.data?.tags ?? []) : [];
 
   const search = (change: Partial<SearchParams> = {}) => {
     const q = value.trim();
@@ -66,6 +67,13 @@ export function SearchBox({
       : navigate({ to: "/files/$fileId", params: { fileId: item.id } }));
   };
 
+  const pickTag = (tag: string) => {
+    setActive(-1);
+    setValue(urlQuery);
+    input.current?.blur();
+    void navigate({ to: "/search", search: { tag } });
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
       if (open) setValue(urlQuery);
@@ -73,11 +81,14 @@ export function SearchBox({
       setActive(-1);
     } else if (open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
       event.preventDefault();
-      const count = items.length + 1;
+      const count = tags.length + items.length + 1;
       setActive((((active + 1 + (event.key === "ArrowDown" ? 1 : -1)) % count) + count) % count - 1);
-    } else if (open && event.key === "Enter" && active >= 0 && items[active]) {
-      event.preventDefault();
-      pick(toItem(items[active].node));
+    } else if (open && event.key === "Enter" && active >= 0) {
+      const tag = tags[active];
+      const item = items[active - tags.length];
+      if (tag || item) event.preventDefault();
+      if (tag) pickTag(tag.name);
+      else if (item) pick(toItem(item.node));
     }
   };
 
@@ -108,6 +119,8 @@ export function SearchBox({
           onActiveChange={setActive}
           onSearch={() => search()}
           onPick={pick}
+          tags={tags}
+          onPickTag={pickTag}
           filters={
             <>
               <Chip icon="picture_as_pdf" onClick={() => search({ type: "pdf" })}>

@@ -15,6 +15,9 @@ public sealed record JobType
     /// <summary>Searchable text for one blob: the text layer, then recognition for scans and photos (§10.2, §13.2).</summary>
     public static readonly JobType Text = new("text");
 
+    /// <summary>Runs one keyword rule over the stored text of every blob, after an admin changed it (§13.4).</summary>
+    public static readonly JobType TagRule = new("tag-rule");
+
     private JobType(string name) => Name = name;
 
     public string Name { get; }

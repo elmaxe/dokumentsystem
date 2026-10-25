@@ -3,6 +3,7 @@ import { DetailsPanel, useSnackbar, type DetailsTab, type FileVersion } from "@d
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { download, drive, errorMessage, invalidateFolders, pathLabel, versionsQuery, type Item } from "./drive";
+import { FileTagsSection } from "./tags";
 
 type Props = {
   item: Item;
@@ -86,6 +87,7 @@ export function FileDetailsPanel({
       onClose={onClose}
       onManageAccess={() => toast(t("common.notYet"))}
       onStarChange={onStarChange}
+      tags={isFile ? <FileTagsSection item={item} /> : undefined}
       versions={{
         canDelete: false,
         versions: versions.data ?? [],

@@ -55,6 +55,8 @@ public static class DependencyInjection
         services.AddScoped<PreviewService>();
         services.AddScoped<ContentService>();
         services.AddScoped<SearchService>();
+        services.AddScoped<Tags.TagService>();
+        services.AddScoped<Tags.TagRules>();
         services.AddScoped<SettingsStore>();
         services.AddHttpClient<ServiceProbe>();
         return services;

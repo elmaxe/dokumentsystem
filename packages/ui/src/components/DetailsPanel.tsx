@@ -34,6 +34,8 @@ export type DetailsPanelProps = {
   /** Shows a star toggle in the header, filled when the item is starred. */
   onStarChange?: (starred: boolean) => void;
   versions?: VersionHistoryProps;
+  /** The Tags section, under the file facts in the Info tab (§13.4). */
+  tags?: ReactNode;
   className?: string;
 };
 
@@ -56,6 +58,7 @@ export function DetailsPanel({
   onManageAccess,
   onStarChange,
   versions,
+  tags,
   className,
 }: DetailsPanelProps) {
   const { t } = useTranslation();
@@ -142,6 +145,7 @@ export function DetailsPanel({
                 </Row>
               )}
             </dl>
+            {tags}
           </Tabs.Content>
           <Tabs.Content value="sharing" className="flex flex-col gap-2 pt-3 outline-none">
             <p className="m-0 text-body-md text-on-surface-variant">

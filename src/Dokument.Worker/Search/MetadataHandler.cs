@@ -4,6 +4,7 @@ using Dokument.Domain.Jobs;
 using Dokument.Domain.Search;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Persistence;
+using Dokument.Infrastructure.Tags;
 using Dokument.Infrastructure.Telemetry;
 using Dokument.Worker.Jobs;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,7 @@ internal sealed partial class MetadataHandler(
     DokumentDbContext db,
     BlobStore blobs,
     ExifTool exifTool,
+    TagRules rules,
     TimeProvider time,
     ILogger<MetadataHandler> logger
 ) : IJobHandler
@@ -95,6 +97,9 @@ internal sealed partial class MetadataHandler(
         metadata.UpdatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+
+        // The details are page 0, which keyword rules read too (§13.4).
+        await rules.ApplyToBlobAsync(hash, ct);
     }
 
     [LoggerMessage(

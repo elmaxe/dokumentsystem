@@ -1,6 +1,8 @@
 using Dokument.Domain.Files;
 using Dokument.Domain.Previews;
+using Dokument.Domain.Tags;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Tags;
 
 namespace Dokument.Server.Files;
 
@@ -10,6 +12,7 @@ namespace Dokument.Server.Files;
 /// <param name="Thumbnail">Whether <c>/nodes/{id}/thumbnail</c> has an image yet. Pending means the worker is on it; poll or wait.</param>
 /// <param name="Contents">How many files and folders a folder holds, at any depth. Null for files.</param>
 /// <param name="Starred">Whether the person asking starred it. Stars are each person's own.</param>
+/// <param name="Tags">The file's tags, by name: the ones people added and the automatic ones nobody removed (§13.4).</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -26,7 +29,8 @@ public sealed record NodeDto(
     int? VersionNumber,
     ThumbnailState Thumbnail,
     FolderCounts? Contents,
-    bool Starred
+    bool Starred,
+    List<TagDto> Tags
 )
 {
     public static NodeDto From(
@@ -34,7 +38,8 @@ public sealed record NodeDto(
         IReadOnlyDictionary<Guid, string> ownerNames,
         IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails,
         IReadOnlyDictionary<Guid, FolderContents> folders,
-        IReadOnlySet<Guid> starred
+        IReadOnlySet<Guid> starred,
+        IReadOnlyDictionary<Guid, List<TagView>> tags
     ) =>
         new(
             node.Id,
@@ -56,9 +61,30 @@ public sealed record NodeDto(
                 ? thumbnails.GetValueOrDefault(version.BlobHash, ThumbnailState.None)
                 : ThumbnailState.None,
             contents is null ? null : new FolderCounts(contents.Files, contents.Folders),
-            starred.Contains(node.Id)
+            starred.Contains(node.Id),
+            tags.TryGetValue(node.Id, out var shown)
+                ? shown.Select(t => new TagDto(t.Name, t.Source, t.RuleId)).ToList()
+                : []
         );
 }
+
+/// <param name="Source">Who added it: a person (<c>user</c>), a keyword rule or the ML service. Show automatic ones differently.</param>
+/// <param name="RuleId">For <c>rule</c>: which keyword rule added it.</param>
+public sealed record TagDto(string Name, TagSource Source, Guid? RuleId);
+
+/// <param name="Tags">What the file shows.</param>
+/// <param name="Removed">Automatic tags someone took off this file, which "Put back" can restore.</param>
+public sealed record FileTags(List<TagDto> Tags, List<string> Removed);
+
+/// <param name="Ids">Files to change, 1 to 1000.</param>
+/// <param name="Add">Tags to add, at most 20. Adding a removed automatic tag puts it back.</param>
+/// <param name="Remove">Tags to remove, at most 20.</param>
+public sealed record ChangeTagsRequest(List<Guid> Ids, List<string>? Add, List<string>? Remove);
+
+/// <param name="Files">How many of the person's files have it.</param>
+public sealed record TagSuggestion(string Name, int Files);
+
+public sealed record TagSuggestions(List<TagSuggestion> Tags);
 
 /// <summary>What a folder holds, at any depth.</summary>
 public sealed record FolderCounts(int Files, int Folders);

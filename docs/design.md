@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.21** · Last updated: 2026-10-25
+> Status: **Draft v0.24** · Last updated: 2026-10-25
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -284,12 +284,18 @@ content_pages(id, blob_hash, page_no, source {text|ocr|metadata|transcript}, tex
               UNIQUE (blob_hash, page_no))       -- BM25-indexed; page 0 is the metadata text
 embeddings(blob_hash, page_no NULL, model, vector vchord) -- optional (M7)
 
--- Planned (decision 26, §13.4), not built yet:
-blob_tags(blob_hash, tag, source {rule|ml}, rule_id NULL, confidence NULL, created_at,
-          PRIMARY KEY (blob_hash, tag))          -- automatic tags belong to the bytes, like text
-node_tags(node_id, tag, added_by, added_at, PRIMARY KEY (node_id, tag))   -- tags people add (source user)
-node_tag_removals(node_id, tag, removed_by, removed_at)   -- an automatic tag someone took off this file
-tag_rules(id, tag, words, enabled, created_by, created_at) -- "kvitto, receipt, faktura" → receipt
+blob_tags(blob_hash, tag, tag_key, source {rule|ml}, rule_id NULL, created_at,
+          PRIMARY KEY (blob_hash, tag_key))      -- automatic tags belong to the bytes, like text (§13.4)
+node_tags(node_id, tag, tag_key, added_by, added_at, PRIMARY KEY (node_id, tag_key))   -- tags people add
+node_tag_removals(node_id, tag, tag_key, removed_by, removed_at,
+                  PRIMARY KEY (node_id, tag_key))  -- an automatic tag someone took off this file
+tag_rules(id, tag, tag_key UNIQUE, words, enabled, created_by, created_at, updated_at)  -- "kvitto, receipt" → receipt
+effective_node_tags  -- a view: node_tags, plus the current version's blob_tags minus removals (what a file shows)
+
+-- Planned (decision 29, §13.5), not built yet:
+filing_rules(id, owner_id, tag_key, folder_template, enabled, created_at, updated_at)  -- "receipt" → Kvitton/{year}
+node_filings(node_id, rule_id, folder_id, filed_at, undone_at NULL,
+             PRIMARY KEY (node_id, rule_id))   -- a rule moves a file once; moving it back sticks
 
 stars(user_id, node_id, starred_at, PRIMARY KEY (user_id, node_id))   -- each person's own (§15.2)
 recent_files(user_id, node_id, at, action {opened|downloaded|uploaded|restored},
@@ -470,7 +476,8 @@ upload complete (or the backfill)
    ├─► metadata   (exiftool → blob_metadata, content page 0)  built (M3)
    ├─► text       (text layer: PDF, Office, ODF, plain text)  built (M3)
    │      └─► ocr (pages and images with no text layer)       Tesseract now, ML in M7
-   │             └─► tag rules (keyword rules → blob_tags)    planned (§13.4)
+   │             └─► tag rules (keyword rules → blob_tags)    built (§13.4)
+   │                    └─► filing rules (tag → move)         planned (§13.5)
    ├─► transcode (video/audio only if not browser-playable)
    ├─► embed     (optional, ML)
    └─► transcribe (optional, ML, M7; audio/video → timed transcript pages)
@@ -606,8 +613,8 @@ Built in M3 (decision 26). Two BM25 indexes, created in the migration with pg_se
 ### 13.3 Query
 
 - **The search bar** suggests names as someone types (`GET /search/suggest`, no text, ~6 rows). Enter opens the search page, `/search?q=…`, with its filters in the URL so a search can be bookmarked.
-- **The query language:** words, `"exact phrases"`, `-excluded` words and the operators `type:` (pdf, doc, sheet, slides, image, video, audio, text, archive, folder), `in:` (folders with that name, and everything below), `after:` and `before:` (modified), `camera:`, `taken:` (a year, month or day) and `is:starred`. Unknown operators are searched as words. The chips on the search page (Type, Modified, In, Starred, and a Relevance / Last modified sort) set the same filters. Queries are capped at 20 words.
-- **Matching:** every word must match, in the name, the text or the metadata. In text a word matches its Swedish or English stem or, from 5 letters, one typo; in names a word matches whole (boosted), as a prefix, with one typo from 5 letters, or by its 3-grams. Phrases match the unstemmed text in order.
+- **The query language:** words, `"exact phrases"`, `-excluded` words and the operators `type:` (pdf, doc, sheet, slides, image, video, audio, text, archive, folder), `in:` (folders with that name, and everything below), `after:` and `before:` (modified), `camera:`, `taken:` (a year, month or day), `tag:` (a tag, `tag:"tax 2026"` for one with spaces) and `is:starred`. Unknown operators are searched as words. The chips on the search page (Type, Modified, In, Starred, Tag, and a Relevance / Last modified sort) set the same filters. Queries are capped at 20 words.
+- **Matching:** every word must match, in the name, the text, the metadata or the file's tags (§13.4). In text a word matches its Swedish or English stem or, from 5 letters, one typo; in names a word matches whole (boosted), as a prefix, with one typo from 5 letters, or by its 3-grams. Phrases match the unstemmed text in order.
 - **Ranking:** the name's BM25 score, weighted ×2, plus the best page's. At most 1000 candidates are ranked; that is plenty for a person's own files.
 - **Results are files, not pages** (`GET /search`). Each has its best page: the page number ("Page 2 of 5", "Slide 3 of 12"), how many pages matched, where the hit was (name, text, a scan or photo's recognized text, or the file's details), and a snippet. The snippet is about 220 characters of plain text around the most hits, with the hits as `[start, end)` offsets, never HTML, so file content can't inject markup.
 - **Marking hits** uses one rule on the server and in the clients (`Highlighter` in C#, `matchesTerm` in `@dokument/core`): the word itself, the word plus an ending of up to 4 letters (from 4 letters: "kvitto" marks "kvittot"), or one typo from 5 letters. It approximates the stemmers closely enough that what is marked is what matched.
@@ -619,16 +626,33 @@ Built in M3 (decision 26). Two BM25 indexes, created in the migration with pg_se
 - **Scope:** search *always* applies the same effective-permission predicate as browsing (§9): the candidates are joined with `NodeAccess`, so only files the person could open are found or counted, and `/matches` answers 404 for anyone else's file.
 - **Sound and speech:** audio tags (title, artist, album, comment) are searchable now through the metadata stage. Spoken words wait for transcription in M7: Whisper segments become `transcript` pages with times, and opening a hit plays from there.
 
-### 13.4 Tags (planned)
+### 13.4 Tags
 
-Prepared in M3, built as its own piece after it (decision 26).
+Built after M3 (decision 29).
 
-- **A tag is a word on a file**, such as "receipt". Tags are **shared**: everyone who can see the file sees its tags (not per person, unlike stars).
-- **Sources:** `user` (someone added it), `rule` (an admin's keyword rule matched the text) and `ml` (the ML service, M7). The source is shown, so an automatic tag reads as one.
-- **Automatic tags belong to the bytes** (`blob_tags`), like text: identical files get the same automatic tags once. Tags people add belong to the file (`node_tags`).
-- **Automatic tags are removable:** removing one from a file is recorded per file (`node_tag_removals`) and sticks when the rules run again.
-- **Keyword rules** run right after the text stage: a rule is a tag plus words ("kvitto, kvittot, receipt → receipt"), matched with the search rule above on the text and metadata. Admins manage them; editing a rule re-runs it at background priority. The text stage's output stays the input, so rules never re-read files.
-- **Search:** a `tag:` operator and a Tags chip, through a `tags` field on the name index or a join; results show a file's tags.
+- **A tag is a word or a few words on a file**, such as "receipt" or "tax 2026": at most 50 characters, trimmed, NFC, no commas or line breaks. Two tags are the same when they match ignoring case (`tag_key`); the first spelling used on files the person can see, or a rule's, is kept, so "Receipt" joins "receipt". Files only: a tag on a folder would raise whether it applies to everything inside.
+- **Tags are shared:** everyone who can see a file sees its tags (not per person, unlike stars). Anyone who can change the file adds and removes them: the owner now, editors with sharing (M4). Suggestions and counts only ever come from files the person can see, so a tag on someone's private file never shows.
+- **Sources:** `user` (someone added it), `rule` (an admin's keyword rule matched the text) and `ml` (the ML service, M7). Automatic tags look different, tinted with a small icon, and say on hover which rule added them.
+- **Automatic tags belong to the bytes** (`blob_tags`), like text: identical files get them once, and a new version gets those of its own bytes once its text is read. Tags people add belong to the file (`node_tags`) and stay through new versions. A tag someone adds that a rule also gives is theirs, so it stays if the rule stops matching.
+- **Removing an automatic tag** is recorded for that file (`node_tag_removals`) and sticks when rules run again and through new versions. The details panel says "Removed from this file: receipt · Put back"; adding the tag again lifts the removal. What a file shows is the `effective_node_tags` view.
+- **Keyword rules** are a tag plus words: `kvitto, receipt, "tack för ditt köp"`. A word matches as itself, as a Swedish or English stem, or, from 5 letters, as the start of a longer word ("kvitto" in "kvittot", which the Swedish stemmer keeps apart); a quoted phrase matches word for word. **There's no typo tolerance**, unlike search: one typo would let "kvitto" match "kvitta" and tag files it shouldn't. Rules match the stored text and metadata (content pages, page 0 included) through the BM25 index, so they never read a file again. One rule per tag; at most 500 rules.
+  - The worker runs every enabled rule on a blob right after its text stage and its metadata stage finish.
+  - Adding or changing a rule queues a `tag-rule` job (background priority) that replaces the rule's tags in one query and one insert. Turning a rule off or deleting it takes its tags off at once. Rule tags have the rule's id, so a renamed tag follows.
+  - **Admin → Tags** (`/admin/tags`, between Storage and Settings) lists the rules with how many live files show each tag, "Running" while one is being run, an on/off switch and Edit. The edit dialog previews, without changing anything, how many files would get the tag and three of the newest with a snippet. Admins see every owner's file names there, as on the Jobs page.
+- **In the clients:** a Tags section in the details panel's Info tab, under the file facts, with a chip per tag (remove button, tapping the name searches for it) and Add tag, a field with suggestions from tags on files the person can see, most used first, then "Create tag". Selecting files adds a Tags action: a dialog with the tags all of them have and those only some have (dashed, "1 of 3", with + and ×); nothing changes until Save, and the snackbar offers Undo. List rows on wide screens show up to two small tags after the name; the grid and phones show none. Search results show a file's tags.
+- **Search:** `tag:receipt` and the Tag chip are exact filters. **Plain words also match tags**: a word that is a word of a tag on files in scope also counts as found on those files (scored like a good name match), so "receipt" finds a Swedish receipt tagged receipt and "receipt hornstull" finds it when "hornstull" is in its text. At most three words are tried this way. The search bar suggests up to two matching tags above the names; picking one opens the search page filtered to it.
+- **API:** `GET /nodes/{id}/tags` (tags and removed ones), `POST /nodes/tags` (`ids`, `add`, `remove`, up to 1000 files and 20 tags), `GET /tags?q=` (suggestions with counts), tags on every `NodeDto`, and `/admin/tag-rules` (list, create, update, delete, `preview`). Changes send a live `files` notice and write `file.tags_change` per file, naming the tags (§18).
+- **Not yet:** renaming or merging a tag across all files, tag colours, a Tags item in the main nav, and copying tags with a file copy (when copying lands, the copy gets the file's tags and removals).
+
+### 13.5 Filing rules (planned)
+
+Prepared with tags (decision 29); not built. The case: upload a receipt, and it ends up in `Kvitton/2026` with the receipt tag, without anyone moving it.
+
+- **Filing rules are each person's own,** under the person's Settings, not an admin's: moving files is the owner's business, and an admin's rule shouldn't rearrange someone's folders. A rule is a tag plus a folder template: "When a file of mine gets **receipt**, move it to **Kvitton/{year}**".
+- **Templates** are a path from the top of My files with `{year}` and `{month}` (e.g. `Kvitton/{year}/{month}`). The date is the file's date taken (with the person's correction from the file info details, decision 28), else its modified time on the device, else the upload time. Missing folders are made; a name clash numbers the file as an upload would ("kvitto (1).pdf").
+- **When it runs:** when a file gains the tag, from a rule or a person, through the same place both kinds of change go through today (the rule runner and `POST /nodes/tags`), which then queues a `file` job per file for the owner's filing rules. Only files the person owns, not in the trash. New rules don't touch existing files unless the person picks "Also file the N files that have this tag now".
+- **Once, and reversibly:** each rule moves a file at most once (`node_filings`). If the person moves it back, or somewhere else, it stays there. The move is a normal `node.move` in the audit log with the actor `system` and the rule, the upload tray row says "Filed in Kvitton/2026", the file's Activity tab says "Moved by your rule receipt", and the snackbar or notification offers Undo.
+- **Order and conflicts:** rules are ordered; the first that matches wins, so a file with two tags moves once. A file in a folder shared with others (M4) is only filed if it stays visible to the same people, or the rule asks first.
 
 ---
 
@@ -679,7 +703,7 @@ These are better in React DOM than through React Native Web.
 
 - **Layout:** a left nav rail, a top search bar and a content area. On mobile it collapses to a bottom nav.
   - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter. The phone bottom nav has no room for Trash, so it is in the account menu there.
-  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: search and text recognition, machine learning, virus scanning, trash and versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
+  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota), **Tags** (`/admin/tags`: keyword rules, §13.4) and **Settings** (`/admin/settings`: search and text recognition, machine learning, virus scanning, trash and versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
 - **Content area:** grid/list toggle, breadcrumbs, sorting, multi-select with a contextual action bar, right-click menu.
 - **Search** (M3, §13.3): the search bar sits in the top bar on every page except admin and settings, with name suggestions as you type and "Narrow it down" chips (PDFs, Images, In this folder). `/search` shows the results; on phones the bottom nav's Search opens it and focuses the bar, which then has a back arrow. The admin page's "Search and text recognition" section has the text recognition switch, progress (files read, waiting, in progress, failed) and "Read all files again".
 - **Starred and Recent** (decision 21):
@@ -689,7 +713,7 @@ These are better in React DOM than through React Native Web.
   - Recent is stored in `recent_files`, one row per person and file. It is **private to that person** and is **not the audit log**: the viewer reports an open with `POST /nodes/{id}/opened`, which is never audited (§18); downloads and uploads are noted by the server as they happen.
   - Trashed items (and everything inside a trashed folder) drop out of both pages. A star comes back on restore; deleting forever removes stars and recent rows with the node.
   - A file opened from Starred or Recent steps through that page's files in the viewer, and closing returns there.
-- **Details panel:** info, sharing, versions, activity.
+- **Details panel:** info (with the file's tags, §13.4), sharing, versions, activity.
 - **Upload tray** (bottom-right) with per-file progress, pause/resume and retry.
 - **Live updates** (§15.4): changes from other tabs and devices, and thumbnails as they are made, show up without a refresh.
 - Optionally a PWA, for "Add to home screen" on phones.
@@ -810,7 +834,8 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 
 - **Button** (filled / tonal / outlined / text / danger) and **IconButton**. At most one filled button per view.
 - **Chip:** search filters that mirror the operators ("Type: PDF" for `type:pdf`).
-- **SearchBar** with **SearchSuggestions** (a combobox: "Search for …" first, then names with their location, arrow keys and Enter), **SearchResult** (thumbnail, name with marked hits, the snippet, then location · date · page · "Found in a scan" badge) and **Highlighted** (text with `<mark>` from offsets or terms, never parsed as markup).
+- **TagChip** (outlined for tags people add; tinted in `secondary-container` with a `bolt` icon for rule tags and `auto_awesome` for ML tags, a tooltip naming the rule, an optional remove button; a small variant for list rows and results), **TagEditor** (the Info tab's Tags section with **TagInput**, a combobox of suggestions with counts and "Create tag") and **TagsDialog** (tags for a selection: on all, on some with + and ×, applied on Save).
+- **SearchBar** with **SearchSuggestions** (a combobox: "Search for …" first, then up to two matching tags, then names with their location, arrow keys and Enter), **SearchResult** (thumbnail, name with marked hits, the snippet, then location · date · page · "Found in a scan" badge) and **Highlighted** (text with `<mark>` from offsets or terms, never parsed as markup).
 - **FileTypeIcon:** a Material Symbol in the `file-*` colour per MIME group. Also the thumbnail fallback. Folders stay neutral.
 - **FileGrid:** folders first, then file tiles with 4:3 thumbnails. Documents (PDF, Office, text) show the top of page 1; photos are cropped to fill. A shimmer shows while a thumbnail is pending, and the thumbnail is swapped in when it is ready, through a live update (§15.4). While the live connection is down, the listing is polled instead (every 2 s, then every 10 s) as long as anything is pending. Video tiles show a duration badge.
 - **FileList:** a sortable name / owner / modified / size table. Under 600 px of container width, the columns fold into a second line. Pages can swap the columns after the name: the Trash page shows original location / deleted / size.
@@ -872,11 +897,11 @@ People who are managed in an IdP can get their storage from it instead of from t
 - **Append-only `audit_events`**, written **in the same transaction** as the change itself.
 - **Events:**
   - auth: login, logout, session revoked, API key created
-  - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`)
+  - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`), tags added or removed (`file.tags_change`, naming the tags)
   - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), with the actor kind `system`
   - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged. (Each person's Recent page remembers their own opens in `recent_files`, which nobody else sees and which isn't part of the audit log, §15.2.)
   - sharing: share granted/changed/revoked, link created/accessed/revoked
-  - admin: settings changed, quota changed, user disabled
+  - admin: settings changed, quota changed, keyword rule added, changed or deleted (`admin.tag_rule`), user disabled
 - **Partitioned by month** (from M6; M1 ships a plain table with indexes on `at` and `(target_node_id, at)`). An admin setting controls retention (default 1 year).
 - **Views:**
   - users see the activity on their own files ("Activity" tab)
@@ -999,7 +1024,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
 | **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, folder uploads and live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media. **Still to come:** metadata, video posters and transcoding, Gotenberg, the admin queue page, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
-| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). **Next, as its own piece:** tags with keyword rules (§13.4). |
+| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Tags with keyword rules were built right after it (§13.4, decision 29). **Next:** filing rules that move tagged files (§13.5). |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
@@ -1038,6 +1063,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 24 | Folder uploads | 2026-10-25: one `POST /api/v1/folders/tree` makes all the folders first; a taken top-folder name asks Merge (default) / Keep both / Cancel, and merged folders reuse subfolders with the same names; the whole folder's size is checked against the quota before anything is made; hashing and the duplicate check run in batches so uploading starts early, with one duplicate and one name-clash question per folder; one tray row per folder; OS junk files skipped silently (§8.1) |
 | 25 | Live updates | 2026-10-25: one SignalR hub; notices sent with `pg_notify` inside the changing transaction and forwarded by a `LISTEN`ing server; thin notices (topics and an origin, no ids or names) that make clients refetch; owner's clients only until sharing; per-tab client id to skip echoes; refetch everything after a reconnect; viewer banners instead of swapping the open file; ended sessions sign their clients out; the thumbnail poll stays only as a fallback (§15.4) |
 | 26 | Search (M3) | 2026-10-25: pg_search BM25 over names (words + 3-grams) and page text indexed Swedish-stemmed, English-stemmed and unstemmed together, no language detection; text, metadata and automatic tags keyed by blob; Tesseract (`swe+eng`) in the worker for scans and photos, at background priority with an admin switch (default on), replaced by the ML service in M7; exiftool metadata searchable now, with `camera:` and `taken:`; snippets as text + offsets, one marking rule shared by server and clients; queries never logged. Tags planned as shared per file, sources user / rule / ml, automatic ones per blob and removable per file. Transcription waits for M7 (§6, §10, §13, §14) |
+| 29 | Tags | 2026-10-25: tags are shared per file (files only), case-insensitive, at most 50 characters; sources user / rule / ml; automatic tags per blob with per-file removals that stick, and a person's own tag wins over a rule's; admin keyword rules (one per tag) match stored text and metadata by stem, phrase or, from 5 letters, word start, but never typos, after the text and metadata stages and over everything when changed; admin Tags page with a preview; a Tags section in the Info tab, a bulk dialog, two tags in wide list rows; `tag:` and a Tag chip, and plain words match tags. Filing rules (tag → folder per year) planned per person, moving a file once (§6, §10.2, §13.4, §13.5, §15.2, §16.4, §18) |
 
 ## 26. Open questions
 

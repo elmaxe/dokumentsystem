@@ -40,6 +40,7 @@ import {
   toItem,
   type Item,
 } from "./drive";
+import { BulkTagsDialog } from "./tags";
 import { useUploads } from "./uploadsContext";
 
 type View = "grid" | "list";
@@ -129,6 +130,7 @@ export function FilesPage({ source }: { source: FilesSource }) {
   const [details, setDetails] = useState<{ open: boolean; tab: DetailsTab }>({ open: false, tab: "info" });
   const [renaming, setRenaming] = useState<Item | null>(null);
   const [moving, setMoving] = useState<Item[]>([]);
+  const [tagging, setTagging] = useState<Item[]>([]);
   const versionInput = useRef<HTMLInputElement>(null);
 
   const rows: Row[] =
@@ -228,6 +230,9 @@ export function FilesPage({ source }: { source: FilesSource }) {
       case "move":
         setMoving(targets);
         break;
+      case "tags":
+        setTagging(targets.filter((item) => !isFolder(item)));
+        break;
       case "star":
       case "unstar":
         void star(targets, action === "star");
@@ -257,6 +262,7 @@ export function FilesPage({ source }: { source: FilesSource }) {
     ...(isFolder(item) ? [] : [{ id: "download", icon: "download", label: t("actions.download"), separatorBefore: true }]),
     { id: "rename", icon: "edit", label: t("actions.rename"), separatorBefore: isFolder(item) },
     { id: "move", icon: "drive_file_move", label: t("actions.move") },
+    ...(isFolder(item) ? [] : [{ id: "tags", icon: "sell", label: t("tags.action") }]),
     starAction([item]),
     ...(source.place === "folder" ? [] : [{ id: "showInFolder", icon: "folder_open", label: t("actions.showInFolder") }]),
     { id: "details", icon: "info", label: t("actions.details") },
@@ -372,6 +378,7 @@ export function FilesPage({ source }: { source: FilesSource }) {
                 actions={[
                   { id: "download", icon: "download", label: t("actions.download") },
                   { id: "move", icon: "drive_file_move", label: t("actions.move") },
+                  ...(chosen.some((item) => !isFolder(item)) ? [{ id: "tags", icon: "sell", label: t("tags.action") }] : []),
                   { id: "trash", icon: "delete", label: t("actions.trash") },
                 ]}
                 moreActions={[
@@ -491,6 +498,8 @@ export function FilesPage({ source }: { source: FilesSource }) {
           }
         }}
       />
+
+      <BulkTagsDialog items={tagging} onClose={() => setTagging([])} />
 
       <MoveDialog
         key={moving.map((item) => item.id).join()}

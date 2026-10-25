@@ -48,6 +48,13 @@ export type Suggestion = components["schemas"]["SuggestionDto"];
 export type MatchesResponse = components["schemas"]["MatchesResponse"];
 export type PageMatch = components["schemas"]["PageMatchDto"];
 export type TextProgress = components["schemas"]["TextProgress"];
+export type Tag = components["schemas"]["TagDto"];
+export type TagSource = components["schemas"]["TagSource"];
+export type FileTags = components["schemas"]["FileTags"];
+export type TagSuggestion = components["schemas"]["TagSuggestion"];
+export type TagRule = components["schemas"]["TagRuleDto"];
+export type TagRulePreview = components["schemas"]["TagRulePreviewDto"];
+export type TagRuleExample = components["schemas"]["TagRuleExampleDto"];
 
 /** The tus endpoint for resumable uploads (docs/design.md §8.1). */
 export const uploadsPath = "/api/v1/uploads";

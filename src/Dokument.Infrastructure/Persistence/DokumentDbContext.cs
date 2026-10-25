@@ -4,6 +4,7 @@ using Dokument.Domain.Identity;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Previews;
 using Dokument.Domain.Search;
+using Dokument.Domain.Tags;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
@@ -28,6 +29,11 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<BlobContent> BlobContents => Set<BlobContent>();
     public DbSet<ContentPage> ContentPages => Set<ContentPage>();
     public DbSet<BlobMetadata> BlobMetadata => Set<BlobMetadata>();
+    public DbSet<NodeTag> NodeTags => Set<NodeTag>();
+    public DbSet<NodeTagRemoval> NodeTagRemovals => Set<NodeTagRemoval>();
+    public DbSet<BlobTag> BlobTags => Set<BlobTag>();
+    public DbSet<TagRule> TagRules => Set<TagRule>();
+    public DbSet<EffectiveTag> EffectiveTags => Set<EffectiveTag>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -100,6 +106,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
         ConfigureJobs(modelBuilder);
         ConfigurePreviews(modelBuilder);
         ConfigureSearch(modelBuilder);
+        ConfigureTags(modelBuilder);
     }
 
     private static readonly ValueConverter<ContentHash, byte[]> ContentHashConverter = new(
@@ -235,6 +242,93 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(m => m.Tags).HasColumnName("tags").HasColumnType("jsonb");
             e.Property(m => m.Readable).HasColumnName("readable");
             e.Property(m => m.UpdatedAt).HasColumnName("updated_at");
+        });
+    }
+
+    private static void ConfigureTags(ModelBuilder modelBuilder)
+    {
+        // Tags (docs/design.md §13.4). People's tags and removals belong to the file; automatic tags belong to the
+        // bytes, keyed by hash with no foreign key, like text. The effective_node_tags view (created in SQL by the
+        // migration) is what a file shows.
+        var tagName = new ValueConverter<TagName, string>(t => t.Value, v => TagName.From(v));
+
+        modelBuilder.Entity<NodeTag>(e =>
+        {
+            e.ToTable("node_tags");
+            e.HasKey(t => new { t.NodeId, t.TagKey });
+            e.Property(t => t.NodeId).HasColumnName("node_id");
+            e.Property(t => t.Tag).HasColumnName("tag").HasConversion(tagName);
+            e.Property(t => t.TagKey).HasColumnName("tag_key");
+            e.Property(t => t.AddedBy).HasColumnName("added_by");
+            e.Property(t => t.AddedAt).HasColumnName("added_at");
+            e.HasOne<Node>()
+                .WithMany()
+                .HasForeignKey(t => t.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(t => t.TagKey);
+        });
+
+        modelBuilder.Entity<NodeTagRemoval>(e =>
+        {
+            e.ToTable("node_tag_removals");
+            e.HasKey(t => new { t.NodeId, t.TagKey });
+            e.Property(t => t.NodeId).HasColumnName("node_id");
+            e.Property(t => t.Tag).HasColumnName("tag").HasConversion(tagName);
+            e.Property(t => t.TagKey).HasColumnName("tag_key");
+            e.Property(t => t.RemovedBy).HasColumnName("removed_by");
+            e.Property(t => t.RemovedAt).HasColumnName("removed_at");
+            e.HasOne<Node>()
+                .WithMany()
+                .HasForeignKey(t => t.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BlobTag>(e =>
+        {
+            e.ToTable("blob_tags");
+            e.HasKey(t => new { t.BlobHash, t.TagKey });
+            e.Property(t => t.BlobHash)
+                .HasColumnName("blob_hash")
+                .HasConversion(ContentHashConverter);
+            e.Property(t => t.Tag).HasColumnName("tag").HasConversion(tagName);
+            e.Property(t => t.TagKey).HasColumnName("tag_key");
+            e.Property(t => t.Source)
+                .HasColumnName("source")
+                .HasConversion(LowercaseEnum<TagSource>());
+            e.Property(t => t.RuleId).HasColumnName("rule_id");
+            e.Property(t => t.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(t => t.RuleId);
+            e.HasIndex(t => t.TagKey);
+        });
+
+        modelBuilder.Entity<TagRule>(e =>
+        {
+            e.ToTable("tag_rules");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Id).HasColumnName("id");
+            e.Property(r => r.Tag).HasColumnName("tag").HasConversion(tagName);
+            e.Property(r => r.TagKey).HasColumnName("tag_key");
+            e.Property(r => r.Words)
+                .HasColumnName("words")
+                .HasConversion(w => w.Value, v => TagRuleWords.From(v));
+            e.Property(r => r.Enabled).HasColumnName("enabled");
+            e.Property(r => r.CreatedBy).HasColumnName("created_by");
+            e.Property(r => r.CreatedAt).HasColumnName("created_at");
+            e.Property(r => r.UpdatedAt).HasColumnName("updated_at");
+            e.HasIndex(r => r.TagKey).IsUnique();
+        });
+
+        modelBuilder.Entity<EffectiveTag>(e =>
+        {
+            e.ToView("effective_node_tags");
+            e.HasNoKey();
+            e.Property(t => t.NodeId).HasColumnName("node_id");
+            e.Property(t => t.Tag).HasColumnName("tag");
+            e.Property(t => t.TagKey).HasColumnName("tag_key");
+            e.Property(t => t.Source)
+                .HasColumnName("source")
+                .HasConversion(LowercaseEnum<TagSource>());
+            e.Property(t => t.RuleId).HasColumnName("rule_id");
         });
     }
 

@@ -605,7 +605,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Files and folders whose name, text or metadata match. `q` takes words, "exact phrases", -excluded words and the operators type:, in:, after:, before:, camera:, taken: and is:starred; the other parameters are the filter chips and override the operators. */
+        /** @description Files and folders whose name, text or metadata match. `q` takes words, "exact phrases", -excluded words and the operators type:, in:, after:, before:, camera:, taken:, tag: and is:starred; the other parameters are the filter chips and override the operators. A word also finds files with a tag that has it. */
         get: operations["Search"];
         put?: never;
         post?: never;
@@ -622,7 +622,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Name matches as someone types, best first. */
+        /** @description Tags and name matches as someone types, best first. */
         get: operations["SearchSuggest"];
         put?: never;
         post?: never;
@@ -641,6 +641,57 @@ export interface paths {
         };
         /** @description The pages of one file that match `q`, for the viewer to open on and step through. */
         get: operations["SearchMatchesInFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A file's tags, and the automatic tags someone took off it, for the details panel. */
+        get: operations["GetFileTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Adds and removes tags on one or more files at once. Removing an automatic tag is remembered for each file, so keyword rules don't add it back. */
+        post: operations["ChangeTags"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Tags on files the person can see, most used first, with how many files have each. `q` keeps those that start with it, or have a word that does. */
+        get: operations["SuggestTags"];
         put?: never;
         post?: never;
         delete?: never;
@@ -909,6 +960,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/tag-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminListTagRules"];
+        put?: never;
+        /** @description Adds a rule and runs it over every stored file in the background. */
+        post: operations["AdminCreateTagRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/tag-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Changing the tag or words runs the rule again over every file in the background; turning it off takes its tags off at once. */
+        put: operations["AdminUpdateTagRule"];
+        post?: never;
+        /** @description Deletes the rule and takes its tags off every file. */
+        delete: operations["AdminDeleteTagRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/tag-rules/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description How many files a rule would tag, with a few examples. Changes nothing. */
+        post: operations["AdminPreviewTagRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -941,6 +1044,11 @@ export interface components {
         AuthConfig: {
             enabled: boolean;
             providerName: null | string;
+        };
+        ChangeTagsRequest: {
+            ids: string[];
+            add: null | string[];
+            remove: null | string[];
         };
         CopyFromContentRequest: {
             /** Format: uuid */
@@ -988,6 +1096,10 @@ export interface components {
         EmptyTrashResponse: {
             /** Format: int32 */
             items: number;
+        };
+        FileTags: {
+            tags: components["schemas"]["TagDto"][];
+            removed: string[];
         };
         /**
          * @default fail
@@ -1046,7 +1158,7 @@ export interface components {
             pages: components["schemas"]["PageMatchDto"][];
         };
         /** @enum {unknown} */
-        MatchSource: "name" | "text" | "ocr" | "metadata";
+        MatchSource: "name" | "text" | "ocr" | "metadata" | "tag";
         MlEndpointDto: {
             url: string;
             hasApiKey: boolean;
@@ -1101,6 +1213,7 @@ export interface components {
             thumbnail: components["schemas"]["ThumbnailState"];
             contents: null | components["schemas"]["FolderCounts"];
             starred: boolean;
+            tags: components["schemas"]["TagDto"][];
         };
         NodeIdsRequest: {
             ids: string[];
@@ -1249,6 +1362,60 @@ export interface components {
         SuggestResponse: {
             items: components["schemas"]["SuggestionDto"][];
             terms: string[];
+            tags: components["schemas"]["TagSuggestion"][];
+        };
+        TagDto: {
+            name: string;
+            source: components["schemas"]["TagSource"];
+            /** Format: uuid */
+            ruleId: null | string;
+        };
+        TagRuleDto: {
+            /** Format: uuid */
+            id: string;
+            tag: string;
+            words: string;
+            enabled: boolean;
+            /** Format: int32 */
+            files: number;
+            running: boolean;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        TagRuleExampleDto: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            mimeType: null | string;
+            snippet: null | components["schemas"]["SnippetDto"];
+        };
+        TagRuleListing: {
+            rules: components["schemas"]["TagRuleDto"][];
+        };
+        TagRulePreviewDto: {
+            /** Format: int32 */
+            files: number;
+            examples: components["schemas"]["TagRuleExampleDto"][];
+        };
+        TagRulePreviewRequest: {
+            tag: null | string;
+            words: string;
+        };
+        TagRuleRequest: {
+            tag: string;
+            words: string;
+            /** @default true */
+            enabled: boolean;
+        };
+        /** @enum {unknown} */
+        TagSource: "user" | "rule" | "ml";
+        TagSuggestion: {
+            name: string;
+            /** Format: int32 */
+            files: number;
+        };
+        TagSuggestions: {
+            tags: components["schemas"]["TagSuggestion"][];
         };
         TestMlRequest: {
             url: string;
@@ -2194,6 +2361,7 @@ export interface operations {
                 modifiedBefore?: string;
                 folderId?: string;
                 starred?: boolean;
+                tag?: string[];
                 sort?: components["schemas"]["SearchSort"];
                 offset?: number;
                 limit?: number;
@@ -2266,6 +2434,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MatchesResponse"];
+                };
+            };
+        };
+    };
+    GetFileTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileTags"];
+                };
+            };
+        };
+    };
+    ChangeTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeTagsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuggestTags: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSuggestions"];
                 };
             };
         };
@@ -2706,6 +2941,120 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    AdminListTagRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagRuleListing"];
+                };
+            };
+        };
+    };
+    AdminCreateTagRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagRuleDto"];
+                };
+            };
+        };
+    };
+    AdminUpdateTagRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagRuleDto"];
+                };
+            };
+        };
+    };
+    AdminDeleteTagRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminPreviewTagRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagRulePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagRulePreviewDto"];
+                };
             };
         };
     };

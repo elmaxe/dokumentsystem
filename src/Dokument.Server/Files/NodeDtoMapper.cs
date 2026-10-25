@@ -2,6 +2,7 @@ using Dokument.Domain.Files;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
+using Dokument.Infrastructure.Tags;
 using Dokument.Server.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -9,14 +10,15 @@ using Microsoft.EntityFrameworkCore;
 namespace Dokument.Server.Files;
 
 /// <summary>
-/// Turns nodes into <see cref="NodeDto"/>s, looking up owner names, thumbnail states, folder sizes and the signed-in
-/// person's stars for the whole batch at once.
+/// Turns nodes into <see cref="NodeDto"/>s, looking up owner names, thumbnail states, folder sizes, tags and the
+/// signed-in person's stars for the whole batch at once.
 /// </summary>
 public sealed class NodeDtoMapper(
     DokumentDbContext db,
     PreviewService previews,
     DriveService drive,
     StarService stars,
+    TagService tags,
     IHttpContextAccessor http
 )
 {
@@ -39,7 +41,10 @@ public sealed class NodeDtoMapper(
                     ct
                 )
                 : [];
-        return nodes.Select(n => NodeDto.From(n, owners, thumbnails, folders, starred)).ToList();
+        var tagged = await tags.ForNodesAsync(nodes.Select(n => n.Id).ToList(), ct);
+        return nodes
+            .Select(n => NodeDto.From(n, owners, thumbnails, folders, starred, tagged))
+            .ToList();
     }
 
     public async Task<NodeDto> MapAsync(Node node, CancellationToken ct) =>

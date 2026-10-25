@@ -294,6 +294,7 @@ public sealed partial class PurgeService(
             await db.ContentPages.Where(p => p.BlobHash == hash).ExecuteDeleteAsync(ct);
             await db.BlobContents.Where(c => c.BlobHash == hash).ExecuteDeleteAsync(ct);
             await db.BlobMetadata.Where(m => m.BlobHash == hash).ExecuteDeleteAsync(ct);
+            await db.BlobTags.Where(t => t.BlobHash == hash).ExecuteDeleteAsync(ct);
         }
 
         // The files go while the lock is held: an upload of the same bytes waits, then finds no file and stores its own.
