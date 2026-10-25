@@ -32,9 +32,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # The runner image ships a .NET 10 SDK, which global.json accepts. Installing the pinned one is best-effort, so an
+      # outage of Microsoft's download servers doesn't fail CI; the next step fails if no matching SDK is there.
       - uses: actions/setup-dotnet@v5
+        continue-on-error: true
         with:
           global-json-file: global.json
+      - run: dotnet --version
       - run: dotnet tool restore
       - run: dotnet csharpier check .
       - run: dotnet build --configuration Release
