@@ -83,12 +83,16 @@ services:
       retries: 6
       start_period: 30s
 
-  # Machine learning: OCR, embeddings, transcription (docs/design.md §11). It can also run on another,
-  # stronger machine; either way, add its URL under Admin → Machine learning. Published from roadmap M7.
+  # Machine learning, for now speech to text (docs/design.md §11). It can also run on another, stronger
+  # machine (the image with the -cuda tag suffix uses an NVIDIA GPU); either way, add its URL under
+  # Admin → Settings → Machine learning, here http://ml:3003.
   ml:
     profiles: [ml]
     image: ${DOKUMENT_ML_IMAGE:-ghcr.io/elmaxe/dokumentsystem-ml}:${DOKUMENT_VERSION:-edge}
     restart: unless-stopped
+    environment:
+      # Optional; when set, enter the same key with the URL in the admin UI.
+      DOKUMENT_ML_API_KEY: ${ML_API_KEY:-}
     volumes:
       - ml-cache:/cache
 
