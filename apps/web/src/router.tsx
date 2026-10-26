@@ -47,9 +47,9 @@ const folderRoute = createRoute({
 
 /**
  * The viewer sits inside the app shell, so uploads keep running and the tray stays put while a file is open. Opened
- * from search, `q` marks the hits and `page` is the page to open on.
+ * from search, `q` marks the hits and `page` is the page to open on, or `at` the second a recording plays from.
  */
-export type FileSearch = { from?: "starred" | "recent" | "search"; q?: string; page?: number };
+export type FileSearch = { from?: "starred" | "recent" | "search"; q?: string; page?: number; at?: number };
 
 const fileRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
@@ -58,11 +58,12 @@ const fileRoute = createRoute({
     from: search.from === "starred" || search.from === "recent" || search.from === "search" ? search.from : undefined,
     q: typeof search.q === "string" && search.q ? search.q : undefined,
     page: typeof search.page === "number" && search.page >= 1 ? Math.floor(search.page) : undefined,
+    at: typeof search.at === "number" && search.at >= 0 ? Math.floor(search.at) : undefined,
   }),
   component: function FileRoute() {
     const { fileId } = fileRoute.useParams();
-    const { from, q, page } = fileRoute.useSearch();
-    return <ViewerPage fileId={fileId} from={from} q={q} page={page} />;
+    const { from, q, page, at } = fileRoute.useSearch();
+    return <ViewerPage fileId={fileId} from={from} q={q} page={page} at={at} />;
   },
 });
 

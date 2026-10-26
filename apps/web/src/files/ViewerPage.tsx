@@ -1,9 +1,10 @@
-import { contentUrl, previewUrl, thumbnailUrl, type NodeDto } from "@dokument/api";
+import { captionsUrl, contentUrl, previewUrl, thumbnailUrl, type NodeDto } from "@dokument/api";
 import {
   Banner,
   Button,
   EmptyState,
   FileViewer,
+  leadInMs,
   previewTypeOf,
   sortItems,
   useFormat,
@@ -27,6 +28,7 @@ import {
   recentQuery,
   starredQuery,
   toItem,
+  transcriptQuery,
 } from "./drive";
 import { FileDetailsPanel } from "./FileDetailsPanel";
 import { lastSearchResults, matchesQuery } from "../search/search";
@@ -72,18 +74,21 @@ type Pin = { fileId: string; versionId: string; fetchedAt: number };
 /**
  * A file opened from the grid or list (§14): full screen, with its siblings a key or swipe away. Opened from Starred
  * or Recent, the siblings are that page's files and closing goes back there; otherwise they're the file's folder.
- * Opened from search, the siblings are the results, and the hits for `q` are marked, starting on `page`.
+ * Opened from search, the siblings are the results, and the hits for `q` are marked, starting on `page`, or a
+ * recording plays from just before `at`, the second of the hit.
  */
 export function ViewerPage({
   fileId,
   from,
   q,
   page,
+  at,
 }: {
   fileId: string;
   from?: "starred" | "recent" | "search";
   q?: string;
   page?: number;
+  at?: number;
 }) {
   const { t, i18n } = useTranslation();
   const toast = useSnackbar();
@@ -96,6 +101,8 @@ export function ViewerPage({
   const recent = useQuery({ ...recentQuery, enabled: from === "recent" });
   const results = from === "search" ? lastSearchResults() : null;
   const matches = useQuery({ ...matchesQuery(fileId, q ?? ""), enabled: !!q });
+  const recording = ["video", "audio"].includes(previewTypeOf(details.data?.node.mimeType));
+  const transcript = useQuery({ ...transcriptQuery(fileId), enabled: recording });
   const [panel, setPanel] = useState<{ open: boolean; tab: DetailsTab }>({ open: false, tab: "info" });
   const format = useFormat();
   const current = details.data?.node.currentVersionId ?? null;
@@ -190,9 +197,15 @@ export function ViewerPage({
 
   // Wait for the hits before showing a file opened from search, so it opens on the right page with them marked.
   if (q && matches.isPending) return <div className="fixed inset-0 z-40 bg-surface-container-highest" />;
+  // Shown once there's something to say about it; a viewer with no transcript coming keeps its full width.
+  const spokenState = shownVersion === current ? transcript.data?.state : undefined;
+  const spoken = transcript.data && spokenState && spokenState !== "none" ? { ...transcript.data, state: spokenState } : undefined;
+  const times = matches.data?.pages.flatMap((p) => p.times) ?? [];
+  const firstHit = at !== undefined ? at * 1000 : times.length > 0 ? Math.min(...times) : undefined;
   const marks =
     q && matches.data
       ? {
+          times,
           query: q,
           terms: matches.data.terms,
           pages: matches.data.pages,
@@ -246,6 +259,11 @@ export function ViewerPage({
         ]}
         onAction={(id) => void setStar(id === "star")}
         marks={marks}
+        transcript={spoken}
+        captions={
+          item.kind === "video" && transcript.data?.lines.length && shownVersion === current ? captionsUrl(item.id) : undefined
+        }
+        startAtMs={firstHit !== undefined && shownVersion === current ? Math.max(0, firstHit - leadInMs) : undefined}
         position={
           from === "search" && index >= 0 && siblings.length > 1
             ? t("viewer.resultPosition", { current: index + 1, total: siblings.length })

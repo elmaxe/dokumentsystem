@@ -39,7 +39,12 @@ export function SearchPage({ params }: { params: SearchParams }) {
       : ({
           to: "/files/$fileId",
           params: { fileId: hit.node.id },
-          search: { from: "search" as const, q: q || undefined, page: hit.pageNo ?? undefined },
+          search: {
+            from: "search" as const,
+            q: q || undefined,
+            page: hit.pageNo ?? undefined,
+            at: hit.atMs != null ? Math.floor(hit.atMs / 1000) : undefined,
+          },
         } as const);
 
   const open = (hit: SearchResultDto) => {
@@ -172,6 +177,7 @@ export function SearchPage({ params }: { params: SearchParams }) {
                     pageNo={hit.pageNo}
                     pageCount={hit.pageCount}
                     pagesWithHits={hit.pagesWithHits}
+                    atMs={hit.atMs}
                     href={router.buildLocation(viewerLink(hit)).href}
                     onOpen={() => open(hit)}
                   />

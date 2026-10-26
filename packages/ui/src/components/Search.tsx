@@ -6,9 +6,10 @@ import { contentsLabel, isFolder, isPaged, type FileItem } from "../lib/files";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { Highlighted } from "./Highlighted";
 import { Icon } from "./Icon";
+import { formatMs } from "../lib/media";
 
 /** Where the best hit in a file was, as the server says. */
-export type HitSource = "name" | "text" | "ocr" | "metadata";
+export type HitSource = "name" | "text" | "ocr" | "metadata" | "transcript";
 
 export type SearchResultProps = {
   item: FileItem;
@@ -21,6 +22,8 @@ export type SearchResultProps = {
   pageNo?: number | null;
   pageCount?: number | null;
   pagesWithHits?: number;
+  /** For a hit in what's said in a recording: where it is, in milliseconds. */
+  atMs?: number | null;
   /** A link to the file, so it opens in a new tab with a middle click. */
   href: string;
   onOpen: () => void;
@@ -30,7 +33,19 @@ export type SearchResultProps = {
  * One row of search results (docs/design.md §16.4): a thumbnail, the name with its hits marked, the best snippet,
  * then where the file is, when it changed, which page matched and whether the text came from a scan.
  */
-export function SearchResult({ item, location, terms, snippet, source, pageNo, pageCount, pagesWithHits = 0, href, onOpen }: SearchResultProps) {
+export function SearchResult({
+  item,
+  location,
+  terms,
+  snippet,
+  source,
+  pageNo,
+  pageCount,
+  pagesWithHits = 0,
+  atMs,
+  href,
+  onOpen,
+}: SearchResultProps) {
   const { t } = useTranslation();
   const format = useFormat();
   const page =
@@ -44,7 +59,9 @@ export function SearchResult({ item, location, terms, snippet, source, pageNo, p
       ? { icon: "document_scanner", label: item.kind === "image" ? t("search.foundInPhoto") : t("search.foundInScan") }
       : source === "metadata"
         ? { icon: "info", label: t("search.foundInDetails") }
-        : null;
+        : source === "transcript"
+          ? { icon: "graphic_eq", label: t("search.foundInSpeech") }
+          : null;
   return (
     <a
       href={href}
@@ -76,13 +93,23 @@ export function SearchResult({ item, location, terms, snippet, source, pageNo, p
           <span>
             {isFolder(item) && item.contents ? contentsLabel(t, item.contents) : format.date(item.modified)}
           </span>
-          {page && (
+          {atMs != null ? (
             <>
               <Dot />
-              <span>{page}</span>
+              <span className="inline-flex items-center gap-0.5 font-medium text-primary">
+                <Icon name="play_arrow" filled size={16} />
+                {t("search.at", { time: formatMs(atMs) })}
+              </span>
             </>
+          ) : (
+            page && (
+              <>
+                <Dot />
+                <span>{page}</span>
+              </>
+            )
           )}
-          {pagesWithHits > 1 && (
+          {pagesWithHits > 1 && atMs == null && (
             <>
               <Dot />
               <span>{t("search.pagesWithHits", { count: pagesWithHits })}</span>

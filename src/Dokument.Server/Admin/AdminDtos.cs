@@ -20,13 +20,16 @@ public sealed record AdminSettingsDto(
 /// <param name="Enabled">Whether what's said in recordings is made searchable (§11.1). Needs an ML service.</param>
 /// <param name="Model">One of <c>models</c>; <c>auto</c> lets the ML service pick by its hardware.</param>
 /// <param name="Videos">Whether the sound in videos is transcribed too.</param>
-/// <param name="Models">The models to choose from. Ignored when saving.</param>
+/// <param name="Models">The models to choose from.</param>
 public sealed record TranscriptionSettingsDto(
     bool Enabled,
     string Model,
     bool Videos,
     List<string> Models
 );
+
+/// <param name="Model">One of the settings' <c>models</c>.</param>
+public sealed record UpdateTranscriptionRequest(bool Enabled, string Model, bool Videos);
 
 /// <param name="Copies">When playable copies of videos browsers can't play are made (§14).</param>
 /// <param name="MaxHeight">The copies' size: 720 or 1080, or 0 to keep the original's. Applies to copies made from now on.</param>

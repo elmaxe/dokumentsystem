@@ -234,7 +234,7 @@ public static class AdminEndpoints
     private static async Task<
         Results<Ok<TranscriptionSettingsDto>, ValidationProblem>
     > PutTranscription(
-        TranscriptionSettingsDto request,
+        UpdateTranscriptionRequest request,
         HttpContext context,
         SettingsStore settings,
         TranscriptService transcripts,

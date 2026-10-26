@@ -50,6 +50,11 @@ export type PageMatch = components["schemas"]["PageMatchDto"];
 export type TextProgress = components["schemas"]["TextProgress"];
 export type CopyStats = components["schemas"]["CopyStats"];
 export type MediaDto = components["schemas"]["MediaDto"];
+export type Transcript = components["schemas"]["TranscriptDto"];
+export type TranscriptLine = components["schemas"]["TranscriptLineDto"];
+export type TranscriptState = components["schemas"]["TranscriptState"];
+export type TranscriptionSettings = components["schemas"]["TranscriptionSettingsDto"];
+export type TranscriptionProgress = components["schemas"]["TranscriptionProgress"];
 
 /** The tus endpoint for resumable uploads (docs/design.md §8.1). */
 export const uploadsPath = "/api/v1/uploads";
@@ -82,6 +87,11 @@ export function previewUrl(
 ): string {
   const query = new URLSearchParams({ ...(versionId ? { versionId } : {}), ...(original ? { original: "true" } : {}) }).toString();
   return `${baseUrl}/api/v1/nodes/${nodeId}/preview${query ? `?${query}` : ""}`;
+}
+
+/** A video's captions as WebVTT, made from its transcript (§11.1). Only there once the transcript has lines. */
+export function captionsUrl(nodeId: string, baseUrl = ""): string {
+  return `${baseUrl}/api/v1/nodes/${nodeId}/captions.vtt`;
 }
 
 /** The RFC 9457 problem body the server sends for refused requests. File operations add a machine-readable code. */

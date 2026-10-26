@@ -1,5 +1,5 @@
 import { formatBytes } from "@dokument/core";
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode, type RefObject, type SyntheticEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
 import type { FileItem } from "../lib/files";
@@ -9,6 +9,8 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { ActionMenu, type MenuAction } from "./Menu";
 import { Progress } from "./Progress";
+import { formatMs, leadInMs } from "../lib/media";
+import { TranscriptPanel, type TranscriptView } from "./Transcript";
 
 const PdfPreview = lazy(() => import("./PdfPreview"));
 const CodePreview = lazy(() => import("./CodePreview"));
@@ -38,6 +40,8 @@ export type ViewerMarks = {
   pages: readonly { pageNo: number; boxes: readonly MarkBox[] }[];
   /** The page to open on: the best hit. */
   startPage?: number;
+  /** In a recording: where the hits are said, in milliseconds. */
+  times?: readonly number[];
   onClear: () => void;
 };
 
@@ -62,6 +66,12 @@ export type FileViewerProps = {
   position?: string;
   /** A note under the top bar, such as a newer version having arrived (§15.4). */
   banner?: ReactNode;
+  /** What's said in a video or audio file, shown beside the player (§11.1). */
+  transcript?: TranscriptView;
+  /** WebVTT captions for a video, from its transcript. */
+  captions?: string;
+  /** Where a recording starts playing, in milliseconds: just before the hit it was opened from. */
+  startAtMs?: number;
 };
 
 /** The file viewer (§14, §16.4): a full-screen preview with the file's actions, its siblings and its details. */
@@ -81,6 +91,9 @@ export function FileViewer({
   marks,
   position,
   banner,
+  transcript,
+  captions,
+  startAtMs,
 }: FileViewerProps) {
   const { t } = useTranslation();
   const swipe = useRef<{ x: number; y: number } | null>(null);
@@ -94,6 +107,25 @@ export function FileViewer({
   const [wrap, setWrap] = useStoredFlag("dokument.viewer.wrap");
   const [findRequest, setFindRequest] = useState(0);
   const showsCode = preview.type === "text" || (preview.type === "markdown" && markdownView === "source");
+  const playing = preview.type === "video" || preview.type === "audio";
+  const media = useRef<HTMLMediaElement | null>(null);
+  const [currentMs, setCurrentMs] = useState(startAtMs ?? 0);
+  const [transcriptOpen, setTranscriptOpen] = useState(true);
+  const showsTranscript = playing && !!transcript && transcriptOpen;
+  const times = playing ? [...(marks?.times ?? [])].sort((a, b) => a - b) : [];
+  // The hit being heard: the last one started, counting the lead-in before it.
+  const timeIndex = times.findLastIndex((time) => time - leadInMs <= currentMs + 500);
+  const seek = (ms: number) => {
+    const element = media.current;
+    if (!element) return;
+    element.currentTime = Math.max(0, ms) / 1000;
+    setCurrentMs(Math.max(0, ms));
+    void element.play().catch(() => {});
+  };
+  const seekToHit = (index: number) => {
+    const time = times[index];
+    if (time !== undefined) seek(time - leadInMs);
+  };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -137,6 +169,27 @@ export function FileViewer({
           >
             <Icon name="search" size="sm" className="text-on-surface-variant max-sm:hidden" />
             <span className="max-w-40 truncate px-1 max-md:hidden">{marks.query}</span>
+            {times.length > 0 && (
+              <>
+                <span className="tabular px-1 text-label-lg text-on-surface-variant max-sm:sr-only">
+                  {t("viewer.matchPosition", { current: timeIndex < 0 ? "–" : timeIndex + 1, total: times.length })}
+                </span>
+                <IconButton
+                  icon="keyboard_arrow_up"
+                  label={t("viewer.previousSpokenMatch")}
+                  size="sm"
+                  disabled={timeIndex <= 0}
+                  onClick={() => seekToHit(timeIndex - 1)}
+                />
+                <IconButton
+                  icon="keyboard_arrow_down"
+                  label={t("viewer.nextSpokenMatch")}
+                  size="sm"
+                  disabled={timeIndex >= times.length - 1}
+                  onClick={() => seekToHit(timeIndex + 1)}
+                />
+              </>
+            )}
             {preview.type === "pdf" && markedPages.length > 0 && (
               <>
                 <span className="tabular px-1 text-label-lg text-on-surface-variant max-sm:sr-only" title={pageIndex < 0 ? t("viewer.noMatchesHere") : undefined}>
@@ -168,6 +221,14 @@ export function FileViewer({
             <IconButton icon="search" label={t("code.findInFile")} onClick={() => setFindRequest((n) => n + 1)} className="max-sm:hidden" />
           </>
         )}
+        {playing && transcript && (
+          <IconButton
+            icon="subtitles"
+            label={transcriptOpen ? t("transcript.hide") : t("transcript.show")}
+            selected={transcriptOpen}
+            onClick={() => setTranscriptOpen(!transcriptOpen)}
+          />
+        )}
         {onShare && (
           <>
             <Button variant="tonal" icon="person_add" onClick={onShare} className="max-md:hidden">
@@ -190,7 +251,7 @@ export function FileViewer({
         )}
       </header>
       {banner && <div className="shrink-0 px-2 pt-2 sm:px-4">{banner}</div>}
-      <div className="flex min-h-0 flex-1">
+      <div className={cn("flex min-h-0 flex-1", showsTranscript && "max-lg:flex-col")}>
         <div
           className="relative flex min-w-0 flex-1 flex-col"
           onTouchStart={(event) => {
@@ -239,6 +300,15 @@ export function FileViewer({
               poster={preview.poster}
               item={item}
               fallback={noPreview(true)}
+              mediaRef={media}
+              startAtMs={startAtMs}
+              onTime={setCurrentMs}
+              captions={captions}
+              captionsLanguage={transcript?.language ?? undefined}
+              ticks={times}
+              durationMs={transcript?.durationMs ?? undefined}
+              currentMs={currentMs}
+              onSeek={seek}
             />
           ) : preview.type === "converting" ? (
             <Centered>
@@ -309,6 +379,16 @@ export function FileViewer({
             </span>
           )}
         </div>
+        {showsTranscript && (
+          <TranscriptPanel
+            transcript={transcript}
+            currentMs={currentMs}
+            terms={marks?.terms}
+            onSeek={seek}
+            onClose={() => setTranscriptOpen(false)}
+            className="lg:w-96 lg:shrink-0 lg:border-l max-lg:h-[45%] max-lg:border-t"
+          />
+        )}
         {detailsOpen && details}
       </div>
     </div>
@@ -596,33 +676,97 @@ function MediaPreview({
   poster,
   item,
   fallback,
+  mediaRef,
+  startAtMs,
+  onTime,
+  captions,
+  captionsLanguage,
+  ticks,
+  durationMs,
+  currentMs,
+  onSeek,
 }: {
   type: "video" | "audio";
   sources: string[];
   poster?: string;
   item: FileItem;
   fallback: ReactNode;
+  mediaRef: RefObject<HTMLMediaElement | null>;
+  startAtMs?: number;
+  onTime: (ms: number) => void;
+  captions?: string;
+  captionsLanguage?: string;
+  /** Where search hits are said, shown as ticks along the timeline. */
+  ticks: readonly number[];
+  durationMs?: number;
+  currentMs: number;
+  onSeek: (ms: number) => void;
 }) {
   const { t } = useTranslation();
   const [index, setIndex] = useState(0);
   const [coverFailed, setCoverFailed] = useState(false);
+  const [loadedMs, setLoadedMs] = useState<number | null>(null);
   if (index >= sources.length) return <Centered>{fallback}</Centered>;
   const src = sources[index];
   const next = () => setIndex((i) => i + 1);
+  const events = {
+    onLoadedMetadata: (event: SyntheticEvent<HTMLMediaElement>) => {
+      const element = event.currentTarget;
+      if (Number.isFinite(element.duration)) setLoadedMs(element.duration * 1000);
+      if (startAtMs) element.currentTime = startAtMs / 1000;
+    },
+    onTimeUpdate: (event: SyntheticEvent<HTMLMediaElement>) => onTime(event.currentTarget.currentTime * 1000),
+    onSeeked: (event: SyntheticEvent<HTMLMediaElement>) => onTime(event.currentTarget.currentTime * 1000),
+  };
+  const length = loadedMs ?? durationMs;
+  const tickBar =
+    ticks.length > 0 && length ? (
+      // Its own thin timeline under the player's, since the browser's controls can't show where the hits are.
+      <div aria-hidden className="relative mx-2 my-1 h-4">
+        <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-outline-variant" />
+        <div
+          className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full bg-on-surface-variant"
+          style={{ width: `${Math.min(100, (currentMs / length) * 100)}%` }}
+        />
+        {ticks.map((time) => (
+          <button
+            key={time}
+            type="button"
+            tabIndex={-1}
+            title={formatMs(time)}
+            onClick={() => onSeek(time - leadInMs)}
+            style={{ left: `${Math.min(100, (time / length) * 100)}%` }}
+            className="absolute top-0 h-4 w-1.5 -translate-x-1/2 cursor-pointer rounded-full bg-primary hover:scale-125"
+          />
+        ))}
+      </div>
+    ) : null;
+  const track = captions ? (
+    <track kind="captions" src={captions} srcLang={captionsLanguage} label={t("transcript.captions")} />
+  ) : null;
   return (
     <Centered>
       {type === "video" ? (
-        <video
-          key={src}
-          src={src}
-          poster={poster}
-          controls
-          autoPlay
-          playsInline
-          preload="metadata"
-          onError={next}
-          className="max-h-full max-w-full bg-black shadow-elevation-2 sm:rounded-sm"
-        />
+        <div className="flex max-h-full max-w-full flex-col items-stretch gap-1">
+          <video
+            key={src}
+            ref={(element) => {
+              mediaRef.current = element;
+            }}
+            src={src}
+            poster={poster}
+            controls
+            autoPlay
+            playsInline
+            preload="metadata"
+            onError={next}
+            {...events}
+            className="min-h-0 max-w-full bg-black shadow-elevation-2 sm:rounded-sm"
+          >
+            {track}
+          </video>
+          {tickBar}
+        </div>
       ) : (
         <div className="m-4 flex w-full max-w-md flex-col items-center gap-6 rounded-lg bg-surface-container-low p-8 shadow-elevation-1">
           {item.thumbnail && !coverFailed ? (
@@ -638,7 +782,22 @@ function MediaPreview({
             </span>
           )}
           <p className="m-0 max-w-full truncate text-title-md">{item.name}</p>
-          <audio key={src} src={src} controls autoPlay preload="metadata" onError={next} className="w-full" />
+          <div className="flex w-full flex-col gap-1">
+            <audio
+              key={src}
+              ref={(element) => {
+                mediaRef.current = element;
+              }}
+              src={src}
+              controls
+              autoPlay
+              preload="metadata"
+              onError={next}
+              {...events}
+              className="w-full"
+            />
+            {tickBar}
+          </div>
         </div>
       )}
     </Centered>

@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.28** · Last updated: 2026-10-26
+> Status: **Draft v0.29** · Last updated: 2026-10-26
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -566,21 +566,22 @@ Modeled on Immich's `immich-machine-learning`.
 
 ### 11.1 Transcription (speech to text)
 
-Planned as the first piece of the ML image, built right after the M2 video/audio work, which brings ffmpeg and ffprobe to the worker (decision 30). Mockups: the "Transcription" canvas.
+The first piece of the ML image, built on the M2 video/audio work, which brings ffmpeg and ffprobe to the worker (decision 30). Mockups: the "Transcription" canvas.
 
 - **The ML side:** the image starts as FastAPI + **faster-whisper** (CTranslate2 rather than ONNX Runtime; Whisper runs best there) with Silero VAD, so music and silence are skipped instead of hallucinated over. `GET /health` and `GET /models` report the loaded model and whether a GPU is used.
-  - `POST /transcribe` takes the audio and an optional `start_ms`, and streams segments back as NDJSON (`{start_ms, end_ms, text, words: [[start_ms, end_ms, "word"], …]}`), then a final line with the detected language and the model.
+  - `POST /transcribe` takes the audio, the model, an optional `start_ms` and, when resuming, the language. It streams NDJSON: first `detected` (language, length, how much is speech, the model and engine), then a `segment` per line (`{start_ms, end_ms, text, words: [[start_ms, end_ms, "word"], …]}`), then `done`, or `error` if it fails part way. An optional API key is sent as a Bearer token.
 - **Languages:** Whisper detects the language per file, limited to Swedish and English (the likelier of the two is used), and the result is stored with the transcript. The index is already Swedish- and English-stemmed, so search needs nothing new.
 - **Models:** by default the best the service can run: `large-v3-turbo` on a GPU, `small` on a CPU. Admins can pick a size, or **KB-Whisper** (the Swedish National Library's fine-tune) for better Swedish.
 - **The worker stage:** a blob whose ffprobe shows an audio stream gets a `transcribe` job at background priority (videos too, unless an admin turns that off). ffmpeg makes 16 kHz mono Opus (about 10 MB an hour), and that is sent, never the original.
-  - **Long files:** the job type gets a long timeout, and each streamed segment renews the lease. Pages are written as they arrive, so an interrupted job resumes from the last stored time instead of starting over.
+  - **Long files:** the job type gets a long timeout (12 h), and the job's lease is renewed as pages are stored. Pages are written as they arrive, so an interrupted job resumes from the last stored time instead of starting over, unless the admin picked another model since.
+  - **Service down:** with no service answering, or one that drops mid-file, the job is postponed 5 minutes without counting an attempt, and the first healthy service in the admin's order is used next time.
   - **No speech** (under a few seconds after VAD) is stored as a result ("no speech found") and isn't retried.
-- **Storage:** segments are grouped into transcript pages of about a minute, cut at pauses: `content_pages` with `source = transcript`, `start_ms`/`end_ms`, and word times in `words`. Like all text, a transcript is keyed by blob, stored with `engine` + `model` + `version`, and the per-version corrections of decision 28 apply to it (fix a misheard name).
+- **Storage:** segments are grouped into transcript pages of about a minute, cut at pauses: `content_pages` with `source = transcript`, `start_ms`/`end_ms`, and the page's lines with their word times in `words` (`[{s, e, t, w: [[s, e, "word"], …]}, …]`), so hits map to times and lines come back for the transcript panel. A `blob_transcripts` row per blob holds the state (partial, ready, no speech, failed), language, model, length and how far it has got. Like all text, a transcript is keyed by blob, stored with `engine` + `model` + `version`, and the per-version corrections of decision 28 apply to it (fix a misheard name).
 - **Without an ML service:** no transcribe jobs are queued, so nothing piles up; adding an ML URL queues every recording at background priority. With URLs set but none healthy, jobs wait (as above). Whisper isn't added to the worker image: it would add hundreds of MB and hours of NAS CPU, and the NAS can run the ML image itself (`--profile ml`) with the small model.
 - **Admin › Settings › Machine learning:** a "Speech to text" section with an on/off switch (on), the model, "Transcribe the sound in videos too" (on), and the queue's size in recordings and hours. With no service added it says that speech to text needs one.
-- **Search:** a transcript hit shows "At 12:34 · In spoken words" instead of a page number, with the usual snippet (§13.3). `GET /nodes/{id}/matches` returns times instead of boxes for transcript pages.
-- **Viewer:** opened from a hit, the player starts 10 s before it, so the sentence is heard from its start. A transcript panel (a sheet on phones) lists the lines with times, marks the hits, follows along while playing, seeks when a line is clicked and has its own find box; the timeline shows a tick for each hit, and the header stepper moves between them. Videos get **captions** generated from the transcript as WebVTT (`GET /nodes/{id}/captions.vtt`), with a CC toggle.
-- **Details:** a Transcript section (word count, the start, Open transcript, Correct text, download as .txt or .vtt), the detected language under Details, and a "Speech to text" row under Processing (running with the time reached, waiting for the service, no speech found, off on this server).
+- **Search:** a transcript hit shows "At 12:34 · In spoken words" instead of a page number, with the usual snippet (§13.3). `GET /nodes/{id}/matches` returns times instead of boxes for transcript pages. `GET /nodes/{id}/transcript` returns the state and the lines.
+- **Viewer:** opened from a hit, the player starts 10 s before it, so the sentence is heard from its start. A transcript panel (a sheet on phones) lists the lines with times, marks the hits, follows along while playing, seeks when a line is clicked and has its own find box; a thin timeline under the player shows a tick for each hit (the browser's own controls can't), and the header stepper moves between them. Videos get **captions** generated from the transcript as WebVTT (`GET /nodes/{id}/captions.vtt`), with a CC toggle.
+- **Details** (not built yet; comes with the Processing section of the processing-jobs proposal): a Transcript section (word count, the start, Open transcript, Correct text, download as .txt or .vtt), the detected language under Details, and a "Speech to text" row under Processing (running with the time reached, waiting for the service, no speech found, off on this server).
 
 ---
 
