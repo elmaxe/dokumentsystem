@@ -16,6 +16,7 @@ import type {
   StarredListing,
   StorageUsage,
   TagSuggestion,
+  Transcript,
   TrashListing,
   VersionDto,
 } from "@dokument/api";
@@ -310,3 +311,14 @@ export function download(url: string) {
   link.click();
   link.remove();
 }
+
+/**
+ * What's said in a recording (§11.1). Under ["node", id] so the worker's notice when it's done refreshes it; while
+ * it runs, lines arrive about a minute of sound at a time with no notice, so it's asked for again every 10 s.
+ */
+export const transcriptQuery = (id: string) =>
+  queryOptions({
+    queryKey: ["node", id, "transcript"],
+    queryFn: (): Promise<Transcript> => unwrap(api.GET("/api/v1/nodes/{id}/transcript", { params: { path: { id } } })),
+    refetchInterval: (query) => (query.state.data?.state === "running" ? 10_000 : false),
+  });

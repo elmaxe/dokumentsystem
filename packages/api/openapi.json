@@ -2376,7 +2376,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TranscriptionSettingsDto"
+                "$ref": "#/components/schemas/UpdateTranscriptionRequest"
               }
             }
           },
@@ -5853,6 +5853,25 @@
             "items": {
               "$ref": "#/components/schemas/MlEndpointUpdate"
             }
+          }
+        }
+      },
+      "UpdateTranscriptionRequest": {
+        "required": [
+          "enabled",
+          "model",
+          "videos"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "videos": {
+            "type": "boolean"
           }
         }
       },

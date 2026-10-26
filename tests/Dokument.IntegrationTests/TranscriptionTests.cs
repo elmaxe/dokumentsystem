@@ -145,7 +145,7 @@ public sealed class TranscriptionTests(PostgresFixture postgres)
         (
             await admin.PutAsJsonAsync(
                 "/api/v1/admin/settings/transcription",
-                new TranscriptionSettingsDto(false, "kb-whisper-small", true, [])
+                new UpdateTranscriptionRequest(false, "kb-whisper-small", true)
             )
         ).EnsureSuccessStatusCode();
         (
@@ -167,13 +167,13 @@ public sealed class TranscriptionTests(PostgresFixture postgres)
 
         var bad = await admin.PutAsJsonAsync(
             "/api/v1/admin/settings/transcription",
-            new TranscriptionSettingsDto(true, "openai/evil", true, [])
+            new UpdateTranscriptionRequest(true, "openai/evil", true)
         );
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
         (
             await admin.PutAsJsonAsync(
                 "/api/v1/admin/settings/transcription",
-                new TranscriptionSettingsDto(true, "kb-whisper-small", true, [])
+                new UpdateTranscriptionRequest(true, "kb-whisper-small", true)
             )
         ).EnsureSuccessStatusCode();
         await WaitForTranscribeAsync(app);

@@ -31,7 +31,7 @@ export type FileDetailsView = {
 /** What a details edit sends: null keeps what the file says. */
 export type DetailsEdit = { title: string | null; description: string | null; taken: string | null };
 
-export type TextPageSource = "text" | "ocr" | "metadata" | "added";
+export type TextPageSource = "text" | "ocr" | "metadata" | "added" | "transcript";
 
 export type TextPageView = {
   pageNo: number;

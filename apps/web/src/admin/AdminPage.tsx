@@ -1,5 +1,5 @@
 import type { AdminSettings, AdminUser, ProbeResult } from "@dokument/api";
-import { formatBytes } from "@dokument/core";
+import { formatBytes, formatDuration } from "@dokument/core";
 import { Avatar, Banner, Button, Dialog, Icon, IconButton, Progress, Switch, TextField, useSnackbar } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type ReactNode } from "react";
@@ -13,6 +13,7 @@ import {
   storageReportQuery,
   textProgressQuery,
   toGib,
+  transcriptionProgressQuery,
   videoCopiesQuery,
 } from "./adminApi";
 
@@ -22,6 +23,7 @@ const sections = [
   { id: "textRecognition", icon: "document_scanner" },
   { id: "videos", icon: "movie" },
   { id: "ml", icon: "neurology" },
+  { id: "speech", icon: "graphic_eq" },
   { id: "scanning", icon: "shield" },
   { id: "versions", icon: "history" },
   { id: "signIn", icon: "login" },
@@ -57,6 +59,7 @@ export function AdminSettingsPage() {
           <TextRecognitionSection settings={settings.data} />
           <VideosSection key={`p${settings.dataUpdatedAt}`} settings={settings.data} />
           <MlSection key={`m${settings.dataUpdatedAt}`} settings={settings.data} />
+          <SpeechSection key={`s${settings.dataUpdatedAt}`} settings={settings.data} />
           <ScannerSection key={`c${settings.dataUpdatedAt}`} settings={settings.data} />
           <VersionsSection key={`v${settings.dataUpdatedAt}`} settings={settings.data} />
           <SignInSection settings={settings.data} />
@@ -666,6 +669,106 @@ function TextRecognitionSection({ settings }: { settings: AdminSettings }) {
       </div>
     </Section>
   );
+}
+
+/** Speech to text (§11.1): whether recordings are transcribed, with which model, and how far it has come. */
+function SpeechSection({ settings }: { settings: AdminSettings }) {
+  const { t, i18n } = useTranslation();
+  const progress = useQuery(transcriptionProgressQuery);
+  const current = settings.transcription;
+  const [model, setModel] = useState(current.model);
+  const { busy, save } = useSave();
+  const enabledId = useId();
+  const videosId = useId();
+  const hasMl = settings.ml.endpoints.length > 0;
+  const number = (n: number) => n.toLocaleString(i18n.language);
+  const put = (change: Partial<{ enabled: boolean; model: string; videos: boolean }>) => {
+    const next = { enabled: current.enabled, model, videos: current.videos, ...change };
+    if (!busy) void save(() => admin.putTranscription(next.enabled, next.model, next.videos));
+  };
+  const stats = progress.data;
+
+  return (
+    <Section id="speech" intro={t("admin.speech.intro")}>
+      {!hasMl && (
+        <Banner
+          icon="info"
+          action={
+            <Button variant="text" onClick={() => document.getElementById("admin-ml")?.scrollIntoView({ behavior: "smooth" })}>
+              {t("admin.speech.addService")}
+            </Button>
+          }
+        >
+          {t("admin.speech.needsMl")}
+        </Banner>
+      )}
+      <div className="flex items-center gap-4">
+        <label htmlFor={enabledId} className="flex min-w-0 flex-1 cursor-pointer flex-col">
+          <span className="text-title-sm">{t("admin.speech.label")}</span>
+          <span className="text-body-sm text-on-surface-variant">{t("admin.speech.languages")}</span>
+        </label>
+        <Switch id={enabledId} checked={current.enabled} onCheckedChange={(enabled) => put({ enabled })} />
+      </div>
+      <div className="flex items-center gap-4">
+        <label htmlFor={videosId} className="flex min-w-0 flex-1 cursor-pointer flex-col">
+          <span className="text-title-sm">{t("admin.speech.videos")}</span>
+          <span className="text-body-sm text-on-surface-variant">{t("admin.speech.videosHint")}</span>
+        </label>
+        <Switch id={videosId} checked={current.videos} onCheckedChange={(videos) => put({ videos })} />
+      </div>
+      <label className="flex flex-col gap-2">
+        <span className="text-label-lg text-on-surface">{t("admin.speech.model")}</span>
+        <select
+          value={model}
+          onChange={(event) => setModel(event.target.value)}
+          className="h-control max-w-120 rounded-xs border border-outline bg-surface-container-lowest px-3 text-body-lg text-on-surface"
+        >
+          {current.models.map((id) => (
+            <option key={id} value={id}>
+              {modelLabel(t, id)}
+            </option>
+          ))}
+        </select>
+        <span className="max-w-160 text-body-sm text-on-surface-variant">{t("admin.speech.modelHint")}</span>
+      </label>
+      <SaveButton disabled={busy || model === current.model} onClick={() => put({ model })} />
+      {stats && hasMl && (
+        <div className="flex flex-col gap-2 rounded-md bg-surface-container p-4 text-body-md">
+          <span className="flex items-center gap-2 text-title-sm">
+            <Icon name="check_circle" filled className="text-success" size={20} />
+            {t("admin.speech.done", { count: stats.done })}
+          </span>
+          {stats.waiting + stats.running > 0 && (
+            <span className="tabular flex items-center gap-2 text-on-surface-variant">
+              <Icon name="hourglass_top" size={20} />
+              {t("admin.speech.queue", {
+                waiting: number(stats.waiting),
+                running: number(stats.running),
+                length: formatDuration(stats.waitingSeconds),
+              })}
+            </span>
+          )}
+          {stats.failed > 0 && (
+            <span className="flex items-center gap-2 text-on-surface-variant">
+              <Icon name="error" size={20} className="text-error" />
+              {t("admin.speech.failed", { count: stats.failed })}
+            </span>
+          )}
+          <span className="flex items-start gap-2 text-body-sm text-on-surface-variant">
+            <Icon name="info" size={20} />
+            {current.enabled ? t("admin.speech.engine") : t("admin.speech.offNote")}
+          </span>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+/** A model's name as the admin sees it: what `auto` means, and that KB-Whisper is the Swedish one. */
+function modelLabel(t: ReturnType<typeof useTranslation>["t"], id: string) {
+  if (id === "auto") return t("admin.speech.auto");
+  const kb = /^kb-whisper-(\w+)$/.exec(id);
+  return kb ? t("admin.speech.kbWhisper", { size: kb[1] }) : id;
 }
 
 type VideoSettings = AdminSettings["videos"];
