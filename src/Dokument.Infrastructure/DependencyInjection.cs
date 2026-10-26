@@ -3,11 +3,13 @@ using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Live;
+using Dokument.Infrastructure.Ml;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Search;
 using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Storage;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,6 +60,26 @@ public static class DependencyInjection
         services.AddScoped<SearchService>();
         services.AddScoped<SettingsStore>();
         services.AddHttpClient<ServiceProbe>();
+        services.AddSingleton<MlHealth>();
+        services.AddScoped<TranscriptService>();
+
+        // Keys live on the originals volume, so they're backed up with it and survive restarts (§21). The worker
+        // shares them to read the ML services' API keys.
+        var storage =
+            configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>()
+            ?? new StorageOptions();
+        services
+            .AddDataProtection()
+            .SetApplicationName("Dokumentsystem")
+            .PersistKeysToFileSystem(
+                new DirectoryInfo(Path.Combine(storage.OriginalsPath, "keys"))
+            );
+        services.AddSingleton<SecretProtector>();
+
+        // Transcription streams for as long as a recording takes; the client sets its own limits per call.
+        services
+            .AddHttpClient<MlClient>()
+            .ConfigureHttpClient(http => http.Timeout = Timeout.InfiniteTimeSpan);
         return services;
     }
 }

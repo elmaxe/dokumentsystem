@@ -93,3 +93,30 @@ public sealed record VideoSettings(VideoCopies Copies, int MaxHeight)
             _ => null,
         };
 }
+
+/// <summary>
+/// Speech to text (§11.1), done by the ML service: on by default, so adding an ML URL is all it takes. With no ML
+/// service set, nothing is queued.
+/// </summary>
+/// <param name="Model">One of <see cref="Models"/>; <c>auto</c> lets the service pick by its hardware.</param>
+/// <param name="Videos">Whether the sound in videos is transcribed too, not only audio files.</param>
+public sealed record TranscriptionSettings(bool Enabled, string Model, bool Videos)
+{
+    public const string AutoModel = "auto";
+
+    /// <summary>The models offered: Whisper sizes, and KBLab's Swedish fine-tunes (KB-Whisper).</summary>
+    public static readonly IReadOnlyList<string> Models =
+    [
+        AutoModel,
+        "small",
+        "medium",
+        "large-v3-turbo",
+        "kb-whisper-small",
+        "kb-whisper-medium",
+        "kb-whisper-large",
+    ];
+
+    public static readonly TranscriptionSettings Default = new(true, AutoModel, true);
+
+    public bool IsValid => Models.Contains(Model);
+}

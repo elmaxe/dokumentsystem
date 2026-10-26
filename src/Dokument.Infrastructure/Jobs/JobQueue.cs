@@ -90,6 +90,32 @@ public sealed class JobQueue(DokumentDbContext db, TimeProvider time)
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Queues a claimed job again for later without counting the attempt (<see cref="Job.Postpone"/>).</summary>
+    public async Task PostponeAsync(
+        Job job,
+        TimeSpan delay,
+        string reason,
+        CancellationToken ct = default
+    )
+    {
+        job.Postpone(time.GetUtcNow() + delay, reason);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Extends a long job's lease while it makes progress, so a worker that dies mid-job lets go of it in minutes
+    /// rather than after twice the job's timeout. False when the job isn't this worker's any more.
+    /// </summary>
+    public async Task<bool> RenewAsync(Job job, TimeSpan lease, CancellationToken ct = default)
+    {
+        var until = time.GetUtcNow() + lease;
+        return await db
+                .Jobs.Where(j =>
+                    j.Id == job.Id && j.Status == JobStatus.Running && j.LockedBy == job.LockedBy
+                )
+                .ExecuteUpdateAsync(s => s.SetProperty(j => j.LockedUntil, until), ct) == 1;
+    }
+
     /// <summary>Forgets finished jobs after <paramref name="age"/>. Failed ones stay until an admin retries or clears them.</summary>
     public Task<int> PruneAsync(TimeSpan age, CancellationToken ct = default)
     {

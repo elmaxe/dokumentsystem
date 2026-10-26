@@ -94,6 +94,17 @@ public sealed class Job
         LockedUntil = null;
     }
 
+    /// <summary>
+    /// Waits for something outside the worker, such as an ML service that's down: queued again for later, and the
+    /// attempt doesn't count, so a long outage never fails the job (docs/design.md §11).
+    /// </summary>
+    public void Postpone(DateTimeOffset until, string reason)
+    {
+        Release();
+        RunAfter = until;
+        LastError = reason.Length > MaxErrorLength ? reason[..MaxErrorLength] : reason;
+    }
+
     /// <summary>"Retry failed" in the admin UI: a fresh set of attempts, starting now.</summary>
     public void Requeue(DateTimeOffset now)
     {

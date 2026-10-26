@@ -105,4 +105,20 @@ public static class SettingKeys
             json.GetProperty("maxHeight").GetInt32()
         )
     );
+
+    public static readonly SettingKey<TranscriptionSettings> Transcription = new(
+        "transcription",
+        TranscriptionSettings.Default,
+        s => new JsonObject
+        {
+            ["enabled"] = s.Enabled,
+            ["model"] = s.Model,
+            ["videos"] = s.Videos,
+        },
+        json => new TranscriptionSettings(
+            json.GetProperty("enabled").GetBoolean(),
+            json.GetProperty("model").GetString() ?? TranscriptionSettings.AutoModel,
+            json.GetProperty("videos").GetBoolean()
+        )
+    );
 }

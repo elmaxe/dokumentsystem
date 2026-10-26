@@ -35,18 +35,23 @@ public enum MatchSource
     Text,
     Ocr,
     Metadata,
+
+    /// <summary>Spoken words in a recording (§11.1).</summary>
+    Transcript,
 }
 
 /// <param name="PageNo">The best page, from 1; null for a name match or a format without pages.</param>
 /// <param name="PageCount">Pages or slides in the file, when it has them.</param>
 /// <param name="PagesWithHits">How many pages matched, for "3 pages" in the result row.</param>
+/// <param name="AtMs">For a hit in a transcript, when the first hit is said, so the result can play from there.</param>
 public sealed record SearchHit(
     Node Node,
     MatchSource Source,
     int? PageNo,
     int? PageCount,
     int PagesWithHits,
-    Snippet? Snippet
+    Snippet? Snippet,
+    int? AtMs = null
 );
 
 /// <param name="Terms">The words to mark in names, snippets and the viewer.</param>
@@ -62,7 +67,13 @@ public sealed record SearchResults(
 
 /// <summary>A page of a file that matched, for the viewer: where the hits are, so it can open on the first and step through.</summary>
 /// <param name="Boxes">For recognized text, each hit's box as fractions of the page: <c>[x, y, w, h]</c>.</param>
-public sealed record PageMatch(int PageNo, PageSource Source, IReadOnlyList<double[]> Boxes);
+/// <param name="Times">For a transcript, when each hit is said, in milliseconds from the start.</param>
+public sealed record PageMatch(
+    int PageNo,
+    PageSource Source,
+    IReadOnlyList<double[]> Boxes,
+    IReadOnlyList<int> Times
+);
 
 /// <summary>
 /// Search (docs/design.md §13): BM25 over names and page text inside Postgres, then the same visibility rule as
@@ -192,11 +203,23 @@ public sealed class SearchService(DokumentDbContext db)
         return (
             terms,
             pages
-                .Select(p => new PageMatch(
-                    p.PageNo,
-                    Enum.Parse<PageSource>(p.Source, ignoreCase: true),
-                    p.Words is null ? [] : Boxes(p.Words, terms)
-                ))
+                .Select(p =>
+                {
+                    var source = Enum.Parse<PageSource>(p.Source, ignoreCase: true);
+                    return source == PageSource.Transcript
+                        ? new PageMatch(
+                            p.PageNo,
+                            source,
+                            [],
+                            p.Words is null ? [] : Times(p.Words, terms)
+                        )
+                        : new PageMatch(
+                            p.PageNo,
+                            source,
+                            p.Words is null ? [] : Boxes(p.Words, terms),
+                            []
+                        );
+                })
                 .ToList()
         );
     }
@@ -416,7 +439,13 @@ public sealed class SearchService(DokumentDbContext db)
         var pageIds = page.Where(c => c.Page is not null).Select(c => c.Page!.PageId).ToList();
         var texts = await db
             .ContentPages.Where(p => pageIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, p => p.Text, ct);
+            .Select(p => new
+            {
+                p.Id,
+                p.Text,
+                Words = p.Source == PageSource.Transcript ? p.Words : null,
+            })
+            .ToDictionaryAsync(p => p.Id, p => (p.Text, p.Words), ct);
         var hashes = nodes
             .Values.Select(n => n.CurrentVersion?.BlobHash)
             .OfType<ContentHash>()
@@ -442,8 +471,13 @@ public sealed class SearchService(DokumentDbContext db)
                     best is { PageNo: > 0 } && count is not null ? best.PageNo : null,
                     count,
                     c.PagesWithHits,
-                    best is not null && texts.TryGetValue(best.PageId, out var text)
-                        ? Highlighter.Snip(text, terms)
+                    best is not null && texts.TryGetValue(best.PageId, out var page)
+                        ? Highlighter.Snip(page.Text, terms)
+                        : null,
+                    best is not null
+                    && texts.TryGetValue(best.PageId, out var spoken)
+                    && spoken.Words is { } lines
+                        ? Times(lines, terms).Cast<int?>().FirstOrDefault()
                         : null
                 );
             })
@@ -483,6 +517,31 @@ public sealed class SearchService(DokumentDbContext db)
         }
 
         return boxes;
+    }
+
+    /// <summary>When each hit in a transcript page is said: the word's time, or its line's when words have none.</summary>
+    private static List<int> Times(string linesJson, IReadOnlyList<string> terms)
+    {
+        var times = new List<int>();
+        foreach (var line in TranscriptLine.Deserialize(linesJson))
+        {
+            if (line.Words.Count == 0)
+            {
+                if (Highlighter.Hits(line.Text, terms).Count > 0)
+                {
+                    times.Add(line.StartMs);
+                }
+
+                continue;
+            }
+
+            times.AddRange(
+                line.Words.Where(w => Highlighter.Hits(w.Text, terms).Count > 0)
+                    .Select(w => w.StartMs)
+            );
+        }
+
+        return times;
     }
 
     private sealed record ScoredId(Guid Id, float Score);

@@ -69,6 +69,15 @@ public static class AdminEndpoints
             .WithDescription(
                 "Deletes every playable copy. The originals are untouched; copies are made again as the setting says."
             );
+        admin
+            .MapPut("/settings/transcription", PutTranscription)
+            .WithName("AdminPutTranscriptionSettings")
+            .WithDescription(
+                "Turning it on, or including videos, queues the recordings not transcribed yet, in the background."
+            );
+        admin
+            .MapGet("/transcription/progress", GetTranscriptionProgress)
+            .WithName("AdminGetTranscriptionProgress");
         admin.MapGet("/storage", GetStorageReport).WithName("AdminGetStorage");
         admin.MapGet("/users", ListUsers).WithName("AdminListUsers");
         admin.MapPut("/users/{id:guid}/quota", PutUserQuota).WithName("AdminPutUserQuota");
@@ -88,6 +97,7 @@ public static class AdminEndpoints
         var scanner = await settings.GetAsync(SettingKeys.Scanner, ct);
         var textRecognition = await settings.GetAsync(SettingKeys.TextRecognition, ct);
         var videos = await settings.GetAsync(SettingKeys.Videos, ct);
+        var transcription = await settings.GetAsync(SettingKeys.Transcription, ct);
         return TypedResults.Ok(
             new AdminSettingsDto(
                 new StorageSettingsDto(storage.DefaultQuota.Bytes),
@@ -97,6 +107,7 @@ public static class AdminEndpoints
                 new ScannerSettingsDto(scanner.Address?.ToString()),
                 new TextRecognitionDto(textRecognition.Enabled),
                 new VideoSettingsDto(videos.Copies, videos.MaxHeight),
+                TranscriptionDto(transcription),
                 new SignInInfo(
                     oidc.Enabled,
                     oidc.ProviderName,
@@ -220,6 +231,40 @@ public static class AdminEndpoints
         return TypedResults.Ok(request);
     }
 
+    private static async Task<
+        Results<Ok<TranscriptionSettingsDto>, ValidationProblem>
+    > PutTranscription(
+        TranscriptionSettingsDto request,
+        HttpContext context,
+        SettingsStore settings,
+        TranscriptService transcripts,
+        TimeProvider time,
+        CancellationToken ct
+    )
+    {
+        var value = new TranscriptionSettings(request.Enabled, request.Model, request.Videos);
+        if (!value.IsValid)
+        {
+            return Invalid(
+                "model",
+                $"Use one of {string.Join(", ", TranscriptionSettings.Models)}."
+            );
+        }
+
+        await settings.SetAsync(SettingKeys.Transcription, value, context.Actor(), ct);
+        await transcripts.DropUnwantedAsync(ct);
+        await transcripts.EnqueueMissingAsync(time.GetUtcNow(), ct);
+        return TypedResults.Ok(TranscriptionDto(value));
+    }
+
+    private static async Task<Ok<TranscriptionProgress>> GetTranscriptionProgress(
+        TranscriptService transcripts,
+        CancellationToken ct
+    ) => TypedResults.Ok(await transcripts.ProgressAsync(ct));
+
+    private static TranscriptionSettingsDto TranscriptionDto(TranscriptionSettings value) =>
+        new(value.Enabled, value.Model, value.Videos, [.. TranscriptionSettings.Models]);
+
     private static async Task<Ok<CopyStats>> GetVideoCopies(
         MediaService media,
         CancellationToken ct
@@ -262,6 +307,8 @@ public static class AdminEndpoints
         HttpContext context,
         SettingsStore settings,
         SecretProtector secrets,
+        TranscriptService transcripts,
+        TimeProvider time,
         CancellationToken ct
     )
     {
@@ -294,6 +341,9 @@ public static class AdminEndpoints
 
         var value = new MlSettings(endpoints);
         await settings.SetAsync(SettingKeys.Ml, value, context.Actor(), ct);
+
+        // The first ML service makes the recordings waiting for one transcribable (§11.1).
+        await transcripts.EnqueueMissingAsync(time.GetUtcNow(), ct);
         return TypedResults.Ok(MlDto(value));
     }
 

@@ -88,9 +88,11 @@ internal sealed partial class TextHandler(
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-        // Page 0 is the metadata stage's; everything else is replaced.
+        // Page 0 is the metadata stage's and transcripts are the transcribe stage's; the rest is replaced.
         await db
-            .ContentPages.Where(p => p.BlobHash == hash && p.PageNo != ContentPage.MetadataPage)
+            .ContentPages.Where(p =>
+                p.BlobHash == hash && (p.Source == PageSource.Text || p.Source == PageSource.Ocr)
+            )
             .ExecuteDeleteAsync(ct);
         db.ContentPages.AddRange(
             result.Pages.Select(p => new ContentPage

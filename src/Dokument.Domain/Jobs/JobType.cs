@@ -18,6 +18,9 @@ public sealed record JobType
     /// <summary>A playable copy of a video or audio blob the browser can't play as it is (§10.2, §14).</summary>
     public static readonly JobType Transcode = new("transcode");
 
+    /// <summary>Speech to text for a video or audio blob, through the ML service (§11.1).</summary>
+    public static readonly JobType Transcribe = new("transcribe");
+
     private JobType(string name) => Name = name;
 
     public string Name { get; }

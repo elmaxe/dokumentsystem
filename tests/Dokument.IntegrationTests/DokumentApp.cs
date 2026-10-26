@@ -14,7 +14,8 @@ public sealed class DokumentApp(
     PostgresFixture postgres,
     string connectionString,
     FakeOidcProvider idp,
-    IReadOnlyDictionary<string, string?>? settings = null
+    IReadOnlyDictionary<string, string?>? settings = null,
+    Action<IServiceCollection>? services = null
 ) : WebApplicationFactory<Program>
 {
     private readonly string dataRoot = Directory.CreateTempSubdirectory("dokument-test-").FullName;
@@ -23,16 +24,19 @@ public sealed class DokumentApp(
 
     public string OriginalsPath => Path.Combine(dataRoot, "originals");
 
+    /// <param name="services">Replaces services for the test, e.g. a fake ML service behind its HTTP client.</param>
     public static async Task<DokumentApp> StartAsync(
         PostgresFixture postgres,
-        IReadOnlyDictionary<string, string?>? settings = null
+        IReadOnlyDictionary<string, string?>? settings = null,
+        Action<IServiceCollection>? services = null
     )
     {
         var app = new DokumentApp(
             postgres,
             await postgres.CreateDatabaseAsync(),
             await FakeOidcProvider.StartAsync(),
-            settings
+            settings,
+            services
         );
         app.StartServer();
         return app;
@@ -53,12 +57,14 @@ public sealed class DokumentApp(
             builder.UseSetting(key, value);
         }
 
-        builder.ConfigureTestServices(services =>
-            services.Configure<OpenIdConnectOptions>(
+        builder.ConfigureTestServices(collection =>
+        {
+            collection.Configure<OpenIdConnectOptions>(
                 AuthSetup.OidcScheme,
                 options => options.BackchannelHttpHandler = idp.Handler
-            )
-        );
+            );
+            services?.Invoke(collection);
+        });
     }
 
     /// <summary>A browser: keeps cookies and doesn't follow redirects, so each hop can be checked.</summary>

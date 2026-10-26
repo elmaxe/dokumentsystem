@@ -13,6 +13,9 @@ public enum PageSource
 
     /// <summary>Tags such as the title, author, camera or artist. Always page 0.</summary>
     Metadata,
+
+    /// <summary>Spoken words in a recording, about a minute per page, with times (§11.1).</summary>
+    Transcript,
 }
 
 /// <summary>
@@ -33,7 +36,12 @@ public sealed class ContentPage
 
     /// <summary>
     /// For recognized text, where each word is on the page, so the viewer can mark hits on a scan: a JSON array of
-    /// <c>[x, y, width, height, "word"]</c>, each number a fraction of the page's size. Null for other sources.
+    /// <c>[x, y, width, height, "word"]</c>, each number a fraction of the page's size. For a transcript, its lines as
+    /// they were heard (<see cref="TranscriptLine"/>). Null for other sources.
     /// </summary>
     public string? Words { get; init; }
+
+    /// <summary>For a transcript page, the stretch of the recording it covers, in milliseconds from the start.</summary>
+    public int? StartMs { get; init; }
+    public int? EndMs { get; init; }
 }

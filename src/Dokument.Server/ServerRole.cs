@@ -59,18 +59,6 @@ public static class ServerRole
             options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
         });
         builder.AddDokumentAuth();
-
-        // Keys live on the originals volume, so they're backed up with it and survive restarts (§21).
-        var storage =
-            builder.Configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>()
-            ?? new StorageOptions();
-        builder
-            .Services.AddDataProtection()
-            .SetApplicationName("Dokumentsystem")
-            .PersistKeysToFileSystem(
-                new DirectoryInfo(Path.Combine(storage.OriginalsPath, "keys"))
-            );
-        builder.Services.AddSingleton<SecretProtector>();
         return builder;
     }
 
@@ -119,6 +107,7 @@ public static class ServerRole
         api.MapTrashEndpoints();
         api.MapStarredAndRecentEndpoints();
         api.MapSearchEndpoints();
+        api.MapTranscriptEndpoints();
         api.MapTusEndpoints();
         api.MapAdminEndpoints();
         app.MapHub<LiveHub>(LiveHub.Path).RequireAuthorization();

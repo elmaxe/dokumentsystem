@@ -63,6 +63,16 @@ public static class WorkerRole
             )
         );
 
+        services.AddScoped<TranscribeHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(
+                JobType.Transcribe,
+                typeof(TranscribeHandler),
+                worker.TranscribeConcurrency,
+                worker.TranscribeJobTimeout
+            )
+        );
+
         services.AddHostedService<JobRunner>();
         services.AddHostedService<ThumbnailBackfill>();
         services.AddHostedService<ContentBackfill>();
