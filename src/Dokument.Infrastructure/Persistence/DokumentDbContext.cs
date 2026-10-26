@@ -23,6 +23,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<BlobPreview> BlobPreviews => Set<BlobPreview>();
     public DbSet<Rendition> Renditions => Set<Rendition>();
+    public DbSet<BlobMedia> BlobMedia => Set<BlobMedia>();
     public DbSet<Star> Stars => Set<Star>();
     public DbSet<RecentFile> RecentFiles => Set<RecentFile>();
     public DbSet<BlobContent> BlobContents => Set<BlobContent>();
@@ -180,6 +181,32 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(r => r.Width).HasColumnName("width");
             e.Property(r => r.Height).HasColumnName("height");
             e.Property(r => r.CreatedAt).HasColumnName("created_at");
+        });
+
+        modelBuilder.Entity<BlobMedia>(e =>
+        {
+            e.ToTable("blob_media");
+            e.HasKey(m => m.BlobHash);
+            e.Property(m => m.BlobHash)
+                .HasColumnName("blob_hash")
+                .HasConversion(ContentHashConverter);
+            e.Property(m => m.Container).HasColumnName("container");
+            e.Property(m => m.DurationSeconds).HasColumnName("duration_seconds");
+            e.Property(m => m.HasVideo).HasColumnName("has_video");
+            e.Property(m => m.HasAudio).HasColumnName("has_audio");
+            e.Property(m => m.VideoCodec).HasColumnName("video_codec");
+            e.Property(m => m.AudioCodec).HasColumnName("audio_codec");
+            e.Property(m => m.Width).HasColumnName("width");
+            e.Property(m => m.Height).HasColumnName("height");
+            e.Property(m => m.Plan)
+                .HasColumnName("plan")
+                .HasConversion(LowercaseEnum<PlaybackPlan>());
+            e.Property(m => m.CopyStatus)
+                .HasColumnName("copy_status")
+                .HasConversion(LowercaseEnum<CopyStatus>());
+            e.Property(m => m.CopyProgress).HasColumnName("copy_progress");
+            e.Property(m => m.CopyError).HasColumnName("copy_error");
+            e.Property(m => m.UpdatedAt).HasColumnName("updated_at");
         });
     }
 

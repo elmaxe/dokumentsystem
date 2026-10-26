@@ -10,6 +10,7 @@ namespace Dokument.Server.Files;
 /// <param name="Thumbnail">Whether <c>/nodes/{id}/thumbnail</c> has an image yet. Pending means the worker is on it; poll or wait.</param>
 /// <param name="Contents">How many files and folders a folder holds, at any depth. Null for files.</param>
 /// <param name="Starred">Whether the person asking starred it. Stars are each person's own.</param>
+/// <param name="Media">For video and audio files, once the worker has looked at them. Null for everything else.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -26,7 +27,8 @@ public sealed record NodeDto(
     int? VersionNumber,
     ThumbnailState Thumbnail,
     FolderCounts? Contents,
-    bool Starred
+    bool Starred,
+    MediaDto? Media
 )
 {
     public static NodeDto From(
@@ -34,7 +36,8 @@ public sealed record NodeDto(
         IReadOnlyDictionary<Guid, string> ownerNames,
         IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails,
         IReadOnlyDictionary<Guid, FolderContents> folders,
-        IReadOnlySet<Guid> starred
+        IReadOnlySet<Guid> starred,
+        IReadOnlyDictionary<ContentHash, MediaState> media
     ) =>
         new(
             node.Id,
@@ -56,9 +59,34 @@ public sealed record NodeDto(
                 ? thumbnails.GetValueOrDefault(version.BlobHash, ThumbnailState.None)
                 : ThumbnailState.None,
             contents is null ? null : new FolderCounts(contents.Files, contents.Folders),
-            starred.Contains(node.Id)
+            starred.Contains(node.Id),
+            node.CurrentVersion is { } current && media.TryGetValue(current.BlobHash, out var m)
+                ? new MediaDto(
+                    m.DurationSeconds,
+                    m.HasVideo,
+                    m.HasAudio,
+                    m.VideoCodec,
+                    m.Copy,
+                    m.Progress
+                )
+                : null
         );
 }
+
+/// <summary>A video or audio file, as the tile and the viewer need it (docs/design.md §14).</summary>
+/// <param name="DurationSeconds">Null when the file doesn't say, e.g. some live recordings.</param>
+/// <param name="HasVideo">False for audio files; their cover art, if any, is the thumbnail.</param>
+/// <param name="VideoCodec">ffprobe's name, e.g. <c>hevc</c>: the viewer tries the original first when the browser says it plays it.</param>
+/// <param name="Copy">Whether <c>/nodes/{id}/preview</c> serves a playable copy, or will. NotNeeded means the original plays as it is.</param>
+/// <param name="Progress">How far a copy being made has got, 0 to 100.</param>
+public sealed record MediaDto(
+    double? DurationSeconds,
+    bool HasVideo,
+    bool HasAudio,
+    string? VideoCodec,
+    CopyState Copy,
+    int? Progress
+);
 
 /// <summary>What a folder holds, at any depth.</summary>
 public sealed record FolderCounts(int Files, int Folders);

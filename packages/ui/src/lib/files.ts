@@ -120,18 +120,19 @@ export const kindOf = (name: string, mimeType?: string | null): FileKind =>
   "other";
 
 /** How the viewer shows a file (docs/design.md §14). Office formats get the PDF viewer once Gotenberg renditions exist. */
-export type PreviewType = "image" | "pdf" | "text" | "video" | "audio" | "none";
+export type PreviewType = "image" | "pdf" | "text" | "markdown" | "video" | "audio" | "none";
 
 const textTypes = /^(text\/|application\/(json|xml|javascript|x-yaml|yaml|toml|x-sh|sql|ld\+json)$)|\+(json|xml)$/;
 
-/** Formats a browser can play; anything else needs the transcoding stage, which isn't built yet. */
-const playable = /^(video\/(mp4|webm|ogg)|audio\/(mpeg|mp4|aac|ogg|opus|wav|x-wav|webm|flac|x-flac))$/;
 
 export function previewTypeOf(mimeType?: string | null): PreviewType {
   if (!mimeType) return "none";
   if (mimeType === "application/pdf") return "pdf";
   if (mimeType.startsWith("image/")) return "image";
-  if (playable.test(mimeType)) return mimeType.startsWith("video/") ? "video" : "audio";
+  // Whether the original plays, or waits for a playable copy, is the server's call (`NodeDto.media`, §14).
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  if (mimeType === "text/markdown" || mimeType === "text/x-markdown") return "markdown";
   if (textTypes.test(mimeType)) return "text";
   return "none";
 }

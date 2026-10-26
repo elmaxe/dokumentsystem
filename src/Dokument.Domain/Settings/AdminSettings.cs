@@ -60,3 +60,36 @@ public sealed record TextRecognitionSettings(bool Enabled)
 {
     public static readonly TextRecognitionSettings Default = new(true);
 }
+
+/// <summary>When the worker makes playable copies of videos and audio browsers can't play (§10.3, §14).</summary>
+public enum VideoCopies
+{
+    /// <summary>In the background after upload, so the copy is ready when someone opens the file.</summary>
+    Background,
+
+    /// <summary>Only when someone opens the file. Saves work for files nobody plays; the first viewer waits.</summary>
+    OnOpen,
+
+    /// <summary>Never: those files can only be downloaded.</summary>
+    Never,
+}
+
+/// <summary>Playable copies (§14). <see cref="MaxHeight"/> is 720 or 1080, or 0 to keep the original's size.</summary>
+public sealed record VideoSettings(VideoCopies Copies, int MaxHeight)
+{
+    public static readonly VideoSettings Default = new(VideoCopies.Background, 1080);
+
+    public bool IsValid => Enum.IsDefined(Copies) && MaxHeight is 0 or 720 or 1080;
+
+    /// <summary>
+    /// The longest edge a copy may have: 1920 for 1080p, so a portrait phone video keeps its 1080 × 1920. Null keeps
+    /// the original's size.
+    /// </summary>
+    public int? MaxEdge =>
+        MaxHeight switch
+        {
+            720 => 1280,
+            1080 => 1920,
+            _ => null,
+        };
+}

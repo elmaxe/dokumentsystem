@@ -15,6 +15,7 @@ import type {
   VersionDto,
 } from "@dokument/api";
 import { thumbnailUrl } from "@dokument/api";
+import { formatDuration } from "@dokument/core";
 import { kindOf, type FileItem } from "@dokument/ui";
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import type { useTranslation } from "react-i18next";
@@ -78,6 +79,7 @@ export const toItem = (node: NodeDto): Item => ({
   thumbnail: node.thumbnail === "ready" ? thumbnailUrl(node.id, node.currentVersionId) : undefined,
   thumbnailPending: node.thumbnail === "pending",
   starred: node.starred,
+  duration: node.media?.durationSeconds != null ? formatDuration(node.media.durationSeconds) : undefined,
   node,
 });
 
@@ -105,8 +107,13 @@ export const nodeQuery = (id: string) =>
     queryKey: ["node", id],
     queryFn: (): Promise<NodeDetails> => unwrap(api.GET("/api/v1/nodes/{id}", { params: { path: { id } } })),
     refetchInterval: (query) =>
-      pollWhilePending(query.state.data?.node.thumbnail === "pending", query.state.dataUpdateCount),
+      // A playable copy's progress has no live notice, so the viewer asks every 3 s while one is on its way (§14).
+      copyOnItsWay(query.state.data?.node)
+        ? 3_000
+        : pollWhilePending(query.state.data?.node.thumbnail === "pending", query.state.dataUpdateCount),
   });
+
+const copyOnItsWay = (node: NodeDto | undefined) => node?.media?.copy === "waiting" || node?.media?.copy === "making";
 
 export const versionsQuery = (id: string) =>
   queryOptions({
@@ -186,6 +193,8 @@ export const drive = {
     send(api.POST(starred ? "/api/v1/nodes/star" : "/api/v1/nodes/unstar", { body: { ids } })),
   /** Tells the server the person opened a file, for their Recent page. Not audited (§18). */
   opened: (id: string) => send(api.POST("/api/v1/nodes/{id}/opened", { params: { path: { id } } })),
+  /** Asks for a playable copy of a video the browser can't play, ahead of other work. 409 when none can be made. */
+  requestPlayable: (id: string) => unwrap(api.POST("/api/v1/nodes/{id}/playable", { params: { path: { id } } })),
   restore: async (ids: string[]): Promise<RestoredItem[]> =>
     (await unwrap(api.POST("/api/v1/trash/restore", { body: { ids } }))).items,
   deleteForever: (ids: string[]) => send(api.POST("/api/v1/trash/delete", { body: { ids } })),

@@ -26,6 +26,7 @@ public sealed record RenderResult(
 
 /// <summary>
 /// Makes thumbnails and previews (docs/design.md §10.3): NetVips (libvips) for images and PDFium for page 1 of a PDF.
+/// Videos and audio get theirs from a still ffmpeg makes (<see cref="RenderStill"/>).
 /// The format is told by the file's bytes, never its name. Originals are only read; EXIF rotation is applied to the
 /// renditions, and their metadata is stripped.
 /// </summary>
@@ -86,6 +87,41 @@ public sealed class Thumbnailer
         return loader is not null && ImageLoaders.Contains(loader)
             ? RenderImage(path, loader, ct)
             : RenderResult.Unsupported;
+    }
+
+    /// <summary>
+    /// Thumbnails from a still another tool made, such as a video's poster frame or a song's cover art. The size is the
+    /// media's own (a video's picture), not the still's.
+    /// </summary>
+    public RenderResult RenderStill(byte[] image, int? width, int? height, CancellationToken ct)
+    {
+        try
+        {
+            using var still = Image.NewFromBuffer(image);
+            var images = new List<RenderedImage>();
+            foreach (var kind in Thumbnails)
+            {
+                ct.ThrowIfCancellationRequested();
+                using var thumb = still.ThumbnailImage(
+                    kind.MaxEdge(),
+                    height: kind.MaxEdge(),
+                    size: Enums.Size.Down
+                );
+                images.Add(Encode(kind, thumb));
+            }
+
+            return new RenderResult(
+                PreviewStatus.Ready,
+                width ?? still.Width,
+                height ?? still.Height,
+                PageCount: null,
+                images
+            );
+        }
+        catch (VipsException e)
+        {
+            return RenderResult.Failed(e.Message);
+        }
     }
 
     private static bool IsPdf(string path)
