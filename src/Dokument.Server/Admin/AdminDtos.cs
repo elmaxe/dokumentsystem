@@ -13,7 +13,19 @@ public sealed record AdminSettingsDto(
     ScannerSettingsDto Scanner,
     TextRecognitionDto TextRecognition,
     VideoSettingsDto Videos,
+    TranscriptionSettingsDto Transcription,
     SignInInfo SignIn
+);
+
+/// <param name="Enabled">Whether what's said in recordings is made searchable (§11.1). Needs an ML service.</param>
+/// <param name="Model">One of <c>models</c>; <c>auto</c> lets the ML service pick by its hardware.</param>
+/// <param name="Videos">Whether the sound in videos is transcribed too.</param>
+/// <param name="Models">The models to choose from. Ignored when saving.</param>
+public sealed record TranscriptionSettingsDto(
+    bool Enabled,
+    string Model,
+    bool Videos,
+    List<string> Models
 );
 
 /// <param name="Copies">When playable copies of videos browsers can't play are made (§14).</param>

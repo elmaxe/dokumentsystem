@@ -7,6 +7,7 @@ using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
+using Dokument.Infrastructure.Search;
 using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Telemetry;
 using Dokument.Worker.Jobs;
@@ -31,6 +32,7 @@ internal sealed partial class ThumbnailHandler(
     Thumbnailer thumbnailer,
     FFmpeg ffmpeg,
     JobQueue jobs,
+    TranscriptService transcripts,
     SettingsStore settings,
     LiveChanges live,
     TimeProvider time,
@@ -270,6 +272,9 @@ internal sealed partial class ThumbnailHandler(
         {
             await jobs.EnqueueAsync(JobType.Transcode, stored.BlobHash.Hex, job.Priority, ct);
         }
+
+        // Speech to text needs to know there's sound, so it's queued from here (§11.1).
+        await transcripts.RequestAsync(stored, JobPriority.Background, ct);
     }
 
     [LoggerMessage(

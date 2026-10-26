@@ -38,6 +38,15 @@ public sealed class WorkerOptions
     /// <summary>Re-encoding a long video on a NAS takes a while; copy jobs get this long.</summary>
     public TimeSpan TranscodeJobTimeout { get; set; } = TimeSpan.FromHours(3);
 
+    /// <summary>
+    /// Transcriptions run at once (§11.1). The ML service does the work; one keeps a NAS's CPU or a GPU's memory free
+    /// for everything else.
+    /// </summary>
+    public int TranscribeConcurrency { get; set; } = 1;
+
+    /// <summary>A long recording on a CPU takes hours; the lease is renewed as it goes, so a dead worker lets go sooner.</summary>
+    public TimeSpan TranscribeJobTimeout { get; set; } = TimeSpan.FromHours(12);
+
     /// <summary>A long scanned PDF takes a while; text jobs get this long instead of <see cref="JobTimeout"/>.</summary>
     public TimeSpan TextJobTimeout { get; set; } = TimeSpan.FromMinutes(30);
 
