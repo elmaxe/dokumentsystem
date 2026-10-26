@@ -535,6 +535,7 @@ The stages are independent jobs per blob, queued together when an upload finishe
 - **Gotenberg is optional** and set up by an admin: its address under Admin › Settings › Office documents (empty means off), with a Test button that checks `/health` reports LibreOffice. `docker-compose.yml` runs it under the `office` profile with a 3-minute API timeout.
 - **The thumbnail stage converts** Word, Excel, PowerPoint and OpenDocument files (by MIME type, with the bytes checked: a zip, an OLE file for `.doc`/`.xls`/`.ppt`, or `{\rtf`) through `POST /forms/libreoffice/convert`, with one page per spreadsheet sheet so wide sheets aren't cut into strips. Macros never run (LibreOffice's default). The PDF is kept at `previews/ab/{sha}/document.pdf`, and its page 1 is rendered by PDFium into the usual thumbnails.
 - **Failures:** a file Gotenberg refuses (damaged, password-protected) is recorded as failed and not retried; Gotenberg being down or busy fails the job, which retries with the usual backoff. While Office previews are off, documents are recorded as unsupported, and saving an address queues those at background priority.
+- **Later: split and merge PDFs.** Gotenberg's PDF engines (`/forms/pdfengines/split` and `/forms/pdfengines/merge`) can split a PDF into pages or ranges, and merge several PDFs (or the PDFs made of Office files) into one. Each result is a new file in the drive, next to the originals, which stay as they are. This needs the same Gotenberg setup as the previews, so the actions only show when an address is set.
 - **Text:** `.docx`, `.xlsx`, `.pptx` and ODF are still read from their XML. Formats the text stage can't read (`.doc`, `.xls`, `.ppt`) are read from the PDF instead: making the PDF queues the text stage for them again.
 
 **Video and audio, as built (M2, decision 32):**
@@ -1079,7 +1080,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback, transcription of audio and video into searchable, timed text |
-| **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders) |
+| **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders), PDF split and merge through Gotenberg (§10.3) |
 
 ---
 
