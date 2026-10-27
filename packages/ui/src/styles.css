@@ -17,6 +17,18 @@
   --breakpoint-lg: 1200px;
 }
 
+/* dark: follows the theme tokens: the system's setting unless data-theme on the root picks one. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) & {
+      @slot;
+    }
+  }
+  :root[data-theme="dark"] & {
+    @slot;
+  }
+}
+
 /* The nav rail is collapsed (88px, labels under icons) until 1200px, then expanded (256px) with the
    storage meter. data-rail="auto" follows the breakpoint; "expanded" and "collapsed" force it. */
 @custom-variant rail-expanded {

@@ -1,5 +1,5 @@
 import { formatBytes } from "@dokument/core";
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode, type RefObject, type SyntheticEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
 import type { FileItem } from "../lib/files";
@@ -9,7 +9,8 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { ActionMenu, type MenuAction } from "./Menu";
 import { Progress } from "./Progress";
-import { formatMs, leadInMs } from "../lib/media";
+import { leadInMs } from "../lib/media";
+import { MediaPlayer } from "./MediaPlayer";
 import { TranscriptPanel, type TranscriptView } from "./Transcript";
 
 const PdfPreview = lazy(() => import("./PdfPreview"));
@@ -296,23 +297,25 @@ export function FileViewer({
               fallback={noPreview(true)}
             />
           ) : preview.type === "video" || preview.type === "audio" ? (
-            <MediaPreview
-              key={preview.src}
-              type={preview.type}
-              sources={[preview.src, ...(preview.fallbacks ?? [])]}
-              poster={preview.poster}
-              item={item}
-              fallback={noPreview(true)}
-              mediaRef={media}
-              startAtMs={startAtMs}
-              onTime={setCurrentMs}
-              captions={captions}
-              captionsLanguage={transcript?.language ?? undefined}
-              ticks={times}
-              durationMs={transcript?.durationMs ?? undefined}
-              currentMs={currentMs}
-              onSeek={seek}
-            />
+            <Centered>
+              <MediaPlayer
+                key={preview.src}
+                type={preview.type}
+                sources={[preview.src, ...(preview.fallbacks ?? [])]}
+                poster={preview.poster}
+                cover={<AudioCover item={item} />}
+                fallback={noPreview(true)}
+                mediaRef={media}
+                startAtMs={startAtMs}
+                onTime={setCurrentMs}
+                onSeek={seek}
+                ticks={times}
+                durationMs={transcript?.durationMs ?? undefined}
+                captionLines={preview.type === "video" && captions ? transcript?.lines : undefined}
+                captions={captions}
+                captionsLanguage={transcript?.language ?? undefined}
+              />
+            </Centered>
           ) : preview.type === "converting" ? (
             <Centered>
               <EmptyState
@@ -673,137 +676,25 @@ function useStoredFlag(key: string) {
   return [value, set] as const;
 }
 
-/** Plays the first of `sources` the browser can, e.g. the original HEVC in Safari and the H.264 copy elsewhere. */
-function MediaPreview({
-  type,
-  sources,
-  poster,
-  item,
-  fallback,
-  mediaRef,
-  startAtMs,
-  onTime,
-  captions,
-  captionsLanguage,
-  ticks,
-  durationMs,
-  currentMs,
-  onSeek,
-}: {
-  type: "video" | "audio";
-  sources: string[];
-  poster?: string;
-  item: FileItem;
-  fallback: ReactNode;
-  mediaRef: RefObject<HTMLMediaElement | null>;
-  startAtMs?: number;
-  onTime: (ms: number) => void;
-  captions?: string;
-  captionsLanguage?: string;
-  /** Where search hits are said, shown as ticks along the timeline. */
-  ticks: readonly number[];
-  durationMs?: number;
-  currentMs: number;
-  onSeek: (ms: number) => void;
-}) {
+/** An audio file's cover art, or a note when it has none, and its name, above the player's controls. */
+function AudioCover({ item }: { item: FileItem }) {
   const { t } = useTranslation();
-  const [index, setIndex] = useState(0);
-  const [coverFailed, setCoverFailed] = useState(false);
-  const [loadedMs, setLoadedMs] = useState<number | null>(null);
-  if (index >= sources.length) return <Centered>{fallback}</Centered>;
-  const src = sources[index];
-  const next = () => setIndex((i) => i + 1);
-  const events = {
-    onLoadedMetadata: (event: SyntheticEvent<HTMLMediaElement>) => {
-      const element = event.currentTarget;
-      if (Number.isFinite(element.duration)) setLoadedMs(element.duration * 1000);
-      if (startAtMs) element.currentTime = startAtMs / 1000;
-    },
-    onTimeUpdate: (event: SyntheticEvent<HTMLMediaElement>) => onTime(event.currentTarget.currentTime * 1000),
-    onSeeked: (event: SyntheticEvent<HTMLMediaElement>) => onTime(event.currentTarget.currentTime * 1000),
-  };
-  const length = loadedMs ?? durationMs;
-  const tickBar =
-    ticks.length > 0 && length ? (
-      // Its own thin timeline under the player's, since the browser's controls can't show where the hits are.
-      <div aria-hidden className="relative mx-2 my-1 h-4">
-        <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-outline-variant" />
-        <div
-          className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full bg-on-surface-variant"
-          style={{ width: `${Math.min(100, (currentMs / length) * 100)}%` }}
-        />
-        {ticks.map((time) => (
-          <button
-            key={time}
-            type="button"
-            tabIndex={-1}
-            title={formatMs(time)}
-            onClick={() => onSeek(time - leadInMs)}
-            style={{ left: `${Math.min(100, (time / length) * 100)}%` }}
-            className="absolute top-0 h-4 w-1.5 -translate-x-1/2 cursor-pointer rounded-full bg-primary hover:scale-125"
-          />
-        ))}
-      </div>
-    ) : null;
-  const track = captions ? (
-    <track kind="captions" src={captions} srcLang={captionsLanguage} label={t("transcript.captions")} />
-  ) : null;
+  const [failed, setFailed] = useState(false);
   return (
-    <Centered>
-      {type === "video" ? (
-        <div className="flex max-h-full max-w-full flex-col items-stretch gap-1">
-          <video
-            key={src}
-            ref={(element) => {
-              mediaRef.current = element;
-            }}
-            src={src}
-            poster={poster}
-            controls
-            autoPlay
-            playsInline
-            preload="metadata"
-            onError={next}
-            {...events}
-            className="min-h-0 max-w-full bg-black shadow-elevation-2 sm:rounded-sm"
-          >
-            {track}
-          </video>
-          {tickBar}
-        </div>
+    <>
+      {item.thumbnail && !failed ? (
+        <img
+          src={item.thumbnail}
+          alt={t("viewer.cover")}
+          onError={() => setFailed(true)}
+          className="size-60 rounded-lg object-cover shadow-elevation-1 max-sm:size-32"
+        />
       ) : (
-        <div className="m-4 flex w-full max-w-md flex-col items-center gap-6 rounded-lg bg-surface-container-low p-8 shadow-elevation-1">
-          {item.thumbnail && !coverFailed ? (
-            <img
-              src={item.thumbnail}
-              alt={t("viewer.cover")}
-              onError={() => setCoverFailed(true)}
-              className="size-48 rounded-lg object-cover shadow-elevation-1"
-            />
-          ) : (
-            <span className="flex size-32 items-center justify-center rounded-lg bg-surface-container-high text-file-audio">
-              <Icon name="music_note" filled size={64} />
-            </span>
-          )}
-          <p className="m-0 max-w-full truncate text-title-md">{item.name}</p>
-          <div className="flex w-full flex-col gap-1">
-            <audio
-              key={src}
-              ref={(element) => {
-                mediaRef.current = element;
-              }}
-              src={src}
-              controls
-              autoPlay
-              preload="metadata"
-              onError={next}
-              {...events}
-              className="w-full"
-            />
-            {tickBar}
-          </div>
-        </div>
+        <span className="flex size-60 items-center justify-center rounded-lg bg-primary-container text-on-primary-container max-sm:size-32">
+          <Icon name="music_note" filled size={96} />
+        </span>
       )}
-    </Centered>
+      <p className="m-0 max-w-full truncate text-title-md">{item.name}</p>
+    </>
   );
 }

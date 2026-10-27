@@ -598,7 +598,7 @@ The first piece of the ML image, built on the M2 video/audio work, which brings 
 - **Set by the environment:** `Ml__Url` (and `Ml__ApiKey`) adds a service after the admin's list, shown read-only on the admin page. Local development (Aspire) runs the ML image and uses it, since the server on the host and the worker in a container reach the service at different addresses.
 - **Admin › Settings › Machine learning:** a "Speech to text" section with an on/off switch (on), the model, "Transcribe the sound in videos too" (on), and the queue's size in recordings and hours. With no service added it says that speech to text needs one.
 - **Search:** a transcript hit shows "At 12:34 · In spoken words" instead of a page number, with the usual snippet (§13.3). `GET /nodes/{id}/matches` returns times instead of boxes for transcript pages. `GET /nodes/{id}/transcript` returns the state and the lines.
-- **Viewer:** opened from a hit, the player starts 10 s before it, so the sentence is heard from its start. A transcript panel (a sheet on phones) lists the lines with times, marks the hits, follows along while playing, seeks when a line is clicked and has its own find box; a thin timeline under the player shows a tick for each hit (the browser's own controls can't), and the header stepper moves between them. Videos get **captions** generated from the transcript as WebVTT (`GET /nodes/{id}/captions.vtt`), with a CC toggle.
+- **Viewer:** opened from a hit, the player starts 10 s before it, so the sentence is heard from its start. A transcript panel (a sheet on phones) lists the lines with times, marks the hits, follows along while playing, seeks when a line is clicked and has its own find box; the player's timeline shows a tick for each hit, and the header stepper moves between them. Videos get **captions** drawn over the picture from the transcript, with a CC toggle that is remembered; the same captions as WebVTT (`GET /nodes/{id}/captions.vtt`) go to the phone's own full-screen player.
 - **Details** (not built yet; comes with the Processing section of the processing-jobs proposal): a Transcript section (word count, the start, Open transcript, Correct text, download as .txt or .vtt), the detected language under Details, and a "Speech to text" row under Processing (running with the time reached, waiting for the service, no speech found, off on this server).
 
 ---
@@ -723,8 +723,8 @@ Built after tags (decision 30). The case: upload a receipt, and it ends up in `K
 | Images | The original, or the WebP preview for HEIC/TIFF/SVG and huge images; zoom/pan; EXIF details in the details panel (§13.5) | Same; `expo-image` |
 | PDF | **pdf.js** with page thumbnails, search-in-document, OCR text-layer overlay for scans | `react-native-pdf` (or pdf.js in a WebView) |
 | Office | The server's **PDF rendition** in the PDF viewer | Same |
-| Video | `<video>` with HTTP Range and the poster; the playable copy if the original isn't playable | `expo-video` |
-| Audio | `<audio>` player with cover art; playlist for a folder later; transcript panel with timed hits (§11.1) | `expo-audio` (background playback) |
+| Video | Our own player over `<video>` (HTTP Range, the poster): play, ±10 s, a timeline with hit ticks and the time under the pointer, volume, speed, captions, full screen; controls hide while playing; keys Space/K, J/L, arrows, M, C, F while it has focus. The playable copy if the original isn't playable | `expo-video` |
+| Audio | The same player's controls under the cover art (a large play button, ±10 s, speed, volume); playlist for a folder later; transcript panel with timed hits (§11.1) | `expo-audio` (background playback) |
 | Text / code / Markdown | CodeMirror 6 (read-only) / formatted Markdown with a Source toggle | The same views as Expo DOM components (M5) |
 | Other | Metadata + download | Download / "open in…" |
 
