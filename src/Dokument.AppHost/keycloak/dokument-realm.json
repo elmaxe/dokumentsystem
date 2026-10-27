@@ -51,6 +51,7 @@
   ],
   "users": [
     {
+      "id": "a11ce000-0000-4000-8000-000000000001",
       "username": "alice",
       "email": "alice@example.com",
       "emailVerified": true,
@@ -61,6 +62,7 @@
       "groups": ["dokument-admins"]
     },
     {
+      "id": "b0b00000-0000-4000-8000-000000000002",
       "username": "bob",
       "email": "bob@example.com",
       "emailVerified": true,
@@ -72,6 +74,7 @@
       "groups": ["dokument-users"]
     },
     {
+      "id": "ca201000-0000-4000-8000-000000000003",
       "username": "carol",
       "email": "carol@example.com",
       "emailVerified": true,

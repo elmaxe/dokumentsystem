@@ -25,7 +25,8 @@ var postgres = builder
     );
 var database = postgres.AddDatabase("Dokument", databaseName: "dokument");
 
-// The realm, client and test users are imported on every start, so the dev IdP needs no setup or volume.
+// The realm, client and test users are imported on every start, so the dev IdP needs no setup or volume. The users have
+// fixed ids in the realm file: a new id per start would be a new `sub`, so a new, empty person here (README, Develop).
 var keycloak = builder.AddKeycloak("keycloak", port: 8180).WithRealmImport("keycloak");
 
 // Office previews (docs/design.md §14). Each role gets the address it reaches Gotenberg at as GOTENBERG_URL, which wins
