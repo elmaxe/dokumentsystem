@@ -1498,7 +1498,7 @@ export interface components {
             steps: components["schemas"]["ProcessingStepDto"][];
         };
         /** @enum {unknown} */
-        FileStep: "thumbnail" | "metadata" | "text";
+        FileStep: "thumbnail" | "metadata" | "text" | "transcode";
         FileTags: {
             tags: components["schemas"]["TagDto"][];
             removed: string[];
@@ -1787,6 +1787,8 @@ export interface components {
             at: null | string;
             /** Format: int32 */
             ahead: null | number;
+            /** Format: int32 */
+            progress: null | number;
             /** Format: uuid */
             jobId: null | string;
             /** Format: int32 */
@@ -1894,7 +1896,7 @@ export interface components {
             items: components["schemas"]["StarredItem"][];
         };
         /** @enum {unknown} */
-        StepState: "notStarted" | "waiting" | "paused" | "running" | "done" | "nothingFound" | "skipped" | "unsupported" | "unreadable" | "failed";
+        StepState: "notStarted" | "waiting" | "paused" | "running" | "done" | "nothingFound" | "skipped" | "unsupported" | "unreadable" | "failed" | "onOpen" | "off";
         StorageReport: {
             /** Format: int64 */
             filesBytes: number;

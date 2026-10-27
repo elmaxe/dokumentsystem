@@ -169,7 +169,7 @@ public sealed record FileDetailsDto(
             read.Lens,
             details.Width,
             details.Height,
-            metadata?.DurationSeconds,
+            details.DurationSeconds,
             details.PageCount,
             metadata is { Latitude: { } lat, Longitude: { } lon } ? new PlaceDto(lat, lon) : null,
             [.. read.Fields],

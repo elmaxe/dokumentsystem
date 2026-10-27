@@ -1,7 +1,10 @@
 import type { TFunction } from "i18next";
 
-/** A step of the worker's pipeline (docs/design.md §10.2), in the order it runs. */
-export type ProcessingStepName = "thumbnail" | "metadata" | "text";
+/**
+ * A step of the worker's pipeline (docs/design.md §10.2), in the order it runs, then the playable copy that only
+ * video and audio files browsers can't play get (§14).
+ */
+export type ProcessingStepName = "thumbnail" | "metadata" | "text" | "transcode";
 
 /** A step that is still waiting or running, as file lists show it. */
 export type ActiveProcessingStep = { step: ProcessingStepName; running: boolean };
@@ -16,7 +19,9 @@ export type ProcessingState =
   | "skipped"
   | "unsupported"
   | "unreadable"
-  | "failed";
+  | "failed"
+  | "onOpen"
+  | "off";
 
 /** One step in the details panel. `jobId`, `attempts` and `error` are only there for admins. */
 export type ProcessingStepView = {
@@ -26,6 +31,8 @@ export type ProcessingStepView = {
   at?: string | null;
   /** For a waiting step: how many jobs of its type run first. */
   ahead?: number | null;
+  /** For a playable copy being made: how far it has got, 0 to 100. */
+  progress?: number | null;
   jobId?: string | null;
   attempts?: number | null;
   error?: string | null;
