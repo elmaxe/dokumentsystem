@@ -180,9 +180,12 @@ public sealed record FileDetailsDto(
 
     private static EditableTextDto Text(string? edit, string? read) =>
         new(
-            edit is null ? read
-                : edit.Length == 0 ? null
-                : edit,
+            edit switch
+            {
+                null => read,
+                "" => null,
+                _ => edit,
+            },
             read,
             edit is not null
         );

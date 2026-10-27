@@ -330,26 +330,22 @@ public sealed class JobMonitor(
         BlobContent? content
     )
     {
-        var (state, at) =
-            type == JobType.Thumbnail
-                ? preview switch
-                {
-                    null => (StepState.NotStarted, (DateTimeOffset?)null),
-                    { Status: PreviewStatus.Ready } => (StepState.Done, preview.UpdatedAt),
-                    { Status: PreviewStatus.Unsupported } => (
-                        StepState.Unsupported,
-                        preview.UpdatedAt
-                    ),
-                    _ => (StepState.Unreadable, preview.UpdatedAt),
-                }
-            : type == JobType.Metadata
-                ? metadata switch
-                {
-                    null => (StepState.NotStarted, null),
-                    { Readable: true } => (StepState.Done, metadata.UpdatedAt),
-                    _ => (StepState.Unsupported, metadata.UpdatedAt),
-                }
-            : content switch
+        var (state, at) = type switch
+        {
+            _ when type == JobType.Thumbnail => preview switch
+            {
+                null => (StepState.NotStarted, (DateTimeOffset?)null),
+                { Status: PreviewStatus.Ready } => (StepState.Done, preview.UpdatedAt),
+                { Status: PreviewStatus.Unsupported } => (StepState.Unsupported, preview.UpdatedAt),
+                _ => (StepState.Unreadable, preview.UpdatedAt),
+            },
+            _ when type == JobType.Metadata => metadata switch
+            {
+                null => (StepState.NotStarted, null),
+                { Readable: true } => (StepState.Done, metadata.UpdatedAt),
+                _ => (StepState.Unsupported, metadata.UpdatedAt),
+            },
+            _ => content switch
             {
                 null => (StepState.NotStarted, null),
                 { OcrSkipped: true } => (StepState.Skipped, content.UpdatedAt),
@@ -357,7 +353,8 @@ public sealed class JobMonitor(
                 { Status: ContentStatus.Empty } => (StepState.NothingFound, content.UpdatedAt),
                 { Status: ContentStatus.Unsupported } => (StepState.Unsupported, content.UpdatedAt),
                 _ => (StepState.Unreadable, content.UpdatedAt),
-            };
+            },
+        };
         return new ProcessingStep(type, state, at, null, null);
     }
 
@@ -422,9 +419,12 @@ public sealed class JobMonitor(
         var files = rows.Select(r => new JobFile(
                 r.Node,
                 r.Version,
-                r.Node.CurrentVersionId != r.Version.Id ? JobFileUse.OlderVersion
-                    : r.Node.IsTrashed ? JobFileUse.Trashed
-                    : JobFileUse.Current,
+                r switch
+                {
+                    _ when r.Node.CurrentVersionId != r.Version.Id => JobFileUse.OlderVersion,
+                    { Node.IsTrashed: true } => JobFileUse.Trashed,
+                    _ => JobFileUse.Current,
+                },
                 r.Owner,
                 []
             ))

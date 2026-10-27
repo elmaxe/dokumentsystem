@@ -1,6 +1,6 @@
-import { contentUrl, type PathEntry } from "@dokument/api";
+import { contentUrl, type PathEntry, type TextPage } from "@dokument/api";
 import { DetailsPanel, TextDialog, useSnackbar, type DetailsTab, type FileVersion } from "@dokument/ui";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { sessionQuery } from "../api";
@@ -69,14 +69,24 @@ export function FileDetailsPanel({
   const processing = useQuery({ ...processingQuery(item.id, versionId), enabled: isFile && tab === "info" });
   const fileDetails = useQuery({ ...fileDetailsQuery(item.id, versionId), enabled: isFile && tab === "info" });
   const fileText = useQuery({ ...fileTextQuery(item.id, versionId), enabled: isFile && tab === "info" });
-  const [textDialog, setTextDialog] = useState<{ open: boolean; editPage?: number }>({ open: false });
-  const allText = useInfiniteQuery({
-    queryKey: ["fileText", item.id, versionId, "all"],
-    queryFn: ({ pageParam }) => fileTextPage(item.id, pageParam),
-    initialPageParam: 1,
-    getNextPageParam: (last) => last.nextFrom ?? undefined,
+  const [textDialog, setTextDialog] = useState<{ open: boolean; page: number; editPage?: number }>({ open: false, page: 1 });
+  // Up to 10 pages show together; longer files show one page at a time.
+  const textPages = fileText.data ? Math.max(fileText.data.pageCount ?? 0, fileText.data.maxPage) : 0;
+  const paged = textPages > 10;
+  /** One page of a long file, or all of a short one. */
+  const textSlice = (page: number | "all") =>
+    queryOptions({
+      queryKey: ["fileText", item.id, versionId, page],
+      queryFn: () => (page === "all" ? fileTextPage(item.id, 1, 10) : fileTextPage(item.id, page, 1)),
+    });
+  const dialogText = useQuery({
+    ...textSlice(paged ? textDialog.page : "all"),
     enabled: isFile && textDialog.open,
   });
+  const turnTextPage = (page: number) => {
+    setTextDialog((d) => ({ ...d, page }));
+    if (page < textPages) void queryClient.prefetchQuery(textSlice(page + 1));
+  };
 
   const refreshInfo = () =>
     Promise.all([
@@ -117,11 +127,11 @@ export function FileDetailsPanel({
     await refreshInfo();
     toast(t("fileInfo.pageReverted"));
   };
-  /** Copies every page, fetching the ones not loaded yet. */
+  /** Copies every page. */
   const copyText = async () => {
     try {
-      const pages = (allText.data?.pages ?? []).flatMap((p) => p.pages);
-      let next = allText.data?.pages.at(-1)?.nextFrom ?? (allText.data ? null : 1);
+      const pages: TextPage[] = [];
+      let next: number | null = 1;
       while (next != null) {
         const more = await fileTextPage(item.id, next, 100);
         pages.push(...more.pages);
@@ -133,7 +143,7 @@ export function FileDetailsPanel({
       toast(errorMessage(t, error));
     }
   };
-  const textData = allText.data?.pages.at(-1) ?? fileText.data;
+  const textData = dialogText.data ?? fileText.data;
   const admin = useQuery(sessionQuery).data?.user.role === "admin";
   const retry = async (jobId: string) => {
     try {
@@ -188,7 +198,7 @@ export function FileDetailsPanel({
         fileText.data && {
           text: fileText.data,
           canEdit: true,
-          onShowAll: (editPage) => setTextDialog({ open: true, editPage }),
+          onShowAll: (editPage) => setTextDialog({ open: true, page: editPage ?? 1, editPage }),
         }
       }
       processing={processing.data && { steps: processing.data.steps, onRetry: admin ? (id) => void retry(id) : undefined }}
@@ -206,9 +216,10 @@ export function FileDetailsPanel({
         onOpenChange={(open) => setTextDialog((d) => ({ ...d, open }))}
         name={item.name}
         text={textData}
-        pages={allText.data?.pages.flatMap((p) => p.pages) ?? fileText.data?.pages ?? []}
+        pages={dialogText.data?.pages ?? (paged ? [] : (fileText.data?.pages ?? []))}
         paging={item.kind === "slides" ? "slides" : textData.pageCount != null || textData.totalPages > 1 ? "pages" : undefined}
-        onLoadMore={allText.hasNextPage ? () => void allText.fetchNextPage() : undefined}
+        pager={paged ? { page: textDialog.page, total: textPages, onPage: turnTextPage } : undefined}
+        loading={paged && dialogText.isPending}
         onCopy={() => void copyText()}
         onSavePage={savePage}
         onRevertPage={revertPage}

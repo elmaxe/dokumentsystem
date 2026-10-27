@@ -384,16 +384,21 @@ export function TextSection({ text, onShowAll, canEdit }: TextSectionProps) {
   );
 }
 
+export type TextPager = { page: number; total: number; onPage: (page: number) => void };
+
 export type TextDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   name: string;
   text: FileTextView;
-  /** The pages loaded so far, in order. */
+  /** Every page with text, in order; with a pager, the pages loaded for the page shown. */
   pages: TextPageView[];
   /** Whether the file has numbered pages (a PDF) or slides, rather than one text. */
   paging?: "pages" | "slides";
-  onLoadMore?: () => void;
+  /** For long files: shows one page at a time, with buttons to turn pages. */
+  pager?: TextPager;
+  /** The pager's page is still loading. */
+  loading?: boolean;
   onCopy: () => void;
   /** Leave out for people who can't edit. Both reject with a message to show. */
   onSavePage?: (pageNo: number, text: string) => Promise<void>;
@@ -410,7 +415,8 @@ export function TextDialog({
   text,
   pages,
   paging,
-  onLoadMore,
+  pager,
+  loading,
   onCopy,
   onSavePage,
   onRevertPage,
@@ -424,11 +430,19 @@ export function TextDialog({
     if (open) setEditing(editPage);
   }
 
-  // Text for a page where nothing was read yet: one empty page to write in.
-  const shown: TextPageView[] =
-    editing !== undefined && !pages.some((p) => p.pageNo === editing)
-      ? [...pages, { pageNo: editing, source: "added" as const, text: "", edited: false }].sort((a, b) => a.pageNo - b.pageNo)
+  // A page where nothing was read yet shows as an empty page to write in.
+  const blank = (pageNo: number): TextPageView => ({ pageNo, source: "added", text: "", edited: false });
+  const shown: TextPageView[] = pager
+    ? loading
+      ? []
+      : [pages.find((p) => p.pageNo === pager.page) ?? blank(pager.page)]
+    : editing !== undefined && !pages.some((p) => p.pageNo === editing)
+      ? [...pages, blank(editing)].sort((a, b) => a.pageNo - b.pageNo)
       : pages;
+  const turn = (page: number) => {
+    setEditing(undefined);
+    pager?.onPage(page);
+  };
   const summary = [
     text.pageCount ? t(paging === "slides" ? "fileInfo.slideCount" : "fileInfo.pageCount", { count: text.pageCount }) : null,
     t("fileInfo.words", { count: text.words }),
@@ -443,15 +457,11 @@ export function TextDialog({
       title={t("fileInfo.textTitle", { name })}
       description={<span className="tabular">{summary.join(" · ")}</span>}
       headAction={<IconButton icon="content_copy" label={t("fileInfo.copyAll")} onClick={onCopy} />}
-      footer={
-        onLoadMore && (
-          <Button variant="text" icon="expand_more" onClick={onLoadMore}>
-            {t("fileInfo.showMorePages")}
-          </Button>
-        )
-      }
+      footer={pager && <Pager pager={pager} slides={paging === "slides"} onTurn={turn} />}
     >
-      <ol className="m-0 flex list-none flex-col gap-3 p-0 pb-4">
+      {loading && <p className="m-0 pb-4 text-body-md text-on-surface-variant">{t("fileInfo.loadingPage")}</p>}
+      {/* A steady height keeps the page buttons in place while turning pages. */}
+      <ol className={cn("m-0 flex list-none flex-col gap-3 p-0 pb-4", pager && "sm:min-h-[50vh]")}>
         {shown.map((page) => (
           <TextPageCard
             key={page.pageNo}
@@ -480,6 +490,57 @@ export function TextDialog({
         ))}
       </ol>
     </Dialog>
+  );
+}
+
+/** Previous and next, and a field to go straight to a page. */
+function Pager({ pager, slides, onTurn }: { pager: TextPager; slides: boolean; onTurn: (page: number) => void }) {
+  const { t } = useTranslation();
+  const fieldId = useId();
+  const [value, setValue] = useState(String(pager.page));
+  const [shownPage, setShownPage] = useState(pager.page);
+  if (pager.page !== shownPage) {
+    setShownPage(pager.page);
+    setValue(String(pager.page));
+  }
+  const go = () => {
+    const page = Number(value);
+    if (Number.isInteger(page) && page >= 1 && page <= pager.total && page !== pager.page) onTurn(page);
+    else setValue(String(pager.page));
+  };
+
+  return (
+    <nav aria-label={t(slides ? "fileInfo.slides" : "fileInfo.pages")} className="flex w-full items-center justify-center gap-1">
+      <IconButton
+        icon="chevron_left"
+        label={t(slides ? "fileInfo.previousSlide" : "fileInfo.previousPage")}
+        disabled={pager.page <= 1}
+        onClick={() => onTurn(pager.page - 1)}
+      />
+      <label htmlFor={fieldId} className="sr-only">
+        {t(slides ? "fileInfo.goToSlide" : "fileInfo.goToPage")}
+      </label>
+      <span className="tabular flex items-center gap-2 px-1 text-label-lg text-on-surface">
+        <input
+          id={fieldId}
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => setValue(e.target.value.replace(/\D/g, ""))}
+          onBlur={go}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") go();
+          }}
+          className="h-9 w-14 rounded-sm border border-outline bg-surface-container-lowest text-center text-on-surface outline-none focus:border-2 focus:border-primary"
+        />
+        {t("fileInfo.ofTotal", { total: pager.total })}
+      </span>
+      <IconButton
+        icon="chevron_right"
+        label={t(slides ? "fileInfo.nextSlide" : "fileInfo.nextPage")}
+        disabled={pager.page >= pager.total}
+        onClick={() => onTurn(pager.page + 1)}
+      />
+    </nav>
   );
 }
 
@@ -521,7 +582,7 @@ function TextPageCard({
     <li className="flex flex-col gap-2 rounded-md bg-surface-container-lowest px-4 py-3 text-on-surface">
       <div className="flex min-h-8 flex-wrap items-center gap-2">
         {label && <span className="text-label-lg text-on-surface">{label}</span>}
-        <Tag icon={sourceIcons[page.source]}>{t(`fileInfo.sources.${page.source}`)}</Tag>
+        {page.text && <Tag icon={sourceIcons[page.source]}>{t(`fileInfo.sources.${page.source}`)}</Tag>}
         {page.edited && page.source !== "added" && (
           <Tag tone="edited">{page.editedBy ? t("fileInfo.editedByShort", { who: page.editedBy }) : t("fileInfo.edited")}</Tag>
         )}

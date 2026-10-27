@@ -465,9 +465,12 @@ public sealed class SearchService(DokumentDbContext db)
                     : null;
                 return new SearchHit(
                     node,
-                    best is null ? MatchSource.Name
-                        : best.Source == "added" ? MatchSource.Text
-                        : Enum.Parse<MatchSource>(best.Source, ignoreCase: true),
+                    best switch
+                    {
+                        null => MatchSource.Name,
+                        { Source: "added" } => MatchSource.Text,
+                        _ => Enum.Parse<MatchSource>(best.Source, ignoreCase: true),
+                    },
                     best is { PageNo: > 0 } && count is not null ? best.PageNo : null,
                     count,
                     c.PagesWithHits,

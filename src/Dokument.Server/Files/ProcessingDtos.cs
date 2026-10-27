@@ -14,14 +14,17 @@ public enum JobKind
 public static class JobKinds
 {
     public static JobKind Of(JobType type) =>
-        type == JobType.Thumbnail ? JobKind.Thumbnail
-        : type == JobType.Metadata ? JobKind.Metadata
-        : type == JobType.Text ? JobKind.Text
-        : throw new ArgumentOutOfRangeException(
-            nameof(type),
-            type,
-            "No API name for this job type."
-        );
+        type switch
+        {
+            _ when type == JobType.Thumbnail => JobKind.Thumbnail,
+            _ when type == JobType.Metadata => JobKind.Metadata,
+            _ when type == JobType.Text => JobKind.Text,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(type),
+                type,
+                "No API name for this job type."
+            ),
+        };
 
     /// <summary>Reads a kind as the API writes it ("text"); route and query binding of enums is case-sensitive.</summary>
     public static bool TryParse(string? value, out JobKind kind) =>
