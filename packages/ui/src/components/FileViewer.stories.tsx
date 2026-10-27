@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { FileItem } from "../lib/files";
 import { thumbnails } from "../mockup/thumbnails";
-import { FileViewer, type PreviewSource } from "./FileViewer";
+import { FileViewer, type FileViewerProps, type PreviewSource } from "./FileViewer";
 
 /** A real, multi-page PDF built on the fly, so the story runs pdf.js exactly as the app does. */
 function samplePdf(): string {
@@ -88,9 +88,75 @@ def main(card, root):
         target.write_bytes(photo.read_bytes())
 ${Array.from({ length: 30 }, (_, i) => `# line ${i + 25}: ${"a long comment that runs past the edge of the window ".repeat(3)}`).join("\n")}
 `;
+/** A quiet tone, `seconds` long, as an 8 kHz WAV, so the player has something to play and seek in. */
+function sampleWav(seconds: number): string {
+  const rate = 8000;
+  const samples = rate * seconds;
+  const bytes = new Uint8Array(44 + samples);
+  const view = new DataView(bytes.buffer);
+  const ascii = (offset: number, text: string) => [...text].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + samples, true);
+  ascii(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  ascii(36, "data");
+  view.setUint32(40, samples, true);
+  for (let i = 0; i < samples; i++) bytes[44 + i] = 128 + Math.round(4 * Math.sin((i / rate) * 2 * Math.PI * 220));
+  return URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+}
+
+const meetingLines = [
+  [0, "Hej, tack för att du kunde ses. Jag tänkte vi kunde gå igenom det som hänt med fönstren först."],
+  [9_000, "Ja, och sen var det frågan om balkongen, som de ska renovera nästa år."],
+  [18_000, "Men det påverkar inte hyran, sa han, i alla fall inte i år."],
+  [27_000, "Och då sa han att vi måste skriva om hyresavtalet innan juni, annars gäller det gamla hyresavtal fortfarande,"],
+  [36_500, "med samma uppsägningstid som förut. Tre månader."],
+  [44_000, "Okej. Kan du maila det till mig så jag har det skriftligt?"],
+  [52_000, "Absolut, jag skickar ett utkast i veckan."],
+  [120_000, "Sådär, då är vi tillbaka. Var var vi? Just det, hyresavtal för förrådet också."],
+  [131_000, "Det tar vi nästa gång."],
+] as const;
+
+const meeting: FileViewerProps["transcript"] = {
+  state: "ready",
+  language: "sv",
+  durationMs: 150_000,
+  lines: meetingLines.map(([startMs, text], i) => ({
+    startMs,
+    endMs: Math.min(meetingLines[i + 1]?.[0] ?? 150_000, startMs + 8_500),
+    text,
+  })),
+};
+
 const textUrl = (body: string) => URL.createObjectURL(new Blob([body], { type: "text/plain" }));
 
-const files: Record<string, { item: FileItem; preview: () => PreviewSource }> = {
+const files: Record<string, { item: FileItem; preview: () => PreviewSource; extra?: Partial<FileViewerProps> }> = {
+  transcript: {
+    item: { id: "11", name: "Möte med hyresvärden.m4a", kind: "audio", modified: "2026-03-12T17:40:00Z", owner: "Alice" },
+    preview: () => ({ type: "audio", src: sampleWav(150) }),
+    extra: {
+      transcript: meeting,
+      startAtMs: 19_400,
+      marks: {
+        query: "hyresavtal",
+        terms: ["hyresavtal"],
+        pages: [],
+        times: [29_400, 33_900, 126_800],
+        onClear: () => {},
+      },
+    },
+  },
+  listening: {
+    item: { id: "12", name: "Röstmemo 2026-09-02.m4a", kind: "audio", modified: "2026-09-02T08:12:00Z", owner: "Alice" },
+    preview: () => ({ type: "audio", src: sampleWav(60) }),
+    extra: { transcript: { ...meeting, state: "running", doneMs: 36_000, lines: meeting.lines.slice(0, 4) } },
+  },
   image: {
     item: { id: "1", name: "Abisko-2025.jpg", kind: "image", modified: "2026-10-20T10:00:00Z", owner: "Alice" },
     preview: () => ({ type: "image", src: thumbnails.mountains }),
@@ -139,7 +205,7 @@ function Viewer({ file }: { file: keyof typeof files }) {
   const [current, setCurrent] = useState(file);
   const [preview] = useState(() => new Map(order.map((key) => [key, files[key]!.preview()])));
   const index = order.indexOf(current);
-  const { item } = files[current]!;
+  const { item, extra } = files[current]!;
   return (
     <FileViewer
       item={item}
@@ -154,6 +220,7 @@ function Viewer({ file }: { file: keyof typeof files }) {
       onAction={() => {}}
       onPrevious={index > 0 ? () => setCurrent(order[index - 1]!) : undefined}
       onNext={index < order.length - 1 ? () => setCurrent(order[index + 1]!) : undefined}
+      {...extra}
     />
   );
 }
@@ -176,6 +243,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Image: Story = { args: { file: "image" } };
+/** Opened from a search hit: plays from 10 s before it, with the transcript beside the player and ticks for each hit. */
+export const Transcript: Story = { args: { file: "transcript" } };
+export const StillListening: Story = { args: { file: "listening" } };
 export const Pdf: Story = { args: { file: "pdf" } };
 export const Markdown: Story = { args: { file: "markdown" } };
 export const Code: Story = { args: { file: "code" } };

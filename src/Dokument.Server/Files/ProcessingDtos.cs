@@ -4,8 +4,8 @@ using Dokument.Infrastructure.Jobs;
 namespace Dokument.Server.Files;
 
 /// <summary>
-/// A kind of job, as the API names it: a file's processing steps (docs/design.md §10.2), playable copies (§14),
-/// keyword-rule runs (§13.4), then filing a file and a filing rule's "file existing" run (§13.6).
+/// A kind of job, as the API names it: a file's processing steps (docs/design.md §10.2), playable copies (§14), speech
+/// to text (§11.1), keyword-rule runs (§13.4), then filing a file and a filing rule's "file existing" run (§13.6).
 /// </summary>
 public enum JobKind
 {
@@ -13,6 +13,7 @@ public enum JobKind
     Metadata,
     Text,
     Transcode,
+    Transcribe,
     TagRule,
     File,
     FilingRule,
@@ -49,6 +50,7 @@ public static class JobKinds
             _ when type == JobType.Metadata => JobKind.Metadata,
             _ when type == JobType.Text => JobKind.Text,
             _ when type == JobType.Transcode => JobKind.Transcode,
+            _ when type == JobType.Transcribe => JobKind.Transcribe,
             _ when type == JobType.TagRule => JobKind.TagRule,
             _ when type == JobType.File => JobKind.File,
             _ when type == JobType.FilingRule => JobKind.FilingRule,
@@ -69,6 +71,7 @@ public static class JobKinds
             JobKind.Thumbnail => JobType.Thumbnail,
             JobKind.Metadata => JobType.Metadata,
             JobKind.Transcode => JobType.Transcode,
+            JobKind.Transcribe => JobType.Transcribe,
             JobKind.TagRule => JobType.TagRule,
             JobKind.File => JobType.File,
             JobKind.FilingRule => JobType.FilingRule,

@@ -17,6 +17,19 @@ public static class MimeTypes
         provider.Mappings[".heic"] = "image/heic";
         provider.Mappings[".heif"] = "image/heif";
         provider.Mappings[".md"] = "text/markdown";
+
+        // Recordings the worker plays and transcribes (§11.1, §14): phone voice memos, lossless audio, and video
+        // containers the built-in table misses or types as application/*.
+        provider.Mappings[".amr"] = "audio/amr";
+        provider.Mappings[".awb"] = "audio/amr-wb";
+        provider.Mappings[".opus"] = "audio/ogg";
+        provider.Mappings[".ogg"] = "audio/ogg";
+        provider.Mappings[".flac"] = "audio/flac";
+        provider.Mappings[".ape"] = "audio/x-ape";
+        provider.Mappings[".wv"] = "audio/x-wavpack";
+        provider.Mappings[".caf"] = "audio/x-caf";
+        provider.Mappings[".mkv"] = "video/x-matroska";
+        provider.Mappings[".mts"] = "video/mp2t";
         return provider;
     }
 

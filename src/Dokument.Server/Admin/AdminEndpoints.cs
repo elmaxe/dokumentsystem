@@ -5,6 +5,7 @@ using Dokument.Domain.Settings;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Live;
+using Dokument.Infrastructure.Ml;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Search;
@@ -71,6 +72,15 @@ public static class AdminEndpoints
             .WithDescription(
                 "Deletes every playable copy. The originals are untouched; copies are made again as the setting says."
             );
+        admin
+            .MapPut("/settings/transcription", PutTranscription)
+            .WithName("AdminPutTranscriptionSettings")
+            .WithDescription(
+                "Turning it on, or including videos, queues the recordings not transcribed yet, in the background."
+            );
+        admin
+            .MapGet("/transcription/progress", GetTranscriptionProgress)
+            .WithName("AdminGetTranscriptionProgress");
         admin.MapGet("/storage", GetStorageReport).WithName("AdminGetStorage");
         admin.MapGet("/users", ListUsers).WithName("AdminListUsers");
         admin.MapPut("/users/{id:guid}/quota", PutUserQuota).WithName("AdminPutUserQuota");
@@ -93,6 +103,7 @@ public static class AdminEndpoints
         var textRecognition = await settings.GetAsync(SettingKeys.TextRecognition, ct);
         var videos = await settings.GetAsync(SettingKeys.Videos, ct);
         var office = await officeAddress.GetAsync(settings, ct);
+        var transcription = await settings.GetAsync(SettingKeys.Transcription, ct);
         return TypedResults.Ok(
             new AdminSettingsDto(
                 new StorageSettingsDto(storage.DefaultQuota.Bytes),
@@ -106,6 +117,7 @@ public static class AdminEndpoints
                     office.GotenbergUrl?.Value,
                     officeAddress.Configured is not null
                 ),
+                TranscriptionDto(transcription),
                 new SignInInfo(
                     oidc.Enabled,
                     oidc.ProviderName,
@@ -277,6 +289,40 @@ public static class AdminEndpoints
             ? TypedResults.Ok(await probe.CheckGotenbergAsync(url, ct))
             : Invalid("url", error!);
 
+    private static async Task<
+        Results<Ok<TranscriptionSettingsDto>, ValidationProblem>
+    > PutTranscription(
+        UpdateTranscriptionRequest request,
+        HttpContext context,
+        SettingsStore settings,
+        TranscriptService transcripts,
+        TimeProvider time,
+        CancellationToken ct
+    )
+    {
+        var value = new TranscriptionSettings(request.Enabled, request.Model, request.Videos);
+        if (!value.IsValid)
+        {
+            return Invalid(
+                "model",
+                $"Use one of {string.Join(", ", TranscriptionSettings.Models)}."
+            );
+        }
+
+        await settings.SetAsync(SettingKeys.Transcription, value, context.Actor(), ct);
+        await transcripts.DropUnwantedAsync(ct);
+        await transcripts.EnqueueMissingAsync(time.GetUtcNow(), ct);
+        return TypedResults.Ok(TranscriptionDto(value));
+    }
+
+    private static async Task<Ok<TranscriptionProgress>> GetTranscriptionProgress(
+        TranscriptService transcripts,
+        CancellationToken ct
+    ) => TypedResults.Ok(await transcripts.ProgressAsync(ct));
+
+    private static TranscriptionSettingsDto TranscriptionDto(TranscriptionSettings value) =>
+        new(value.Enabled, value.Model, value.Videos, [.. TranscriptionSettings.Models]);
+
     private static async Task<Ok<CopyStats>> GetVideoCopies(
         MediaService media,
         CancellationToken ct
@@ -319,6 +365,8 @@ public static class AdminEndpoints
         HttpContext context,
         SettingsStore settings,
         SecretProtector secrets,
+        TranscriptService transcripts,
+        TimeProvider time,
         CancellationToken ct
     )
     {
@@ -351,6 +399,9 @@ public static class AdminEndpoints
 
         var value = new MlSettings(endpoints);
         await settings.SetAsync(SettingKeys.Ml, value, context.Actor(), ct);
+
+        // The first ML service makes the recordings waiting for one transcribable (§11.1).
+        await transcripts.EnqueueMissingAsync(time.GetUtcNow(), ct);
         return TypedResults.Ok(MlDto(value));
     }
 
@@ -381,17 +432,16 @@ public static class AdminEndpoints
     }
 
     private static async Task<Ok<List<MlEndpointStatus>>> GetMlStatus(
-        SettingsStore settings,
-        SecretProtector secrets,
+        MlServices services,
         ServiceProbe probe,
         CancellationToken ct
     )
     {
-        var endpoints = (await settings.GetAsync(SettingKeys.Ml, ct)).Endpoints;
         var results = await Task.WhenAll(
-            endpoints.Select(async e => new MlEndpointStatus(
+            (await services.ListAsync(ct)).Select(async e => new MlEndpointStatus(
                 e.Url.Value,
-                await probe.CheckMlAsync(e.Url, ApiKeyOf(e, secrets), ct)
+                await probe.CheckMlAsync(e.Url, e.ApiKey, ct),
+                e.FromEnvironment
             ))
         );
         return TypedResults.Ok(results.ToList());

@@ -14,6 +14,7 @@ public sealed record AdminSettingsDto(
     TextRecognitionDto TextRecognition,
     VideoSettingsDto Videos,
     OfficeSettingsDto Office,
+    TranscriptionSettingsDto Transcription,
     SignInInfo SignIn
 );
 
@@ -25,6 +26,20 @@ public sealed record OfficeSettingsDto(string? GotenbergUrl, bool Configured);
 public sealed record OfficeSettingsRequest(string? GotenbergUrl);
 
 public sealed record TestOfficeRequest(string Url);
+
+/// <param name="Enabled">Whether what's said in recordings is made searchable (§11.1). Needs an ML service.</param>
+/// <param name="Model">One of <c>models</c>; <c>auto</c> lets the ML service pick by its hardware.</param>
+/// <param name="Videos">Whether the sound in videos is transcribed too.</param>
+/// <param name="Models">The models to choose from.</param>
+public sealed record TranscriptionSettingsDto(
+    bool Enabled,
+    string Model,
+    bool Videos,
+    List<string> Models
+);
+
+/// <param name="Model">One of the settings' <c>models</c>.</param>
+public sealed record UpdateTranscriptionRequest(bool Enabled, string Model, bool Videos);
 
 /// <param name="Copies">When playable copies of videos browsers can't play are made (§14).</param>
 /// <param name="MaxHeight">The copies' size: 720 or 1080, or 0 to keep the original's. Applies to copies made from now on.</param>
@@ -70,7 +85,8 @@ public sealed record TestMlRequest(string Url, string? ApiKey);
 
 public sealed record TestScannerRequest(string Address);
 
-public sealed record MlEndpointStatus(string Url, ProbeResult Status);
+/// <param name="FromEnvironment">Set by the server's environment (<c>Ml__Url</c>), so it can't be changed here.</param>
+public sealed record MlEndpointStatus(string Url, ProbeResult Status, bool FromEnvironment);
 
 /// <summary>Disk use for the Storage section (§17).</summary>
 /// <param name="FilesBytes">All stored originals, each blob once.</param>
