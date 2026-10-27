@@ -74,17 +74,27 @@ public enum StepState
 
     /// <summary>The job gave up after its retries; an admin can retry it.</summary>
     Failed,
+
+    /// <summary>A playable copy waits until someone opens the file (§14).</summary>
+    OnOpen,
+
+    /// <summary>An admin has turned the step off, e.g. playable copies (§14).</summary>
+    Off,
 }
 
 /// <param name="At">When it started (running), finished (done and the like) or gave up (failed).</param>
 /// <param name="Ahead">For a waiting step: how many jobs of its type will run first.</param>
 /// <param name="Job">The queued, running or failed job, if any.</param>
+/// <param name="Progress">For a playable copy being made: how far it has got, 0 to 100.</param>
+/// <param name="Error">Why the step failed when no job says so, e.g. ffmpeg's error for a copy it couldn't make.</param>
 public sealed record ProcessingStep(
     JobType Type,
     StepState State,
     DateTimeOffset? At,
     int? Ahead,
-    Job? Job
+    Job? Job,
+    int? Progress = null,
+    string? Error = null
 );
 
 /// <summary>A step that is still waiting or running, for the badge in file lists.</summary>
@@ -283,7 +293,10 @@ public sealed class JobMonitor(
             );
     }
 
-    /// <summary>Every step for one file's current content, in pipeline order (the details panel).</summary>
+    /// <summary>
+    /// Every step for one file's current content, in pipeline order (the details panel), then its playable copy when
+    /// it is a video or audio file browsers can't play as it is (§14).
+    /// </summary>
     public async Task<List<ProcessingStep>> StepsAsync(
         ContentHash hash,
         CancellationToken ct = default
@@ -337,7 +350,88 @@ public sealed class JobMonitor(
             );
         }
 
+        var media = await db
+            .BlobMedia.AsNoTracking()
+            .SingleOrDefaultAsync(m => m.BlobHash == hash, ct);
+        if (media is { NeedsCopy: true })
+        {
+            steps.Add(
+                await CopyStepAsync(
+                    media,
+                    jobs.Where(j => j.Type == JobType.Transcode && j.Status != JobStatus.Done)
+                        .OrderByDescending(j => j.CreatedAt)
+                        .FirstOrDefault(),
+                    paused,
+                    ct
+                )
+            );
+        }
+
         return steps;
+    }
+
+    /// <summary>
+    /// A copy that couldn't be made is recorded on the media, not as a failed job, since it isn't retried (§14).
+    /// </summary>
+    private async Task<ProcessingStep> CopyStepAsync(
+        BlobMedia media,
+        Job? job,
+        JobSettings paused,
+        CancellationToken ct
+    )
+    {
+        var type = JobType.Transcode;
+        if (media.CopyStatus == CopyStatus.Ready)
+        {
+            return new(type, StepState.Done, media.UpdatedAt, null, null);
+        }
+
+        if (job is { Status: JobStatus.Running })
+        {
+            return new(type, StepState.Running, job.StartedAt, null, job, media.CopyProgress);
+        }
+
+        if (job is { Status: JobStatus.Queued })
+        {
+            return new(
+                type,
+                paused.IsPaused(type) ? StepState.Paused : StepState.Waiting,
+                null,
+                await AheadAsync(job, ct),
+                job
+            );
+        }
+
+        if (job is { Status: JobStatus.Failed })
+        {
+            return new(type, StepState.Failed, job.FinishedAt, null, job);
+        }
+
+        if (media.CopyStatus == CopyStatus.Failed)
+        {
+            return new(
+                type,
+                StepState.Unreadable,
+                media.UpdatedAt,
+                null,
+                null,
+                Error: media.CopyError
+            );
+        }
+
+        var videos = await settings.GetAsync(SettingKeys.Videos, ct);
+        return new(
+            type,
+            videos.Copies switch
+            {
+                VideoCopies.Never => StepState.Off,
+                VideoCopies.OnOpen => StepState.OnOpen,
+                _ => StepState.NotStarted,
+            },
+            null,
+            null,
+            null
+        );
     }
 
     private static ProcessingStep Result(

@@ -18,12 +18,16 @@ public enum JobKind
     FilingRule,
 }
 
-/// <summary>A step every file goes through, as the API names it (docs/design.md §10.2).</summary>
+/// <summary>
+/// A step every file goes through, as the API names it (docs/design.md §10.2), and the playable copy only video and
+/// audio files browsers can't play get (§14).
+/// </summary>
 public enum FileStep
 {
     Thumbnail,
     Metadata,
     Text,
+    Transcode,
 }
 
 public static class JobKinds
@@ -34,6 +38,7 @@ public static class JobKinds
             _ when type == JobType.Thumbnail => FileStep.Thumbnail,
             _ when type == JobType.Metadata => FileStep.Metadata,
             _ when type == JobType.Text => FileStep.Text,
+            _ when type == JobType.Transcode => FileStep.Transcode,
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Not a file step."),
         };
 
@@ -72,11 +77,12 @@ public static class JobKinds
 }
 
 /// <summary>Where the worker is with one file (the Processing section of the details panel).</summary>
-/// <param name="Steps">Thumbnail, metadata and text, in that order.</param>
+/// <param name="Steps">Thumbnail, metadata and text, in that order, then the playable copy for media that needs one.</param>
 public sealed record FileProcessing(List<ProcessingStepDto> Steps);
 
 /// <param name="At">When it started (running), finished, or gave up (failed).</param>
 /// <param name="Ahead">For a waiting step: how many jobs of its type will run first.</param>
+/// <param name="Progress">For a playable copy being made: how far it has got, 0 to 100.</param>
 /// <param name="JobId">Admins only: the job, for "Try again" on a failed step.</param>
 /// <param name="Attempts">Admins only.</param>
 /// <param name="Error">Admins only: why the last attempt failed.</param>
@@ -85,6 +91,7 @@ public sealed record ProcessingStepDto(
     StepState State,
     DateTimeOffset? At,
     int? Ahead,
+    int? Progress,
     Guid? JobId,
     int? Attempts,
     string? Error
@@ -96,8 +103,9 @@ public sealed record ProcessingStepDto(
             step.State,
             step.At,
             step.Ahead,
+            step.Progress,
             admin ? step.Job?.Id : null,
             admin ? step.Job?.Attempts : null,
-            admin ? step.Job?.LastError : null
+            admin ? step.Error ?? step.Job?.LastError : null
         );
 }

@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Dokument.Domain.Previews;
 using Dokument.Domain.Settings;
+using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Previews;
 using Dokument.Server.Admin;
 using Dokument.Server.Files;
@@ -65,6 +66,34 @@ public sealed class MediaTests(PostgresFixture postgres)
         Assert.Equal(CopyState.Ready, nodes[old].Media!.Copy);
         Assert.Equal(CopyState.NotNeeded, nodes[phone].Media!.Copy);
 
+        // The details panel lists the copy as a step, only for the file that needs one, and shows the length.
+        var steps = (
+            await admin.GetFromJsonAsync<FileProcessing>(
+                $"/api/v1/nodes/{old}/processing",
+                Json.Options
+            )
+        )!.Steps;
+        Assert.Equal(
+            [FileStep.Thumbnail, FileStep.Metadata, FileStep.Text, FileStep.Transcode],
+            steps.Select(s => s.Step)
+        );
+        Assert.Equal(StepState.Done, steps[^1].State);
+        Assert.DoesNotContain(
+            (
+                await admin.GetFromJsonAsync<FileProcessing>(
+                    $"/api/v1/nodes/{phone}/processing",
+                    Json.Options
+                )
+            )!.Steps,
+            s => s.Step == FileStep.Transcode
+        );
+        var info = await admin.GetFromJsonAsync<FileDetailsDto>(
+            $"/api/v1/nodes/{old}/details",
+            Json.Options
+        );
+        Assert.InRange(info!.DurationSeconds ?? 0, 1.9, 2.1);
+        Assert.Equal((320, 240), (info.Width, info.Height));
+
         // The viewer gets the copy, seekable; the original is still there for browsers that play more.
         var ranged = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/nodes/{old}/preview");
         ranged.Headers.Range = new RangeHeaderValue(0, 99);
@@ -102,6 +131,17 @@ public sealed class MediaTests(PostgresFixture postgres)
             Json.Options
         );
         Assert.Equal(CopyState.None, details!.Node.Media!.Copy);
+        Assert.Equal(
+            StepState.OnOpen,
+            (
+                await admin.GetFromJsonAsync<FileProcessing>(
+                    $"/api/v1/nodes/{old}/processing",
+                    Json.Options
+                )
+            )!
+                .Steps[^1]
+                .State
+        );
         Assert.Equal(
             "video/x-msvideo",
             (await admin.GetAsync($"/api/v1/nodes/{old}/preview"))

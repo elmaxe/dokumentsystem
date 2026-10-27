@@ -61,10 +61,12 @@ const icons: Record<ProcessingState, { name: string; filled?: boolean; className
   unsupported: { name: "remove_circle_outline", className: "text-on-surface-variant" },
   unreadable: { name: "error_outline", className: "text-on-surface-variant" },
   failed: { name: "error", filled: true, className: "text-error" },
+  onOpen: { name: "play_circle", className: "text-on-surface-variant" },
+  off: { name: "block", className: "text-on-surface-variant" },
 };
 
 /** States with nothing more to happen. */
-const settled: ProcessingState[] = ["done", "nothingFound", "skipped", "unsupported", "unreadable"];
+const settled: ProcessingState[] = ["done", "nothingFound", "skipped", "unsupported", "unreadable", "onOpen", "off"];
 
 export type ProcessingSectionProps = {
   steps: ProcessingStepView[];
@@ -103,7 +105,12 @@ export function ProcessingSection({ steps, onRetry }: ProcessingSectionProps) {
   const describe = (s: ProcessingStepView) => {
     switch (s.state) {
       case "running":
+        if (s.progress != null) {
+          return t("processing.state.runningProgress", { percent: s.progress });
+        }
         return s.at ? t("processing.state.runningSince", { time: when(s.at) }) : t("processing.state.running");
+      case "unreadable":
+        return t(s.step === "transcode" ? "processing.state.unconvertible" : "processing.state.unreadable");
       case "waiting":
         return s.ahead ? t("processing.state.waiting", { count: s.ahead }) : t("processing.state.next");
       case "failed":
@@ -140,7 +147,7 @@ export function ProcessingSection({ steps, onRetry }: ProcessingSectionProps) {
                   {describe(s)}
                   {searchWaits && ` ${t("processing.searchWaits")}`}
                 </span>
-                {s.state === "failed" && s.error && (
+                {(s.state === "failed" || s.state === "unreadable") && s.error && (
                   <code className="mt-1 rounded-xs bg-surface-container-high px-1.5 py-1 font-mono text-mono-sm break-words text-on-surface-variant">
                     {s.error}
                   </code>
