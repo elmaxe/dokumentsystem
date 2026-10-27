@@ -179,6 +179,27 @@ const files: Record<string, { item: FileItem; preview: () => PreviewSource; extr
     item: { id: "4", name: "IMG_4021.HEIC", kind: "image", modified: "2026-10-23T10:00:00Z", owner: "Alice" },
     preview: () => ({ type: "preparing" }),
   },
+  video: {
+    item: { id: "13", name: "Årsstämma 2026.mp4", kind: "video", modified: "2026-05-12T19:00:00Z", owner: "Alice" },
+    preview: () => ({ type: "video", src: "sample.webm" }),
+    extra: {
+      transcript: {
+        state: "ready",
+        language: "sv",
+        model: "large-v3-turbo",
+        durationMs: 30_000,
+        lines: [
+          { startMs: 1_000, endMs: 5_000, text: "Nästa punkt på dagordningen är motion nummer fyra." },
+          { startMs: 6_000, endMs: 9_500, text: "Den gäller frågan om andrahandsuthyrning," },
+          { startMs: 10_000, endMs: 16_000, text: "där styrelsen föreslår att hyresavtal för andra hand alltid ska godkännas skriftligt." },
+          { startMs: 17_000, endMs: 21_000, text: "Finns det några frågor om det? Ja, där bak." },
+          { startMs: 22_000, endMs: 27_000, text: "Gäller det även korttidsuthyrning, alltså några veckor?" },
+        ],
+      },
+      captions: "data:text/vtt,WEBVTT",
+      marks: { query: "hyresavtal", terms: ["hyresavtal"], pages: [], times: [10_400], onClear: () => {} },
+    },
+  },
   converting: {
     item: { id: "8", name: "Midsommar-2026.mkv", kind: "video", modified: "2026-06-21T10:00:00Z", owner: "Alice" },
     preview: () => ({ type: "converting", waiting: false, progress: 42 }),
@@ -248,6 +269,8 @@ export const Image: Story = { args: { file: "image" } };
 /** Opened from a search hit: plays from 10 s before it, with the transcript beside the player and ticks for each hit. */
 export const Transcript: Story = { args: { file: "transcript" } };
 export const StillListening: Story = { args: { file: "listening" } };
+/** Our own controls over the picture: ticks for the hits, captions from the transcript (CC), speed, volume, full screen. */
+export const Video: Story = { args: { file: "video" } };
 export const Pdf: Story = { args: { file: "pdf" } };
 export const Markdown: Story = { args: { file: "markdown" } };
 export const Code: Story = { args: { file: "code" } };
