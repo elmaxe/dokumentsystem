@@ -67,7 +67,9 @@ public static class DependencyInjection
         services.AddScoped<Filing.FilingService>();
         services.AddScoped<SettingsStore>();
         services.AddHttpClient<ServiceProbe>();
+        services.Configure<MlOptions>(configuration.GetSection(MlOptions.SectionName));
         services.AddSingleton<MlHealth>();
+        services.AddScoped<MlServices>();
         services.AddScoped<TranscriptService>();
 
         // Keys live on the originals volume, so they're backed up with it and survive restarts (§21). The worker

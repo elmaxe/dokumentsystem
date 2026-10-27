@@ -4323,7 +4323,8 @@
       "MlEndpointStatus": {
         "required": [
           "url",
-          "status"
+          "status",
+          "fromEnvironment"
         ],
         "type": "object",
         "properties": {
@@ -4332,6 +4333,9 @@
           },
           "status": {
             "$ref": "#/components/schemas/ProbeResult"
+          },
+          "fromEnvironment": {
+            "type": "boolean"
           }
         }
       },

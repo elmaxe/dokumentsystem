@@ -39,8 +39,18 @@ const webImage = /^image\/(jpeg|png|webp|gif|avif)$/;
 /** Video and audio that usually play from the original, before the worker has looked at them. Others wait for it. */
 const webMedia = /^(video\/(mp4|webm|ogg)|audio\/(mpeg|mp4|aac|ogg|opus|wav|x-wav|webm|flac|x-flac))$/;
 
-function previewOf(node: NodeDto, versionId: string | null | undefined, refused: boolean): PreviewSource {
+/**
+ * How the viewer shows a file: by its type, or, for a recording stored with a type nobody knew (an .amr uploaded
+ * before the server knew the name), by what ffprobe found in it.
+ */
+function viewTypeOf(node: NodeDto) {
   const type = previewTypeOf(node.mimeType);
+  if (type !== "none" || !node.media) return type;
+  return node.media.hasVideo ? "video" : node.media.hasAudio ? "audio" : type;
+}
+
+function previewOf(node: NodeDto, versionId: string | null | undefined, refused: boolean): PreviewSource {
+  const type = viewTypeOf(node);
   if (type === "none") return { type };
   if (type === "image" && !webImage.test(node.mimeType ?? "") && node.thumbnail === "pending") return { type: "preparing" };
   const src = previewUrl(node.id, versionId);
@@ -101,7 +111,7 @@ export function ViewerPage({
   const recent = useQuery({ ...recentQuery, enabled: from === "recent" });
   const results = from === "search" ? lastSearchResults() : null;
   const matches = useQuery({ ...matchesQuery(fileId, q ?? ""), enabled: !!q });
-  const recording = ["video", "audio"].includes(previewTypeOf(details.data?.node.mimeType));
+  const recording = !!details.data && ["video", "audio"].includes(viewTypeOf(details.data.node));
   const transcript = useQuery({ ...transcriptQuery(fileId), enabled: recording });
   const [panel, setPanel] = useState<{ open: boolean; tab: DetailsTab }>({ open: false, tab: "info" });
   const format = useFormat();

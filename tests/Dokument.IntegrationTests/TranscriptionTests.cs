@@ -120,6 +120,31 @@ public sealed class TranscriptionTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task An_ml_service_set_by_the_environment_is_used_and_shown()
+    {
+        var ml = new FakeMl();
+        await using var app = await DokumentApp.StartAsync(
+            postgres,
+            new Dictionary<string, string?>(FastWorker) { ["Ml:Url"] = "http://ml-from-env:3003" },
+            ml.Install
+        );
+        using var admin = await SignInAsync(app, Admin);
+        await UploadAsync(admin, "memo.m4a", Memo, null);
+        await WaitForTranscribeAsync(app);
+
+        Assert.Single(ml.Requests);
+        var status = await admin.GetFromJsonAsync<List<MlEndpointStatus>>(
+            "/api/v1/admin/ml/status",
+            Json.Options,
+            TestContext.Current.CancellationToken
+        );
+        var shown = Assert.Single(status!);
+        Assert.Equal("http://ml-from-env:3003", shown.Url);
+        Assert.True(shown.FromEnvironment);
+        Assert.True(shown.Status.Reachable);
+    }
+
+    [Fact]
     public async Task Nothing_is_queued_without_an_ml_service_and_adding_one_queues_the_backlog()
     {
         var ml = new FakeMl();
@@ -261,8 +286,6 @@ public sealed class TranscriptionTests(PostgresFixture postgres)
         public bool Down { get; init; }
 
         public ConcurrentQueue<Sent> Requests { get; } = new();
-
-        IReadOnlyCollection<Sent> RequestsSeen => Requests;
 
         public void Install(IServiceCollection services)
         {

@@ -1765,6 +1765,7 @@ export interface components {
         MlEndpointStatus: {
             url: string;
             status: components["schemas"]["ProbeResult"];
+            fromEnvironment: boolean;
         };
         MlEndpointUpdate: {
             url: string;

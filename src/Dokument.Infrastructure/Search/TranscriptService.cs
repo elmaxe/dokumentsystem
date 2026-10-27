@@ -4,6 +4,7 @@ using Dokument.Domain.Previews;
 using Dokument.Domain.Search;
 using Dokument.Domain.Settings;
 using Dokument.Infrastructure.Jobs;
+using Dokument.Infrastructure.Ml;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Settings;
 using Microsoft.EntityFrameworkCore;
@@ -29,7 +30,12 @@ public sealed record Transcript(BlobTranscript Info, IReadOnlyList<TranscriptLin
 /// other text. Nothing is queued while there's no ML service to do it, so jobs never pile up on a server without one;
 /// adding a service queues the backlog.
 /// </summary>
-public sealed class TranscriptService(DokumentDbContext db, JobQueue jobs, SettingsStore settings)
+public sealed class TranscriptService(
+    DokumentDbContext db,
+    JobQueue jobs,
+    SettingsStore settings,
+    MlServices ml
+)
 {
     /// <summary>Whether a recording should be transcribed now: on, an ML service set, and sound to transcribe.</summary>
     private async Task<bool> WantedAsync(BlobMedia media, CancellationToken ct)
@@ -42,7 +48,7 @@ public sealed class TranscriptService(DokumentDbContext db, JobQueue jobs, Setti
         var transcription = await settings.GetAsync(SettingKeys.Transcription, ct);
         return transcription.Enabled
             && (!media.HasVideo || transcription.Videos)
-            && (await settings.GetAsync(SettingKeys.Ml, ct)).Endpoints.Count > 0;
+            && await ml.ConfiguredAsync(ct);
     }
 
     /// <summary>Queues a recording unless it's transcribed already. Adds to the unit of work; the caller saves.</summary>
@@ -71,10 +77,7 @@ public sealed class TranscriptService(DokumentDbContext db, JobQueue jobs, Setti
     public async Task<int> EnqueueMissingAsync(DateTimeOffset now, CancellationToken ct = default)
     {
         var transcription = await settings.GetAsync(SettingKeys.Transcription, ct);
-        if (
-            !transcription.Enabled
-            || (await settings.GetAsync(SettingKeys.Ml, ct)).Endpoints.Count == 0
-        )
+        if (!transcription.Enabled || !await ml.ConfiguredAsync(ct))
         {
             return 0;
         }

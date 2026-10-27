@@ -75,7 +75,8 @@ public sealed record TestMlRequest(string Url, string? ApiKey);
 
 public sealed record TestScannerRequest(string Address);
 
-public sealed record MlEndpointStatus(string Url, ProbeResult Status);
+/// <param name="FromEnvironment">Set by the server's environment (<c>Ml__Url</c>), so it can't be changed here.</param>
+public sealed record MlEndpointStatus(string Url, ProbeResult Status, bool FromEnvironment);
 
 /// <summary>Disk use for the Storage section (§17).</summary>
 /// <param name="FilesBytes">All stored originals, each blob once.</param>

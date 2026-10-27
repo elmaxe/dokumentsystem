@@ -449,6 +449,7 @@ function MlSection({ settings }: { settings: AdminSettings }) {
   const duplicate = rows.some((r) => r.url.replace(/\/+$/, "") === url.trim().replace(/\/+$/, ""));
   const validUrl = /^https?:\/\/[^\s/?#]+[^\s?#]*$/.test(url.trim());
   const firstUp = status.data?.find((s) => s.status.reachable)?.url;
+  const fromEnvironment = status.data?.find((s) => s.fromEnvironment);
 
   const move = (index: number, by: -1 | 1) => {
     const next = [...rows];
@@ -467,7 +468,7 @@ function MlSection({ settings }: { settings: AdminSettings }) {
 
   return (
     <Section id="ml" intro={t("admin.ml.listIntro")}>
-      {rows.length === 0 ? (
+      {rows.length === 0 && !fromEnvironment ? (
         <p className="m-0 text-body-md text-on-surface-variant">{t("admin.ml.empty")}</p>
       ) : (
         <ol className="m-0 flex list-none flex-col gap-2 p-0">
@@ -496,6 +497,16 @@ function MlSection({ settings }: { settings: AdminSettings }) {
               </li>
             );
           })}
+          {fromEnvironment && (
+            <li className="flex flex-wrap items-center gap-3 rounded-md bg-surface-container-lowest py-2 pr-2 pl-4">
+              <Icon name="lock" size={16} className="w-4 text-on-surface-variant" />
+              <div className="flex min-w-0 flex-[1_1_14rem] flex-col">
+                <span className="font-mono text-mono-sm break-all text-on-surface">{fromEnvironment.url}</span>
+                <span className="text-body-sm text-on-surface-variant">{t("admin.ml.fromEnvironment")}</span>
+              </div>
+              <MlStatus probe={fromEnvironment.status} checking={false} inUse={fromEnvironment.url === firstUp} unsaved={false} />
+            </li>
+          )}
         </ol>
       )}
       <form
@@ -541,7 +552,7 @@ function MlSection({ settings }: { settings: AdminSettings }) {
           </Button>
         </div>
       </form>
-      <Banner tone="info">{t("admin.ml.notUsedYet")}</Banner>
+      <Banner tone="info">{t("admin.ml.usedFor")}</Banner>
       <SaveButton
         disabled={busy || !dirty}
         onClick={() => void save(() => admin.putMl(rows.map(({ url, apiKey, keepApiKey }) => ({ url, apiKey, keepApiKey }))))}
@@ -680,7 +691,8 @@ function SpeechSection({ settings }: { settings: AdminSettings }) {
   const { busy, save } = useSave();
   const enabledId = useId();
   const videosId = useId();
-  const hasMl = settings.ml.endpoints.length > 0;
+  const ml = useQuery(mlStatusQuery);
+  const hasMl = settings.ml.endpoints.length > 0 || !!ml.data?.some((s) => s.fromEnvironment);
   const number = (n: number) => n.toLocaleString(i18n.language);
   const put = (change: Partial<{ enabled: boolean; model: string; videos: boolean }>) => {
     const next = { enabled: current.enabled, model, videos: current.videos, ...change };

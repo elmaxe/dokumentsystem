@@ -8,8 +8,8 @@ using Dokument.Infrastructure.Settings;
 
 namespace Dokument.Infrastructure.Ml;
 
-/// <summary>An ML service to use now: the first healthy one in the admin's list (docs/design.md §11).</summary>
-public sealed record MlConnection(ServiceUrl Url, string? ApiKey);
+/// <summary>An ML service: one in the admin's list, or the one the environment sets (docs/design.md §11).</summary>
+public sealed record MlConnection(ServiceUrl Url, string? ApiKey, bool FromEnvironment = false);
 
 /// <summary>What <c>POST /transcribe</c> streams back, one per line (§11.1).</summary>
 public abstract record TranscribeEvent
@@ -51,8 +51,7 @@ public sealed class MlHealth
 /// </summary>
 public sealed class MlClient(
     HttpClient http,
-    SettingsStore settings,
-    SecretProtector secrets,
+    MlServices services,
     ServiceProbe probe,
     MlHealth health,
     TimeProvider time
@@ -63,30 +62,29 @@ public sealed class MlClient(
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     /// <summary>Whether any ML service is set at all; without one, nothing that needs it is queued.</summary>
-    public async Task<bool> ConfiguredAsync(CancellationToken ct) =>
-        (await settings.GetAsync(SettingKeys.Ml, ct)).Endpoints.Count > 0;
+    public Task<bool> ConfiguredAsync(CancellationToken ct) => services.ConfiguredAsync(ct);
 
     /// <summary>The first ML service that answers, in the admin's order; null when none does.</summary>
     public async Task<MlConnection?> PickAsync(CancellationToken ct)
     {
-        foreach (var endpoint in (await settings.GetAsync(SettingKeys.Ml, ct)).Endpoints)
+        foreach (var endpoint in await services.ListAsync(ct))
         {
-            var key = endpoint.ProtectedApiKey is { } protectedKey
-                ? secrets.Unprotect(protectedKey)
-                : null;
             var now = time.GetTimestamp();
             if (
                 !health.Known.TryGetValue(endpoint.Url.Value, out var known)
                 || time.GetElapsedTime(known.At, now) > RememberHealth
             )
             {
-                known = ((await probe.CheckMlAsync(endpoint.Url, key, ct)).Reachable, now);
+                known = (
+                    (await probe.CheckMlAsync(endpoint.Url, endpoint.ApiKey, ct)).Reachable,
+                    now
+                );
                 health.Known[endpoint.Url.Value] = known;
             }
 
             if (known.Healthy)
             {
-                return new MlConnection(endpoint.Url, key);
+                return endpoint;
             }
         }
 

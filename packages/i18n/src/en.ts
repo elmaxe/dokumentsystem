@@ -824,8 +824,9 @@ export const en = {
       answers: "Answers",
       version: "version {{version}}",
       unreachableShort: "Unreachable",
-      notUsedYet:
-        "Nothing uses machine learning yet. Better text recognition and search by meaning will use these services when they arrive.",
+      usedFor:
+        "Speech to text uses these services now. Better text recognition and search by meaning will use them when they arrive.",
+      fromEnvironment: "Set by the server's environment (Ml__Url), so it's tried last and can't be changed here",
       testOk: "Connected",
       testFailed: "Can't reach it: {{error}}",
       duplicate: "This service is already in the list.",

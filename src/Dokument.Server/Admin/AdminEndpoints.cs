@@ -5,6 +5,7 @@ using Dokument.Domain.Settings;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Live;
+using Dokument.Infrastructure.Ml;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Search;
@@ -375,17 +376,16 @@ public static class AdminEndpoints
     }
 
     private static async Task<Ok<List<MlEndpointStatus>>> GetMlStatus(
-        SettingsStore settings,
-        SecretProtector secrets,
+        MlServices services,
         ServiceProbe probe,
         CancellationToken ct
     )
     {
-        var endpoints = (await settings.GetAsync(SettingKeys.Ml, ct)).Endpoints;
         var results = await Task.WhenAll(
-            endpoints.Select(async e => new MlEndpointStatus(
+            (await services.ListAsync(ct)).Select(async e => new MlEndpointStatus(
                 e.Url.Value,
-                await probe.CheckMlAsync(e.Url, ApiKeyOf(e, secrets), ct)
+                await probe.CheckMlAsync(e.Url, e.ApiKey, ct),
+                e.FromEnvironment
             ))
         );
         return TypedResults.Ok(results.ToList());

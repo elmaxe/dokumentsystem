@@ -829,8 +829,9 @@ export const sv: Strings = {
       answers: "Svarar",
       version: "version {{version}}",
       unreachableShort: "Svarar inte",
-      notUsedYet:
-        "Inget använder maskininlärning än. Bättre textigenkänning och sökning på innebörd kommer att använda tjänsterna när de finns.",
+      usedFor:
+        "Tal till text använder tjänsterna nu. Bättre textigenkänning och sökning på innebörd kommer att använda dem när de finns.",
+      fromEnvironment: "Satt i serverns miljö (Ml__Url), så den provas sist och kan inte ändras här",
       testOk: "Ansluten",
       testFailed: "Svarar inte: {{error}}",
       duplicate: "Tjänsten finns redan i listan.",
