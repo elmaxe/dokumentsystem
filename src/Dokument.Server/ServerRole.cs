@@ -102,6 +102,7 @@ public static class ServerRole
             .AllowAnonymous();
         api.MapAuthEndpoints();
         api.MapFileEndpoints();
+        api.MapFileDetailsEndpoints();
         api.MapTrashEndpoints();
         api.MapStarredAndRecentEndpoints();
         api.MapSearchEndpoints();

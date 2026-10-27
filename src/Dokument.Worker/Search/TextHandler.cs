@@ -90,7 +90,9 @@ internal sealed partial class TextHandler(
 
         // Page 0 is the metadata stage's; everything else is replaced.
         await db
-            .ContentPages.Where(p => p.BlobHash == hash && p.PageNo != ContentPage.MetadataPage)
+            .ContentPages.Where(p =>
+                p.BlobHash == hash && p.VersionId == null && p.PageNo != ContentPage.MetadataPage
+            )
             .ExecuteDeleteAsync(ct);
         db.ContentPages.AddRange(
             result.Pages.Select(p => new ContentPage

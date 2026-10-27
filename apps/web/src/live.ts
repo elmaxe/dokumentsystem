@@ -6,7 +6,7 @@ import { clientId, sessionQuery } from "./api";
 
 /** What each topic refetches. Only queries on screen fetch at once; the rest are marked stale for next time. */
 const topicQueries: Record<LiveTopic, string[][]> = {
-  files: [["folder"], ["node"], ["versions"], ["starred"], ["recent"]],
+  files: [["folder"], ["node"], ["versions"], ["fileDetails"], ["fileText"], ["starred"], ["recent"]],
   recent: [["recent"]],
   trash: [["trash"]],
   storage: [["storage"]],

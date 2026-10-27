@@ -1,5 +1,6 @@
 using Dokument.Domain.Files;
 using Dokument.Domain.Identity;
+using Dokument.Domain.Jobs;
 
 namespace Dokument.Domain.Settings;
 
@@ -59,4 +60,30 @@ public sealed record ScannerSettings(ClamdAddress? Address)
 public sealed record TextRecognitionSettings(bool Enabled)
 {
     public static readonly TextRecognitionSettings Default = new(true);
+}
+
+/// <summary>
+/// The job queues an admin has paused on the Jobs page (§10.1). Workers stop claiming those jobs; ones already running
+/// finish.
+/// </summary>
+public sealed record JobSettings(IReadOnlySet<JobType> Paused)
+{
+    public static readonly JobSettings Default = new(new HashSet<JobType>());
+
+    public bool IsPaused(JobType type) => Paused.Contains(type);
+
+    public JobSettings With(JobType type, bool paused)
+    {
+        var set = new HashSet<JobType>(Paused);
+        if (paused)
+        {
+            set.Add(type);
+        }
+        else
+        {
+            set.Remove(type);
+        }
+
+        return new JobSettings(set);
+    }
 }
