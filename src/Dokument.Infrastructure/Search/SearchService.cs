@@ -177,14 +177,23 @@ public sealed class SearchService(DokumentDbContext db)
             return (query.HighlightTerms, []);
         }
 
+        // A corrected page matches by its own text, but its boxes are the read page's: the scan still shows the
+        // words people didn't change (§13.5).
         var hash = version.BlobHash.ToArray();
         var pages = await db
             .Database.SqlQuery<PageRow>(
                 $"""
-                SELECT page_no AS "PageNo", source AS "Source", words::text AS "Words"
-                FROM content_pages
-                WHERE id @@@ {BmQuery.Text(query)}::jsonb AND blob_hash = {hash} AND page_no > 0
-                ORDER BY page_no
+                SELECT p.page_no AS "PageNo", p.source AS "Source", COALESCE(p.words, r.words)::text AS "Words"
+                FROM content_pages p
+                LEFT JOIN content_pages r ON p.version_id IS NOT NULL AND r.version_id IS NULL
+                    AND r.blob_hash = p.blob_hash AND r.page_no = p.page_no
+                WHERE p.id @@@ {BmQuery.Text(
+                    query
+                )}::jsonb AND p.blob_hash = {hash} AND p.page_no > 0
+                  AND (p.version_id = {version.Id}
+                       OR (p.version_id IS NULL AND NOT EXISTS (
+                           SELECT 1 FROM content_pages e WHERE e.version_id = {version.Id} AND e.page_no = p.page_no)))
+                ORDER BY p.page_no
                 """
             )
             .ToListAsync(ct);
@@ -194,7 +203,10 @@ public sealed class SearchService(DokumentDbContext db)
             pages
                 .Select(p => new PageMatch(
                     p.PageNo,
-                    Enum.Parse<PageSource>(p.Source, ignoreCase: true),
+                    Enum.Parse<PageSource>(p.Source, ignoreCase: true) is var source
+                    && source == PageSource.Added
+                        ? PageSource.Text
+                        : source,
                     p.Words is null ? [] : Boxes(p.Words, terms)
                 ))
                 .ToList()
@@ -292,31 +304,46 @@ public sealed class SearchService(DokumentDbContext db)
             nodes = nodes.Where(n => below.Any(b => b.Id == n.Id) && !ids.Contains(n.Id));
         }
 
-        if (!query.Taken.IsEmpty || query.Camera is not null)
+        if (!query.Taken.IsEmpty)
         {
-            var metadata = db.BlobMetadata.AsQueryable();
+            // An edited date wins over the camera's (§13.5); a partial one counts from its first day.
+            var editedTaken = db.VersionDetails.Where(d => d.TakenAt != null);
+            var editedInRange = editedTaken;
+            var readInRange = db.BlobMetadata.AsQueryable();
             if (query.Taken.From is { } takenFrom)
             {
-                metadata = metadata.Where(m => m.TakenAt >= takenFrom);
+                editedInRange = editedInRange.Where(d => d.TakenAt >= takenFrom);
+                readInRange = readInRange.Where(m => m.TakenAt >= takenFrom);
             }
 
             if (query.Taken.To is { } takenTo)
             {
-                metadata = metadata.Where(m => m.TakenAt < takenTo);
-            }
-
-            if (query.Camera is { } camera)
-            {
-                var pattern =
-                    "%"
-                    + camera.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_")
-                    + "%";
-                metadata = metadata.Where(m => EF.Functions.ILike(m.Camera!, pattern));
+                editedInRange = editedInRange.Where(d => d.TakenAt < takenTo);
+                readInRange = readInRange.Where(m => m.TakenAt < takenTo);
             }
 
             nodes = nodes.Where(n =>
                 n.CurrentVersion != null
-                && metadata.Any(m => m.BlobHash == n.CurrentVersion.BlobHash)
+                && (
+                    editedInRange.Any(d => d.VersionId == n.CurrentVersionId)
+                    || (
+                        !editedTaken.Any(d => d.VersionId == n.CurrentVersionId)
+                        && readInRange.Any(m => m.BlobHash == n.CurrentVersion.BlobHash)
+                    )
+                )
+            );
+        }
+
+        if (query.Camera is { } camera)
+        {
+            var pattern =
+                "%" + camera.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+            nodes = nodes.Where(n =>
+                n.CurrentVersion != null
+                && db.BlobMetadata.Any(m =>
+                    m.BlobHash == n.CurrentVersion.BlobHash
+                    && EF.Functions.ILike(m.Camera!, pattern)
+                )
             );
         }
 
@@ -339,11 +366,13 @@ public sealed class SearchService(DokumentDbContext db)
             .Database.SqlQuery<PageHit>(
                 $"""
                 SELECT n.id AS "NodeId", p.id AS "PageId", p.page_no AS "PageNo", p.source AS "Source", p.score AS "Score"
-                FROM (SELECT id, blob_hash, page_no, source, pdb.score(id) AS score FROM content_pages WHERE id @@@ {BmQuery.Text(
+                FROM (SELECT id, blob_hash, version_id, page_no, source, pdb.score(id) AS score FROM content_pages WHERE id @@@ {BmQuery.Text(
                     query
                 )}::jsonb) p
-                JOIN file_versions v ON v.blob_hash = p.blob_hash
+                JOIN file_versions v ON v.blob_hash = p.blob_hash AND (p.version_id IS NULL OR p.version_id = v.id)
                 JOIN nodes n ON n.current_version_id = v.id
+                WHERE p.version_id IS NOT NULL OR p.page_no = 0
+                   OR NOT EXISTS (SELECT 1 FROM content_pages e WHERE e.version_id = v.id AND e.page_no = p.page_no)
                 """
             )
             .Join(scope, p => p.NodeId, n => n.Id, (p, _) => p)
@@ -436,9 +465,12 @@ public sealed class SearchService(DokumentDbContext db)
                     : null;
                 return new SearchHit(
                     node,
-                    best is null
-                        ? MatchSource.Name
-                        : Enum.Parse<MatchSource>(best.Source, ignoreCase: true),
+                    best switch
+                    {
+                        null => MatchSource.Name,
+                        { Source: "added" } => MatchSource.Text,
+                        _ => Enum.Parse<MatchSource>(best.Source, ignoreCase: true),
+                    },
                     best is { PageNo: > 0 } && count is not null ? best.PageNo : null,
                     count,
                     c.PagesWithHits,

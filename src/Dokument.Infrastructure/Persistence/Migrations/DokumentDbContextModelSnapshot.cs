@@ -552,6 +552,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("run_after");
 
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text")
@@ -705,6 +709,14 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("duration_seconds");
 
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latitude");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("longitude");
+
                     b.Property<int>("PipelineVersion")
                         .HasColumnType("integer")
                         .HasColumnName("pipeline_version");
@@ -721,6 +733,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("TakenAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("taken_at");
+
+                    b.Property<int?>("TakenOffsetMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("taken_offset_minutes");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -745,6 +761,14 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("bytea")
                         .HasColumnName("blob_hash");
 
+                    b.Property<DateTimeOffset?>("EditedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("edited_at");
+
+                    b.Property<Guid?>("EditedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("edited_by");
+
                     b.Property<int>("PageNo")
                         .HasColumnType("integer")
                         .HasColumnName("page_no");
@@ -759,6 +783,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("text");
 
+                    b.Property<Guid?>("VersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("version_id");
+
                     b.Property<string>("Words")
                         .HasColumnType("jsonb")
                         .HasColumnName("words");
@@ -766,9 +794,49 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BlobHash", "PageNo")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("version_id IS NULL");
+
+                    b.HasIndex("VersionId", "PageNo")
+                        .IsUnique()
+                        .HasFilter("version_id IS NOT NULL");
 
                     b.ToTable("content_pages", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Search.VersionDetails", b =>
+                {
+                    b.Property<Guid>("VersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("version_id");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<DateTimeOffset>("EditedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("edited_at");
+
+                    b.Property<Guid>("EditedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("edited_by");
+
+                    b.Property<DateTimeOffset?>("TakenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("taken_at");
+
+                    b.Property<string>("TakenPrecision")
+                        .HasColumnType("text")
+                        .HasColumnName("taken_precision");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.HasKey("VersionId");
+
+                    b.ToTable("version_details", (string)null);
                 });
 
             modelBuilder.Entity("Dokument.Infrastructure.Persistence.Setting", b =>
@@ -890,6 +958,23 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Search.ContentPage", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.FileVersion", null)
+                        .WithMany()
+                        .HasForeignKey("VersionId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Search.VersionDetails", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.FileVersion", null)
+                        .WithOne()
+                        .HasForeignKey("Dokument.Domain.Search.VersionDetails", "VersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

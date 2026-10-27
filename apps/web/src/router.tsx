@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
 import { AdminPeoplePage, AdminSettingsPage, AdminStoragePage } from "./admin/AdminPage";
+import { AdminJobsPage } from "./admin/JobsPage";
 import { sessionQuery } from "./api";
 import { AppShell } from "./AppShell";
 import { FilesPage } from "./files/FilesPage";
@@ -116,6 +117,7 @@ const adminIndexRoute = createRoute({
 
 const adminPeopleRoute = createRoute({ getParentRoute: () => adminRoute, path: "/people", component: AdminPeoplePage });
 const adminStorageRoute = createRoute({ getParentRoute: () => adminRoute, path: "/storage", component: AdminStoragePage });
+const adminJobsRoute = createRoute({ getParentRoute: () => adminRoute, path: "/jobs", component: AdminJobsPage });
 const adminSettingsRoute = createRoute({ getParentRoute: () => adminRoute, path: "/settings", component: AdminSettingsPage });
 
 /** `reason: "ended"`: this session was ended from another device (§15.4). */
@@ -136,7 +138,7 @@ const signInRoute = createRoute({
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminSettingsRoute]), trashRoute, settingsRoute, sharedRoute, searchRoute, ...placeRoutes]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminJobsRoute, adminSettingsRoute]), trashRoute, settingsRoute, sharedRoute, searchRoute, ...placeRoutes]), signInRoute]),
     context: { queryClient },
   });
 }
