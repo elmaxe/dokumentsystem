@@ -249,6 +249,53 @@ public sealed class FilingTests(PostgresFixture postgres)
         Assert.Empty(await RulesAsync(bob));
     }
 
+    [Fact]
+    public async Task Admins_see_filing_jobs_on_the_jobs_page()
+    {
+        await using var app = await DokumentApp.StartAsync(postgres, FastWorker);
+        using var admin = await SignInAsync(app, Admin);
+        using var alice = await SignInAsync(app, Alice);
+        var receipt = await UploadAsync(alice, "kvitto.pdf", TestFiles.TextPdf("Hej"), null);
+        var other = await UploadAsync(alice, "annat.pdf", TestFiles.TextPdf("Hå"), null);
+        await TagAsync(alice, [other], "receipt");
+        await WaitForWorkerAsync(app);
+        foreach (var queue in new[] { "file", "filingRule" })
+        {
+            await PutAsync(
+                admin,
+                $"/api/v1/admin/jobs/queues/{queue}/paused",
+                new PauseQueueRequest(true)
+            );
+        }
+
+        await CreateRuleAsync(
+            alice,
+            new FilingRuleRequest("receipt", "Kvitton/{year}", FileExisting: true)
+        );
+        await TagAsync(alice, [receipt], "receipt");
+
+        var waiting = await admin.GetFromJsonAsync<JobList>(
+            "/api/v1/admin/jobs?status=queued",
+            Json.Options,
+            TestContext.Current.CancellationToken
+        );
+        var file = Assert.Single(waiting!.Items, j => j.Type == JobKind.File);
+        Assert.Equal(receipt, Assert.Single(file.Files).NodeId);
+        var run = Assert.Single(waiting.Items, j => j.Type == JobKind.FilingRule);
+        Assert.Equal("receipt", run.RuleTag);
+        Assert.Empty(run.Files);
+        Assert.Contains(
+            (
+                await admin.GetFromJsonAsync<List<JobQueueDto>>(
+                    "/api/v1/admin/jobs/queues",
+                    Json.Options,
+                    TestContext.Current.CancellationToken
+                )
+            )!,
+            q => q.Type == JobKind.FilingRule && q.Paused
+        );
+    }
+
     private static Task<HttpResponseMessage> PostRuleAsync(
         HttpClient client,
         FilingRuleRequest request

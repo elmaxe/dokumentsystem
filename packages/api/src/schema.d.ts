@@ -1289,7 +1289,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ActiveStepDto: {
-            step: components["schemas"]["JobKind"];
+            step: components["schemas"]["FileStep"];
             running: boolean;
         };
         AdminSettingsDto: {
@@ -1433,6 +1433,8 @@ export interface components {
         FileProcessing: {
             steps: components["schemas"]["ProcessingStepDto"][];
         };
+        /** @enum {unknown} */
+        FileStep: "thumbnail" | "metadata" | "text";
         FileTags: {
             tags: components["schemas"]["TagDto"][];
             removed: string[];
@@ -1567,6 +1569,7 @@ export interface components {
             size: null | number;
             mimeType: null | string;
             files: components["schemas"]["JobFileDto"][];
+            ruleTag: null | string;
         };
         JobFileDto: {
             /** Format: uuid */
@@ -1583,7 +1586,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text";
+        JobKind: "thumbnail" | "metadata" | "text" | "tagRule" | "file" | "filingRule";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;
@@ -1703,7 +1706,7 @@ export interface components {
             error: null | string;
         };
         ProcessingStepDto: {
-            step: components["schemas"]["JobKind"];
+            step: components["schemas"]["FileStep"];
             state: components["schemas"]["StepState"];
             /** Format: date-time */
             at: null | string;

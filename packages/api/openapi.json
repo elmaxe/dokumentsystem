@@ -2676,7 +2676,7 @@
         "type": "object",
         "properties": {
           "step": {
-            "$ref": "#/components/schemas/JobKind"
+            "$ref": "#/components/schemas/FileStep"
           },
           "running": {
             "type": "boolean"
@@ -3295,6 +3295,13 @@
           }
         }
       },
+      "FileStep": {
+        "enum": [
+          "thumbnail",
+          "metadata",
+          "text"
+        ]
+      },
       "FileTags": {
         "required": [
           "tags",
@@ -3728,7 +3735,8 @@
           "error",
           "size",
           "mimeType",
-          "files"
+          "files",
+          "ruleTag"
         ],
         "type": "object",
         "properties": {
@@ -3795,6 +3803,12 @@
             "items": {
               "$ref": "#/components/schemas/JobFileDto"
             }
+          },
+          "ruleTag": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -3850,7 +3864,10 @@
         "enum": [
           "thumbnail",
           "metadata",
-          "text"
+          "text",
+          "tagRule",
+          "file",
+          "filingRule"
         ]
       },
       "JobList": {
@@ -4324,7 +4341,7 @@
         "type": "object",
         "properties": {
           "step": {
-            "$ref": "#/components/schemas/JobKind"
+            "$ref": "#/components/schemas/FileStep"
           },
           "state": {
             "$ref": "#/components/schemas/StepState"

@@ -24,8 +24,11 @@ public sealed record JobType
     /// <summary>Files everything that has a filing rule's tag now, when the person asks for it (§13.6).</summary>
     public static readonly JobType FilingRule = new("filing-rule");
 
+    /// <summary>The steps every file goes through, in pipeline order (§10.2).</summary>
+    public static readonly IReadOnlyList<JobType> FileSteps = [Thumbnail, Metadata, Text];
+
     /// <summary>The types the worker runs, in the order the admin Jobs page shows them (§10.1).</summary>
-    public static readonly IReadOnlyList<JobType> All = [Thumbnail, Metadata, Text];
+    public static readonly IReadOnlyList<JobType> All = [.. FileSteps, TagRule, File, FilingRule];
 
     private JobType(string name) => Name = name;
 

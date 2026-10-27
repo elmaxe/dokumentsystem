@@ -53,7 +53,7 @@ public sealed class JobTests(PostgresFixture postgres)
         // The file list shows the badge: every step is still waiting.
         var listed = (await ListAsync(alice, null)).Items.Single(i => i.Id == photo);
         Assert.Equal(
-            [JobKind.Thumbnail, JobKind.Metadata, JobKind.Text],
+            [FileStep.Thumbnail, FileStep.Metadata, FileStep.Text],
             listed.Processing.Select(s => s.Step)
         );
         Assert.All(listed.Processing, s => Assert.False(s.Running));
@@ -74,7 +74,14 @@ public sealed class JobTests(PostgresFixture postgres)
         );
         var queues = await QueuesAsync(admin);
         Assert.All(queues, q => Assert.True(q.Paused));
-        Assert.All(queues, q => Assert.Equal(2, q.Waiting));
+        Assert.All(
+            queues,
+            q =>
+                Assert.Equal(
+                    q.Type is JobKind.Thumbnail or JobKind.Metadata or JobKind.Text ? 2 : 0,
+                    q.Waiting
+                )
+        );
         var waiting = await JobsAsync(admin, "status=queued&type=text");
         Assert.False(waiting.More);
         Assert.Equal(
@@ -144,7 +151,7 @@ public sealed class JobTests(PostgresFixture postgres)
         // A failed step isn't work in progress, so it doesn't keep the badge.
         Assert.DoesNotContain(
             (await ListAsync(alice, null)).Items.Single().Processing,
-            s => s.Step == JobKind.Text
+            s => s.Step == FileStep.Text
         );
 
         var failed = await JobsAsync(admin, "status=failed");
@@ -202,6 +209,30 @@ public sealed class JobTests(PostgresFixture postgres)
             original.Files.Select(f => (f.Use, f.Name))
         );
         Assert.Equal(1, original.Files[1].VersionNumber);
+    }
+
+    [Fact]
+    public async Task Keyword_rule_runs_have_their_own_queue()
+    {
+        await using var app = await DokumentApp.StartAsync(postgres, FastWorker);
+        using var admin = await SignInAsync(app, Admin);
+        await admin.PutAsJsonAsync(
+            "/api/v1/admin/jobs/queues/tagrule/paused",
+            new PauseQueueRequest(true)
+        );
+        var created = await admin.PostAsJsonAsync(
+            "/api/v1/admin/tag-rules",
+            new TagRuleRequest("receipt", "kvitto"),
+            Json.Options
+        );
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+
+        var queue = (await QueuesAsync(admin)).Single(q => q.Type == JobKind.TagRule);
+        Assert.True(queue.Paused);
+        Assert.Equal(1, queue.Waiting);
+        var job = Assert.Single((await JobsAsync(admin, "status=queued&type=tagRule")).Items);
+        Assert.Equal("receipt", job.RuleTag);
+        Assert.Empty(job.Files);
     }
 
     private static async Task FailTextJobsAsync(DokumentApp app)

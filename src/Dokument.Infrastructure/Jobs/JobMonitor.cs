@@ -45,7 +45,8 @@ public sealed record JobFile(
 );
 
 /// <summary>A job with the files that use its content, best match first. Empty when no file uses it any more.</summary>
-public sealed record JobEntry(Job Job, IReadOnlyList<JobFile> Files);
+/// <param name="RuleTag">For a keyword-rule run: the rule's tag, null once the rule is deleted (§13.4).</param>
+public sealed record JobEntry(Job Job, IReadOnlyList<JobFile> Files, string? RuleTag = null);
 
 /// <summary>Where one processing step stands for a file (§10.1).</summary>
 public enum StepState
@@ -147,10 +148,7 @@ public sealed class JobMonitor(
         CancellationToken ct = default
     )
     {
-        // Keyword-rule runs aren't about a file; the admin Tags page shows them (§13.4).
-        var query = db
-            .Jobs.AsNoTracking()
-            .Where(j => j.Status == status && j.Type != JobType.TagRule);
+        var query = db.Jobs.AsNoTracking().Where(j => j.Status == status);
         if (type is not null)
         {
             query = query.Where(j => j.Type == type);
@@ -169,8 +167,20 @@ public sealed class JobMonitor(
             .Skip(Math.Max(0, offset))
             .Take(Math.Clamp(limit, 1, MaxPage))
             .ToListAsync(ct);
-        var files = await FilesAsync(jobs.Select(j => j.Subject), ct);
-        return jobs.Select(j => new JobEntry(j, files.GetValueOrDefault(j.Subject, []))).ToList();
+        var files = await FilesAsync(
+            jobs.Where(j => j.Type != JobType.File).Select(j => j.Subject),
+            ct
+        );
+        var filed = await FilingFilesAsync(jobs, ct);
+        var rules = await RulesAsync(jobs, ct);
+        return jobs.Select(j => new JobEntry(
+                j,
+                j.Type == JobType.File
+                    ? filed.GetValueOrDefault(j.Subject, [])
+                    : files.GetValueOrDefault(j.Subject, []),
+                rules.GetValueOrDefault((j.Type, j.Subject))
+            ))
+            .ToList();
     }
 
     public async Task<Job?> FindAsync(Guid id, CancellationToken ct = default) =>
@@ -288,7 +298,7 @@ public sealed class JobMonitor(
             .SingleOrDefaultAsync(c => c.BlobHash == hash, ct);
 
         var steps = new List<ProcessingStep>();
-        foreach (var type in JobType.All)
+        foreach (var type in JobType.FileSteps)
         {
             // Finished jobs say nothing the results don't; a queued, running or failed one wins over them.
             var job = jobs.Where(j => j.Type == type && j.Status != JobStatus.Done)
@@ -363,15 +373,15 @@ public sealed class JobMonitor(
 
     private static int PipelineOrder(JobType type)
     {
-        for (var i = 0; i < JobType.All.Count; i++)
+        for (var i = 0; i < JobType.FileSteps.Count; i++)
         {
-            if (JobType.All[i] == type)
+            if (JobType.FileSteps[i] == type)
             {
                 return i;
             }
         }
 
-        return JobType.All.Count;
+        return JobType.FileSteps.Count;
     }
 
     /// <summary>How many jobs of the same type the claim query will take before this one.</summary>
@@ -387,6 +397,100 @@ public sealed class JobMonitor(
                 ),
             ct
         );
+
+    /// <summary>
+    /// The tags of the keyword rules (§13.4) and filing rules (§13.6) that <paramref name="jobs"/> run, by type and
+    /// subject. Deleted rules are left out.
+    /// </summary>
+    private async Task<Dictionary<(JobType, string), string>> RulesAsync(
+        List<Job> jobs,
+        CancellationToken ct
+    )
+    {
+        List<Guid> Ids(JobType type) =>
+            jobs.Where(j => j.Type == type)
+                .Select(j => Guid.TryParse(j.Subject, out var id) ? id : (Guid?)null)
+                .OfType<Guid>()
+                .Distinct()
+                .ToList();
+
+        var tagRules = Ids(JobType.TagRule);
+        var filingRules = Ids(JobType.FilingRule);
+        var tags = new Dictionary<(JobType, string), string>();
+        if (tagRules.Count > 0)
+        {
+            foreach (
+                var rule in await db
+                    .TagRules.AsNoTracking()
+                    .Where(r => tagRules.Contains(r.Id))
+                    .Select(r => new { r.Id, r.Tag })
+                    .ToListAsync(ct)
+            )
+            {
+                tags[(JobType.TagRule, rule.Id.ToString())] = rule.Tag.Value;
+            }
+        }
+
+        if (filingRules.Count > 0)
+        {
+            foreach (
+                var rule in await db
+                    .FilingRules.AsNoTracking()
+                    .Where(r => filingRules.Contains(r.Id))
+                    .Select(r => new { r.Id, r.Tag })
+                    .ToListAsync(ct)
+            )
+            {
+                tags[(JobType.FilingRule, rule.Id.ToString())] = rule.Tag.Value;
+            }
+        }
+
+        return tags;
+    }
+
+    /// <summary>The files that <see cref="JobType.File"/> jobs file, by subject (the node id), as their current version.</summary>
+    private async Task<Dictionary<string, List<JobFile>>> FilingFilesAsync(
+        List<Job> jobs,
+        CancellationToken ct
+    )
+    {
+        var ids = jobs.Where(j => j.Type == JobType.File)
+            .Select(j => Guid.TryParse(j.Subject, out var id) ? id : (Guid?)null)
+            .OfType<Guid>()
+            .Distinct()
+            .ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var rows = await (
+            from n in db.Nodes.AsNoTracking()
+            join v in db.FileVersions.AsNoTracking() on n.CurrentVersionId equals v.Id
+            join u in db.Users.AsNoTracking() on n.OwnerId equals u.Id
+            where ids.Contains(n.Id)
+            select new
+            {
+                Node = n,
+                Version = v,
+                Owner = u.DisplayName,
+            }
+        ).ToListAsync(ct);
+        var folders = await drive.AncestorsAsync(rows.Select(r => r.Node).ToList(), ct);
+        return rows.ToDictionary(
+            r => r.Node.Id.ToString(),
+            r => new List<JobFile>
+            {
+                new(
+                    r.Node,
+                    r.Version,
+                    r.Node.IsTrashed ? JobFileUse.Trashed : JobFileUse.Current,
+                    r.Owner,
+                    folders[r.Node.Id]
+                ),
+            }
+        );
+    }
 
     /// <summary>
     /// The files that use each content, keyed by hex hash: files whose current version it is first, then trashed ones,
