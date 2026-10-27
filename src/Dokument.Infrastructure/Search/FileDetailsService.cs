@@ -34,6 +34,10 @@ public enum TextState
 /// <summary>What was read from a file version's bytes, with the edits on top (§13.5).</summary>
 /// <param name="Reading">Whether the metadata step is still to run.</param>
 /// <param name="Width">Pixels of an image or video.</param>
+/// <param name="DurationSeconds">
+/// A video's or audio file's length: what its metadata says, otherwise what ffprobe found (§14). Exiftool reads no
+/// length from some containers, such as Matroska.
+/// </param>
 public sealed record FileDetails(
     Node Node,
     FileVersion Version,
@@ -43,6 +47,7 @@ public sealed record FileDetails(
     int? PageCount,
     int? Width,
     int? Height,
+    double? DurationSeconds,
     VersionDetails? Edits,
     string? EditedByName
 );
@@ -118,6 +123,9 @@ public sealed class FileDetailsService(
         var preview = await db
             .BlobPreviews.AsNoTracking()
             .SingleOrDefaultAsync(p => p.BlobHash == hash && p.Status == PreviewStatus.Ready, ct);
+        var media = await db
+            .BlobMedia.AsNoTracking()
+            .SingleOrDefaultAsync(m => m.BlobHash == hash, ct);
         var pageCount = await db
             .BlobContents.Where(c => c.BlobHash == hash)
             .Select(c => c.PageCount)
@@ -143,8 +151,9 @@ public sealed class FileDetailsService(
             metadata,
             read,
             pageCount ?? preview?.PageCount,
-            read.Width ?? image?.Width,
-            read.Height ?? image?.Height,
+            read.Width ?? image?.Width ?? media?.Width,
+            read.Height ?? image?.Height ?? media?.Height,
+            metadata?.DurationSeconds ?? media?.DurationSeconds,
             edits,
             editor
         );

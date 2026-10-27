@@ -3581,7 +3581,8 @@
         "enum": [
           "thumbnail",
           "metadata",
-          "text"
+          "text",
+          "transcode"
         ]
       },
       "FileTags": {
@@ -4685,6 +4686,7 @@
           "state",
           "at",
           "ahead",
+          "progress",
           "jobId",
           "attempts",
           "error"
@@ -4705,6 +4707,13 @@
             "format": "date-time"
           },
           "ahead": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "progress": {
             "type": [
               "null",
               "integer"
@@ -5167,7 +5176,9 @@
           "skipped",
           "unsupported",
           "unreadable",
-          "failed"
+          "failed",
+          "onOpen",
+          "off"
         ]
       },
       "StorageReport": {
