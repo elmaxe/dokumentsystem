@@ -18,7 +18,11 @@ public sealed record AdminSettingsDto(
 );
 
 /// <param name="GotenbergUrl">Gotenberg's address, such as <c>http://gotenberg:3000</c>. Null or empty turns Office previews off (§10.3).</param>
-public sealed record OfficeSettingsDto(string? GotenbergUrl);
+/// <param name="Configured">The address comes from <c>GOTENBERG_URL</c> in the server's configuration and can't be changed here.</param>
+public sealed record OfficeSettingsDto(string? GotenbergUrl, bool Configured);
+
+/// <param name="GotenbergUrl">Gotenberg's address. Null or empty turns Office previews off.</param>
+public sealed record OfficeSettingsRequest(string? GotenbergUrl);
 
 public sealed record TestOfficeRequest(string Url);
 

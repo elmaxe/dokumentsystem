@@ -1789,6 +1789,10 @@ export interface components {
         NodeKind: "folder" | "file";
         OfficeSettingsDto: {
             gotenbergUrl: null | string;
+            configured: boolean;
+        };
+        OfficeSettingsRequest: {
+            gotenbergUrl: null | string;
         };
         PageMatchDto: {
             /** Format: int32 */
@@ -3879,7 +3883,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OfficeSettingsDto"];
+                "application/json": components["schemas"]["OfficeSettingsRequest"];
             };
         };
         responses: {

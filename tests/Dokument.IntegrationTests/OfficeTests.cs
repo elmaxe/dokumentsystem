@@ -82,7 +82,7 @@ public sealed class OfficeTests(PostgresFixture postgres) : IAsyncLifetime
             (
                 await admin.PutAsJsonAsync(
                     "/api/v1/admin/settings/office",
-                    new OfficeSettingsDto(GotenbergUrl),
+                    new OfficeSettingsRequest(GotenbergUrl),
                     Json.Options
                 )
             ).StatusCode
@@ -118,11 +118,47 @@ public sealed class OfficeTests(PostgresFixture postgres) : IAsyncLifetime
             (
                 await admin.PutAsJsonAsync(
                     "/api/v1/admin/settings/office",
-                    new OfficeSettingsDto("ftp://gotenberg"),
+                    new OfficeSettingsRequest("ftp://gotenberg"),
                     Json.Options
                 )
             ).StatusCode
         );
+    }
+
+    [Fact]
+    public async Task An_address_in_the_configuration_wins_over_the_admin_setting()
+    {
+        await using var app = await DokumentApp.StartAsync(
+            postgres,
+            new Dictionary<string, string?>(FastWorker) { [OfficeAddress.ConfigKey] = GotenbergUrl }
+        );
+        using var admin = await SignInAsync(app, Admin);
+
+        var settings = await admin.GetFromJsonAsync<AdminSettingsDto>(
+            "/api/v1/admin/settings",
+            Json.Options
+        );
+        Assert.Equal(new OfficeSettingsDto(GotenbergUrl, true), settings!.Office);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (
+                await admin.PutAsJsonAsync(
+                    "/api/v1/admin/settings/office",
+                    new OfficeSettingsRequest(null),
+                    Json.Options
+                )
+            ).StatusCode
+        );
+
+        // Nothing saved, and documents get their PDF straight away.
+        var notes = await UploadAsync(
+            admin,
+            "Anteckningar.docx",
+            TestFiles.Docx("Anteckningar", "Från mötet."),
+            null
+        );
+        var nodes = await WaitAsync(admin, n => n.ShownAsPdf);
+        Assert.Equal(ThumbnailState.Ready, nodes[notes].Thumbnail);
     }
 
     private static async Task<Dictionary<Guid, NodeDto>> WaitAsync(

@@ -778,6 +778,7 @@ function VideosSection({ settings }: { settings: AdminSettings }) {
 function OfficeSection({ settings }: { settings: AdminSettings }) {
   const { t } = useTranslation();
   const initial = settings.office.gotenbergUrl ?? "";
+  const configured = settings.office.configured;
   const [url, setUrl] = useState(initial);
   const [test, setTest] = useState<ProbeResult | "testing" | null>(null);
   const { busy, save } = useSave();
@@ -802,7 +803,8 @@ function OfficeSection({ settings }: { settings: AdminSettings }) {
             setTest(null);
           }}
           placeholder="http://gotenberg:3000"
-          hint={t("admin.office.addressHint")}
+          hint={configured ? t("admin.office.configured") : t("admin.office.addressHint")}
+          readOnly={configured}
           mono
           className="flex-1"
         />
@@ -817,7 +819,9 @@ function OfficeSection({ settings }: { settings: AdminSettings }) {
       />
       {!initial && !url.trim() && <Banner tone="info">{t("admin.office.off")}</Banner>}
       {!initial && url.trim() && <Banner tone="info">{t("admin.office.backfill")}</Banner>}
-      <SaveButton disabled={busy || url.trim() === initial} onClick={() => void save(() => admin.putOffice(url.trim() || null))} />
+      {!configured && (
+        <SaveButton disabled={busy || url.trim() === initial} onClick={() => void save(() => admin.putOffice(url.trim() || null))} />
+      )}
     </Section>
   );
 }

@@ -36,6 +36,7 @@ internal sealed partial class ThumbnailHandler(
     Gotenberg gotenberg,
     JobQueue jobs,
     SettingsStore settings,
+    OfficeAddress office,
     LiveChanges live,
     TimeProvider time,
     ILogger<ThumbnailHandler> logger
@@ -243,7 +244,7 @@ internal sealed partial class ThumbnailHandler(
         CancellationToken ct
     )
     {
-        if ((await settings.GetAsync(SettingKeys.Office, ct)).GotenbergUrl is not { } url)
+        if ((await office.GetAsync(settings, ct)).GotenbergUrl is not { } url)
         {
             return (RenderResult.Unsupported, null);
         }

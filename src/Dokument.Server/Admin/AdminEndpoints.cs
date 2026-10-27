@@ -81,6 +81,7 @@ public static class AdminEndpoints
     private static async Task<Ok<AdminSettingsDto>> GetSettings(
         SettingsStore settings,
         OidcSettings oidc,
+        OfficeAddress officeAddress,
         CancellationToken ct
     )
     {
@@ -91,7 +92,7 @@ public static class AdminEndpoints
         var scanner = await settings.GetAsync(SettingKeys.Scanner, ct);
         var textRecognition = await settings.GetAsync(SettingKeys.TextRecognition, ct);
         var videos = await settings.GetAsync(SettingKeys.Videos, ct);
-        var office = await settings.GetAsync(SettingKeys.Office, ct);
+        var office = await officeAddress.GetAsync(settings, ct);
         return TypedResults.Ok(
             new AdminSettingsDto(
                 new StorageSettingsDto(storage.DefaultQuota.Bytes),
@@ -101,7 +102,10 @@ public static class AdminEndpoints
                 new ScannerSettingsDto(scanner.Address?.ToString()),
                 new TextRecognitionDto(textRecognition.Enabled),
                 new VideoSettingsDto(videos.Copies, videos.MaxHeight),
-                new OfficeSettingsDto(office.GotenbergUrl?.Value),
+                new OfficeSettingsDto(
+                    office.GotenbergUrl?.Value,
+                    officeAddress.Configured is not null
+                ),
                 new SignInInfo(
                     oidc.Enabled,
                     oidc.ProviderName,
@@ -226,14 +230,23 @@ public static class AdminEndpoints
     }
 
     private static async Task<Results<Ok<OfficeSettingsDto>, ValidationProblem>> PutOffice(
-        OfficeSettingsDto request,
+        OfficeSettingsRequest request,
         HttpContext context,
         SettingsStore settings,
         PreviewService previews,
+        OfficeAddress officeAddress,
         TimeProvider time,
         CancellationToken ct
     )
     {
+        if (officeAddress.Configured is not null)
+        {
+            return Invalid(
+                "gotenbergUrl",
+                $"The address is set by {OfficeAddress.ConfigKey} in the server's configuration."
+            );
+        }
+
         ServiceUrl? url = null;
         if (!string.IsNullOrWhiteSpace(request.GotenbergUrl))
         {
@@ -252,7 +265,7 @@ public static class AdminEndpoints
             await previews.EnqueueOfficeAsync(time.GetUtcNow(), ct);
         }
 
-        return TypedResults.Ok(new OfficeSettingsDto(url?.Value));
+        return TypedResults.Ok(new OfficeSettingsDto(url?.Value, false));
     }
 
     private static async Task<Results<Ok<ProbeResult>, ValidationProblem>> TestOffice(

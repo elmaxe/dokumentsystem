@@ -910,6 +910,7 @@ export const en = {
         "Word, Excel, PowerPoint and OpenDocument files are previewed as PDFs, made by Gotenberg in a separate container. Leave the address empty to keep these previews off.",
       address: "Gotenberg address",
       addressHint: "Such as http://gotenberg:3000. Leave empty to keep Office previews off.",
+      configured: "Set by GOTENBERG_URL in the server's configuration, so it can't be changed here.",
       connected: "Connected · {{version}}",
       failed: "Can't reach Gotenberg: {{error}}",
       off: "Office previews are off. Documents show their type icon and can be downloaded.",

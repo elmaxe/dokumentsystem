@@ -2278,7 +2278,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/OfficeSettingsDto"
+                "$ref": "#/components/schemas/OfficeSettingsRequest"
               }
             }
           },
@@ -4528,6 +4528,24 @@
         ]
       },
       "OfficeSettingsDto": {
+        "required": [
+          "gotenbergUrl",
+          "configured"
+        ],
+        "type": "object",
+        "properties": {
+          "gotenbergUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "configured": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OfficeSettingsRequest": {
         "required": [
           "gotenbergUrl"
         ],

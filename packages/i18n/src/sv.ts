@@ -915,6 +915,7 @@ export const sv: Strings = {
         "Word-, Excel-, PowerPoint- och OpenDocument-filer förhandsgranskas som PDF, som Gotenberg gör i en separat container. Lämna adressen tom för att hålla förhandsgranskningen avstängd.",
       address: "Gotenbergs adress",
       addressHint: "Till exempel http://gotenberg:3000. Lämna tom för att hålla förhandsgranskning av Office-filer avstängd.",
+      configured: "Anges av GOTENBERG_URL i serverns konfiguration och kan inte ändras här.",
       connected: "Ansluten · {{version}}",
       failed: "Når inte Gotenberg: {{error}}",
       off: "Förhandsgranskning av Office-filer är avstängd. Dokumenten visas med sin typikon och kan laddas ned.",
