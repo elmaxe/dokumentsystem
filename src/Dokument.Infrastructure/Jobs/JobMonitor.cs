@@ -45,7 +45,8 @@ public sealed record JobFile(
 );
 
 /// <summary>A job with the files that use its content, best match first. Empty when no file uses it any more.</summary>
-public sealed record JobEntry(Job Job, IReadOnlyList<JobFile> Files);
+/// <param name="RuleTag">For a keyword-rule run: the rule's tag, null once the rule is deleted (§13.4).</param>
+public sealed record JobEntry(Job Job, IReadOnlyList<JobFile> Files, string? RuleTag = null);
 
 /// <summary>Where one processing step stands for a file (§10.1).</summary>
 public enum StepState
@@ -147,10 +148,7 @@ public sealed class JobMonitor(
         CancellationToken ct = default
     )
     {
-        // Keyword-rule runs aren't about a file; the admin Tags page shows them (§13.4).
-        var query = db
-            .Jobs.AsNoTracking()
-            .Where(j => j.Status == status && j.Type != JobType.TagRule);
+        var query = db.Jobs.AsNoTracking().Where(j => j.Status == status);
         if (type is not null)
         {
             query = query.Where(j => j.Type == type);
@@ -170,7 +168,13 @@ public sealed class JobMonitor(
             .Take(Math.Clamp(limit, 1, MaxPage))
             .ToListAsync(ct);
         var files = await FilesAsync(jobs.Select(j => j.Subject), ct);
-        return jobs.Select(j => new JobEntry(j, files.GetValueOrDefault(j.Subject, []))).ToList();
+        var rules = await RulesAsync(jobs, ct);
+        return jobs.Select(j => new JobEntry(
+                j,
+                files.GetValueOrDefault(j.Subject, []),
+                j.Type == JobType.TagRule ? rules.GetValueOrDefault(j.Subject) : null
+            ))
+            .ToList();
     }
 
     public async Task<Job?> FindAsync(Guid id, CancellationToken ct = default) =>
@@ -288,7 +292,7 @@ public sealed class JobMonitor(
             .SingleOrDefaultAsync(c => c.BlobHash == hash, ct);
 
         var steps = new List<ProcessingStep>();
-        foreach (var type in JobType.All)
+        foreach (var type in JobType.FileSteps)
         {
             // Finished jobs say nothing the results don't; a queued, running or failed one wins over them.
             var job = jobs.Where(j => j.Type == type && j.Status != JobStatus.Done)
@@ -363,15 +367,15 @@ public sealed class JobMonitor(
 
     private static int PipelineOrder(JobType type)
     {
-        for (var i = 0; i < JobType.All.Count; i++)
+        for (var i = 0; i < JobType.FileSteps.Count; i++)
         {
-            if (JobType.All[i] == type)
+            if (JobType.FileSteps[i] == type)
             {
                 return i;
             }
         }
 
-        return JobType.All.Count;
+        return JobType.FileSteps.Count;
     }
 
     /// <summary>How many jobs of the same type the claim query will take before this one.</summary>
@@ -392,6 +396,27 @@ public sealed class JobMonitor(
     /// The files that use each content, keyed by hex hash: files whose current version it is first, then trashed ones,
     /// then files that have it as an older version.
     /// </summary>
+    /// <summary>The tags of the keyword rules that <paramref name="jobs"/> run, by subject. Deleted rules are left out.</summary>
+    private async Task<Dictionary<string, string>> RulesAsync(List<Job> jobs, CancellationToken ct)
+    {
+        var ids = jobs.Where(j => j.Type == JobType.TagRule)
+            .Select(j => Guid.TryParse(j.Subject, out var id) ? id : (Guid?)null)
+            .OfType<Guid>()
+            .Distinct()
+            .ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var rules = await db
+            .TagRules.AsNoTracking()
+            .Where(r => ids.Contains(r.Id))
+            .Select(r => new { r.Id, r.Tag })
+            .ToListAsync(ct);
+        return rules.ToDictionary(r => r.Id.ToString(), r => r.Tag.Value);
+    }
+
     private async Task<Dictionary<string, List<JobFile>>> FilesAsync(
         IEnumerable<string> subjects,
         CancellationToken ct

@@ -3,8 +3,17 @@ using Dokument.Infrastructure.Jobs;
 
 namespace Dokument.Server.Files;
 
-/// <summary>A processing step, as the API names it (docs/design.md §10.2).</summary>
+/// <summary>A kind of job, as the API names it: a file's processing steps (docs/design.md §10.2), then keyword-rule runs (§13.4).</summary>
 public enum JobKind
+{
+    Thumbnail,
+    Metadata,
+    Text,
+    TagRule,
+}
+
+/// <summary>A step every file goes through, as the API names it (docs/design.md §10.2).</summary>
+public enum FileStep
 {
     Thumbnail,
     Metadata,
@@ -13,12 +22,22 @@ public enum JobKind
 
 public static class JobKinds
 {
+    public static FileStep StepOf(JobType type) =>
+        type switch
+        {
+            _ when type == JobType.Thumbnail => FileStep.Thumbnail,
+            _ when type == JobType.Metadata => FileStep.Metadata,
+            _ when type == JobType.Text => FileStep.Text,
+            _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Not a file step."),
+        };
+
     public static JobKind Of(JobType type) =>
         type switch
         {
             _ when type == JobType.Thumbnail => JobKind.Thumbnail,
             _ when type == JobType.Metadata => JobKind.Metadata,
             _ when type == JobType.Text => JobKind.Text,
+            _ when type == JobType.TagRule => JobKind.TagRule,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(type),
                 type,
@@ -35,6 +54,7 @@ public static class JobKinds
         {
             JobKind.Thumbnail => JobType.Thumbnail,
             JobKind.Metadata => JobType.Metadata,
+            JobKind.TagRule => JobType.TagRule,
             _ => JobType.Text,
         };
 }
@@ -49,7 +69,7 @@ public sealed record FileProcessing(List<ProcessingStepDto> Steps);
 /// <param name="Attempts">Admins only.</param>
 /// <param name="Error">Admins only: why the last attempt failed.</param>
 public sealed record ProcessingStepDto(
-    JobKind Step,
+    FileStep Step,
     StepState State,
     DateTimeOffset? At,
     int? Ahead,
@@ -60,7 +80,7 @@ public sealed record ProcessingStepDto(
 {
     public static ProcessingStepDto From(ProcessingStep step, bool admin) =>
         new(
-            JobKinds.Of(step.Type),
+            JobKinds.StepOf(step.Type),
             step.State,
             step.At,
             step.Ahead,

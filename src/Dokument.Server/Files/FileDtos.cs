@@ -71,7 +71,7 @@ public sealed record NodeDto(
             starred.Contains(node.Id),
             node.CurrentVersion is { } current
             && processing.TryGetValue(current.BlobHash, out var steps)
-                ? steps.Select(s => new ActiveStepDto(JobKinds.Of(s.Type), s.Running)).ToList()
+                ? steps.Select(s => new ActiveStepDto(JobKinds.StepOf(s.Type), s.Running)).ToList()
                 : [],
             tags.TryGetValue(node.Id, out var shown)
                 ? shown.Select(t => new TagDto(t.Name, t.Source, t.RuleId)).ToList()
@@ -81,7 +81,7 @@ public sealed record NodeDto(
 
 /// <summary>A processing step that hasn't finished yet.</summary>
 /// <param name="Running">False while it waits its turn.</param>
-public sealed record ActiveStepDto(JobKind Step, bool Running);
+public sealed record ActiveStepDto(FileStep Step, bool Running);
 
 /// <param name="Source">Who added it: a person (<c>user</c>), a keyword rule or the ML service. Show automatic ones differently.</param>
 /// <param name="RuleId">For <c>rule</c>: which keyword rule added it.</param>
