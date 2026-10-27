@@ -58,6 +58,7 @@ public static class AdminEndpoints
         admin.MapGet("/storage", GetStorageReport).WithName("AdminGetStorage");
         admin.MapGet("/users", ListUsers).WithName("AdminListUsers");
         admin.MapPut("/users/{id:guid}/quota", PutUserQuota).WithName("AdminPutUserQuota");
+        admin.MapJobEndpoints();
         return api;
     }
 

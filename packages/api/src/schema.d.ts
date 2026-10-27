@@ -348,6 +348,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/processing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Where the worker is with the file's current version: thumbnail, metadata and text. Admins also get each failed step's job and error. */
+        get: operations["GetProcessing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/versions/{versionId}/restore": {
         parameters: {
             query?: never;
@@ -425,6 +442,59 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What the file's current version says about itself (title, date taken, camera, place…), with people's edits on top. */
+        get: operations["GetFileDetails"];
+        /** @description Edits the current version's title, description and date taken, all three at once; null keeps what the file says. Later versions start with these edits. The file itself is never changed. */
+        put: operations["SetFileDetails"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The searchable text of the current version, page by page from `from`, with corrections in place. */
+        get: operations["GetFileText"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/text/{pageNo}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Corrects one page of the current version's text, or adds text to a page where none was read. Search uses it from then on. */
+        put: operations["SetFileTextPage"];
+        post?: never;
+        /** @description Drops a page's correction, so the text read from the file counts again. */
+        delete: operations["RevertFileTextPage"];
         options?: never;
         head?: never;
         patch?: never;
@@ -960,6 +1030,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/jobs/queues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminGetJobQueues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/jobs/queues/{type}/paused": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Paused queues start no new jobs; running ones finish. */
+        put: operations["AdminPauseJobQueue"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Running jobs longest-running first, queued ones in the order they will run, failed ones latest first. */
+        get: operations["AdminListJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/jobs/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminRetryJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/jobs/retry-failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Every failed job, or those of one type, with fresh attempts. */
+        post: operations["AdminRetryFailedJobs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Forgets a failed job without running it again. */
+        delete: operations["AdminClearJob"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/tag-rules": {
         parameters: {
             query?: never;
@@ -1004,7 +1174,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description How many files a rule would tag, with a few examples. Changes nothing. */
+        /** @description How many files a rule would tag, and which, a page at a time. Changes nothing. */
         post: operations["AdminPreviewTagRule"];
         delete?: never;
         options?: never;
@@ -1016,6 +1186,10 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ActiveStepDto: {
+            step: components["schemas"]["JobKind"];
+            running: boolean;
+        };
         AdminSettingsDto: {
             storage: components["schemas"]["StorageSettingsDto"];
             versions: components["schemas"]["VersionSettingsDto"];
@@ -1070,6 +1244,12 @@ export interface components {
             sessionId: string;
             csrfToken: null | string;
         };
+        /** @enum {unknown} */
+        DatePrecision: "year" | "month" | "day" | "time";
+        DetailField: {
+            key: string;
+            value: string;
+        };
         DuplicateCheckItem: {
             name: string;
             /** Format: int64 */
@@ -1093,13 +1273,72 @@ export interface components {
             path: components["schemas"]["PathEntry"][];
             inTrash: boolean;
         };
+        EditableTakenDto: {
+            value: null | components["schemas"]["TakenDto"];
+            read: null | components["schemas"]["TakenDto"];
+            edited: boolean;
+        };
+        EditableTextDto: {
+            value: null | string;
+            read: null | string;
+            edited: boolean;
+        };
         EmptyTrashResponse: {
             /** Format: int32 */
             items: number;
         };
+        FileDetailsDto: {
+            reading: boolean;
+            title: components["schemas"]["EditableTextDto"];
+            description: components["schemas"]["EditableTextDto"];
+            taken: components["schemas"]["EditableTakenDto"];
+            camera: null | string;
+            lens: null | string;
+            /** Format: int32 */
+            width: null | number;
+            /** Format: int32 */
+            height: null | number;
+            /** Format: double */
+            durationSeconds: null | number;
+            /** Format: int32 */
+            pageCount: null | number;
+            place: null | components["schemas"]["PlaceDto"];
+            fields: components["schemas"]["DetailField"][];
+            editedBy: null | string;
+            /** Format: date-time */
+            editedAt: null | string;
+        };
+        FileDetailsRequest: {
+            title: null | string;
+            description: null | string;
+            taken: null | string;
+        };
+        FileProcessing: {
+            steps: components["schemas"]["ProcessingStepDto"][];
+        };
         FileTags: {
             tags: components["schemas"]["TagDto"][];
             removed: string[];
+        };
+        FileTextDto: {
+            state: components["schemas"]["TextState"];
+            ocrSkipped: boolean;
+            /** Format: int32 */
+            pageCount: null | number;
+            /** Format: int32 */
+            totalPages: number;
+            /** Format: int32 */
+            maxPage: number;
+            /** Format: int32 */
+            words: number;
+            /** Format: int32 */
+            editedPages: number;
+            pages: components["schemas"]["TextPageDto"][];
+            /** Format: int32 */
+            nextFrom: null | number;
+        };
+        FileTextPageRequest: {
+            text: string;
         };
         /**
          * @default fail
@@ -1150,6 +1389,64 @@ export interface components {
                 [key: string]: string[];
             };
         };
+        JobDto: {
+            /** Format: uuid */
+            id: string;
+            type: components["schemas"]["JobKind"];
+            status: components["schemas"]["JobStatus"];
+            priority: components["schemas"]["JobPriority"];
+            /** Format: int32 */
+            attempts: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt: null | string;
+            /** Format: date-time */
+            finishedAt: null | string;
+            /** Format: date-time */
+            runAfter: string;
+            error: null | string;
+            /** Format: int64 */
+            size: null | number;
+            mimeType: null | string;
+            files: components["schemas"]["JobFileDto"][];
+        };
+        JobFileDto: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            /** Format: uuid */
+            ownerId: string;
+            ownerName: string;
+            use: components["schemas"]["JobFileUse"];
+            /** Format: int32 */
+            versionNumber: number;
+            path: components["schemas"]["PathEntry"][];
+        };
+        /** @enum {unknown} */
+        JobFileUse: "current" | "trashed" | "olderVersion";
+        /** @enum {unknown} */
+        JobKind: "thumbnail" | "metadata" | "text";
+        JobList: {
+            items: components["schemas"]["JobDto"][];
+            more: boolean;
+        };
+        /** @enum {unknown} */
+        JobPriority: "background" | "interactive";
+        JobQueueDto: {
+            type: components["schemas"]["JobKind"];
+            /** Format: int32 */
+            running: number;
+            /** Format: int32 */
+            waiting: number;
+            /** Format: int32 */
+            failed: number;
+            /** Format: int32 */
+            doneLastWeek: number;
+            paused: boolean;
+        };
+        /** @enum {unknown} */
+        JobStatus: "queued" | "running" | "done" | "failed";
         KeepForeverRequest: {
             keepForever: boolean;
         };
@@ -1213,6 +1510,7 @@ export interface components {
             thumbnail: components["schemas"]["ThumbnailState"];
             contents: null | components["schemas"]["FolderCounts"];
             starred: boolean;
+            processing: components["schemas"]["ActiveStepDto"][];
             tags: components["schemas"]["TagDto"][];
         };
         NodeIdsRequest: {
@@ -1227,15 +1525,37 @@ export interface components {
             boxes: number[][];
         };
         /** @enum {unknown} */
-        PageSource: "text" | "ocr" | "metadata";
+        PageSource: "text" | "ocr" | "metadata" | "added";
         PathEntry: {
             /** Format: uuid */
             id: string;
             name: string;
         };
+        PauseQueueRequest: {
+            paused: boolean;
+        };
+        PlaceDto: {
+            /** Format: double */
+            latitude: number;
+            /** Format: double */
+            longitude: number;
+        };
         ProbeResult: {
             reachable: boolean;
             version: null | string;
+            error: null | string;
+        };
+        ProcessingStepDto: {
+            step: components["schemas"]["JobKind"];
+            state: components["schemas"]["StepState"];
+            /** Format: date-time */
+            at: null | string;
+            /** Format: int32 */
+            ahead: null | number;
+            /** Format: uuid */
+            jobId: null | string;
+            /** Format: int32 */
+            attempts: null | number;
             error: null | string;
         };
         QuotaDto: {
@@ -1338,6 +1658,8 @@ export interface components {
         StarredListing: {
             items: components["schemas"]["StarredItem"][];
         };
+        /** @enum {unknown} */
+        StepState: "notStarted" | "waiting" | "paused" | "running" | "done" | "nothingFound" | "skipped" | "unsupported" | "unreadable" | "failed";
         StorageReport: {
             /** Format: int64 */
             filesBytes: number;
@@ -1382,24 +1704,35 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        TagRuleExampleDto: {
+        TagRuleListing: {
+            rules: components["schemas"]["TagRuleDto"][];
+        };
+        TagRuleMatchDto: {
             /** Format: uuid */
             nodeId: string;
             name: string;
             mimeType: null | string;
+            owner: string;
             snippet: null | components["schemas"]["SnippetDto"];
-        };
-        TagRuleListing: {
-            rules: components["schemas"]["TagRuleDto"][];
         };
         TagRulePreviewDto: {
             /** Format: int32 */
             files: number;
-            examples: components["schemas"]["TagRuleExampleDto"][];
+            matches: components["schemas"]["TagRuleMatchDto"][];
         };
         TagRulePreviewRequest: {
             tag: null | string;
             words: string;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Format: int32
+             * @default 50
+             */
+            limit: number;
         };
         TagRuleRequest: {
             tag: string;
@@ -1417,12 +1750,28 @@ export interface components {
         TagSuggestions: {
             tags: components["schemas"]["TagSuggestion"][];
         };
+        TakenDto: {
+            value: string;
+            precision: components["schemas"]["DatePrecision"];
+            /** Format: int32 */
+            offsetMinutes: null | number;
+        };
         TestMlRequest: {
             url: string;
             apiKey: null | string;
         };
         TestScannerRequest: {
             address: string;
+        };
+        TextPageDto: {
+            /** Format: int32 */
+            pageNo: number;
+            source: components["schemas"]["PageSource"];
+            text: string;
+            edited: boolean;
+            editedBy: null | string;
+            /** Format: date-time */
+            editedAt: null | string;
         };
         TextProgress: {
             /** Format: int32 */
@@ -1437,6 +1786,8 @@ export interface components {
         TextRecognitionDto: {
             enabled: boolean;
         };
+        /** @enum {unknown} */
+        TextState: "reading" | "ready" | "empty" | "unsupported" | "unreadable";
         /** @enum {unknown} */
         ThumbnailState: "none" | "pending" | "ready";
         TrashItem: {
@@ -2022,6 +2373,28 @@ export interface operations {
             };
         };
     };
+    GetProcessing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileProcessing"];
+                };
+            };
+        };
+    };
     RestoreVersion: {
         parameters: {
             query?: never;
@@ -2137,6 +2510,123 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StorageUsage"];
                 };
+            };
+        };
+    };
+    GetFileDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileDetailsDto"];
+                };
+            };
+        };
+    };
+    SetFileDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileDetailsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetFileText: {
+        parameters: {
+            query?: {
+                from?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileTextDto"];
+                };
+            };
+        };
+    };
+    SetFileTextPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                pageNo: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileTextPageRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RevertFileTextPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                pageNo: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2934,6 +3424,178 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminGetJobQueues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueueDto"][];
+                };
+            };
+        };
+    };
+    AdminPauseJobQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PauseQueueRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueueDto"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminListJobs: {
+        parameters: {
+            query?: {
+                status?: string;
+                type?: string;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminRetryJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminRetryFailedJobs: {
+        parameters: {
+            query?: {
+                type?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueueDto"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminClearJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Not Found */
             404: {

@@ -18,6 +18,9 @@ public sealed record JobType
     /// <summary>Runs one keyword rule over the stored text of every blob, after an admin changed it (§13.4).</summary>
     public static readonly JobType TagRule = new("tag-rule");
 
+    /// <summary>The types the worker runs, in the order the admin Jobs page shows them (§10.1).</summary>
+    public static readonly IReadOnlyList<JobType> All = [Thumbnail, Metadata, Text];
+
     private JobType(string name) => Name = name;
 
     public string Name { get; }

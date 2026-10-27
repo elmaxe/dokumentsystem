@@ -6,7 +6,9 @@ import { useFormat } from "../lib/display";
 import { contentsLabel, isFolder, isPaged, type FileItem } from "../lib/files";
 import { Avatar, type AvatarTone } from "./Avatar";
 import { Button, IconButton } from "./Button";
+import { DetailsSection, TextSection, type DetailsSectionProps, type TextSectionProps } from "./FileInfo";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { ProcessingSection, type ProcessingSectionProps } from "./Processing";
 import type { SharePerson } from "./ShareDialog";
 import { VersionHistory, type VersionHistoryProps } from "./VersionHistory";
 
@@ -36,6 +38,11 @@ export type DetailsPanelProps = {
   versions?: VersionHistoryProps;
   /** The Tags section, under the file facts in the Info tab (§13.4). */
   tags?: ReactNode;
+  /** What the file says about itself, and its searchable text (§13.5); shown under its info once loaded. */
+  fileDetails?: DetailsSectionProps;
+  fileText?: TextSectionProps;
+  /** Where the worker is with the file; shown under its info once loaded. */
+  processing?: ProcessingSectionProps;
   className?: string;
 };
 
@@ -59,6 +66,9 @@ export function DetailsPanel({
   onStarChange,
   versions,
   tags,
+  fileDetails,
+  fileText,
+  processing,
   className,
 }: DetailsPanelProps) {
   const { t } = useTranslation();
@@ -146,6 +156,9 @@ export function DetailsPanel({
               )}
             </dl>
             {tags}
+            {!folder && fileDetails && <DetailsSection {...fileDetails} />}
+            {!folder && fileText && <TextSection {...fileText} />}
+            {!folder && processing && <ProcessingSection {...processing} />}
           </Tabs.Content>
           <Tabs.Content value="sharing" className="flex flex-col gap-2 pt-3 outline-none">
             <p className="m-0 text-body-md text-on-surface-variant">

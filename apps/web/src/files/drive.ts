@@ -1,6 +1,9 @@
 import type {
   DuplicateCheckResult,
   FileTags,
+  FileDetailsDto,
+  FileProcessing,
+  FileTextDto,
   FolderConflictPolicy,
   FolderListing,
   FolderTreeEntry,
@@ -81,15 +84,20 @@ export const toItem = (node: NodeDto): Item => ({
   thumbnailPending: node.thumbnail === "pending",
   starred: node.starred,
   tags: node.tags.map((tag) => ({ name: tag.name, source: tag.source })),
+  processing: node.processing,
   node,
 });
 
 /**
- * Thumbnails being made appear on their own (§16.4): the worker's live notice brings them. Without a live connection
- * the listing is polled instead, every 2 s at first, then every 10 s for slow ones.
+ * Whether a node's listing should be polled because the worker still has something to do for it (§10.1, §16.4).
+ * A finished thumbnail arrives as a live notice, so it's polled for only without a live connection; the other
+ * steps don't send notices yet, so they're always polled for.
  */
-const pollWhilePending = (pending: boolean, updates: number) =>
-  pending && !isLiveConnected() ? (updates < 30 ? 2_000 : 10_000) : false;
+const busy = (node: NodeDto) =>
+  node.processing.some((s) => s.step !== "thumbnail") || (node.thumbnail === "pending" && !isLiveConnected());
+
+/** Polled while the worker is busy with something on screen: every 2 s at first, then every 10 s for slow ones. */
+const pollWhilePending = (pending: boolean, updates: number) => (pending ? (updates < 30 ? 2_000 : 10_000) : false);
 
 export const folderQuery = (folderId: string | null) =>
   queryOptions({
@@ -97,10 +105,7 @@ export const folderQuery = (folderId: string | null) =>
     queryFn: (): Promise<FolderListing> =>
       unwrap(api.GET("/api/v1/nodes", { params: { query: folderId ? { folderId } : {} } })),
     refetchInterval: (query) =>
-      pollWhilePending(
-        query.state.data?.items.some((item) => item.thumbnail === "pending") ?? false,
-        query.state.dataUpdateCount,
-      ),
+      pollWhilePending(query.state.data?.items.some(busy) ?? false, query.state.dataUpdateCount),
   });
 
 export const nodeQuery = (id: string) =>
@@ -108,8 +113,42 @@ export const nodeQuery = (id: string) =>
     queryKey: ["node", id],
     queryFn: (): Promise<NodeDetails> => unwrap(api.GET("/api/v1/nodes/{id}", { params: { path: { id } } })),
     refetchInterval: (query) =>
-      pollWhilePending(query.state.data?.node.thumbnail === "pending", query.state.dataUpdateCount),
+      pollWhilePending(!!query.state.data && busy(query.state.data.node), query.state.dataUpdateCount),
   });
+
+/** A file's processing steps for the details panel, polled while a step is still to do (only thumbnails send notices). */
+export const processingQuery = (id: string, versionId: string | null) =>
+  queryOptions({
+    queryKey: ["processing", id, versionId],
+    queryFn: (): Promise<FileProcessing> =>
+      unwrap(api.GET("/api/v1/nodes/{id}/processing", { params: { path: { id } } })),
+    refetchInterval: (query) =>
+      pollWhilePending(
+        query.state.data?.steps.some((s) => ["waiting", "paused", "running"].includes(s.state)) ?? false,
+        query.state.dataUpdateCount,
+      ),
+  });
+
+/** What the file says about itself, with edits (§13.5), polled while the worker is still reading it. */
+export const fileDetailsQuery = (id: string, versionId: string | null) =>
+  queryOptions({
+    queryKey: ["fileDetails", id, versionId],
+    queryFn: (): Promise<FileDetailsDto> =>
+      unwrap(api.GET("/api/v1/nodes/{id}/details", { params: { path: { id } } })),
+    refetchInterval: (query) => pollWhilePending(query.state.data?.reading ?? false, query.state.dataUpdateCount),
+  });
+
+/** The start of the file's text for its info: enough pages to say where the text came from. */
+export const fileTextQuery = (id: string, versionId: string | null) =>
+  queryOptions({
+    queryKey: ["fileText", id, versionId, "start"],
+    queryFn: () => fileTextPage(id, 1, 5),
+    refetchInterval: (query) =>
+      pollWhilePending(query.state.data?.state === "reading", query.state.dataUpdateCount),
+  });
+
+export const fileTextPage = (id: string, from: number, limit = 20): Promise<FileTextDto> =>
+  unwrap(api.GET("/api/v1/nodes/{id}/text", { params: { path: { id }, query: { from, limit } } }));
 
 export const versionsQuery = (id: string) =>
   queryOptions({
@@ -210,6 +249,13 @@ export const drive = {
         body: { keepForever },
       }),
     ),
+  /** Edits the current version's title, description and date taken (§13.5); null keeps what the file says. */
+  setDetails: (id: string, body: { title: string | null; description: string | null; taken: string | null }) =>
+    send(api.PUT("/api/v1/nodes/{id}/details", { params: { path: { id } }, body })),
+  setTextPage: (id: string, pageNo: number, text: string) =>
+    send(api.PUT("/api/v1/nodes/{id}/text/{pageNo}", { params: { path: { id, pageNo } }, body: { text } })),
+  revertTextPage: (id: string, pageNo: number) =>
+    send(api.DELETE("/api/v1/nodes/{id}/text/{pageNo}", { params: { path: { id, pageNo } } })),
   trash: (ids: string[]) => send(api.POST("/api/v1/nodes/trash", { body: { ids } })),
   changeTags: (ids: string[], change: { add?: string[]; remove?: string[] }) =>
     send(api.POST("/api/v1/nodes/tags", { body: { ids, add: change.add ?? [], remove: change.remove ?? [] } })),

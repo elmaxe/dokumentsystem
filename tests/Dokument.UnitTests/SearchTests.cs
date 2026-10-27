@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Dokument.Domain.Search;
 using Dokument.Tests;
@@ -118,7 +119,28 @@ public class MetadataTests
         Assert.Contains("FUJIFILM X-T30", result.SearchText);
         Assert.Contains("Semester, Gotland", result.SearchText);
         Assert.DoesNotContain("Title", result.Tags.Keys);
+        Assert.True(result.TakenOffsetKnown);
+        Assert.Null(result.Place);
     }
+
+    [Fact]
+    public void Reads_the_GPS_position_and_whether_the_camera_said_its_offset()
+    {
+        var json = """
+            [{"SourceFile":"x.jpg","DateTimeOriginal":"2024:06:14 10:00:00","GPSPosition":"59.3157 -18.0335"}]
+            """;
+        var result = ExifTool.Parse(Encoding.UTF8.GetBytes(json));
+
+        Assert.False(result.TakenOffsetKnown);
+        Assert.Equal(new GeoPoint(59.3157, -18.0335), result.Place);
+    }
+
+    [Theory]
+    [InlineData("0 0")]
+    [InlineData("91 10")]
+    [InlineData("59.3")]
+    [InlineData("")]
+    public void Ignores_GPS_without_a_fix(string value) => Assert.Null(ExifTool.PlaceOf(value));
 
     [Theory]
     [InlineData("Canon", "Canon EOS R5", "Canon EOS R5")]
@@ -145,6 +167,41 @@ public class MetadataTests
     [InlineData("")]
     public void Ignores_empty_or_broken_dates(string value) =>
         Assert.Null(ExifTool.DateOf(value, null));
+}
+
+public class PartialDateTests
+{
+    [Theory]
+    [InlineData("1974", DatePrecision.Year, "1974-01-01T00:00:00Z", "1974")]
+    [InlineData(" 1974-07 ", DatePrecision.Month, "1974-07-01T00:00:00Z", "1974-07")]
+    [InlineData("1974-07-14", DatePrecision.Day, "1974-07-14T00:00:00Z", "1974-07-14")]
+    [InlineData("1974-07-14 15:30", DatePrecision.Time, "1974-07-14T15:30:00Z", "1974-07-14 15:30")]
+    [InlineData(
+        "1974-07-14T15:30:59",
+        DatePrecision.Time,
+        "1974-07-14T15:30:00Z",
+        "1974-07-14 15:30"
+    )]
+    public void Reads_dates_known_to_the_year_month_day_or_minute(
+        string input,
+        DatePrecision precision,
+        string start,
+        string written
+    )
+    {
+        Assert.True(PartialDate.TryParse(input, out var date));
+        Assert.Equal(precision, date.Precision);
+        Assert.Equal(DateTimeOffset.Parse(start, CultureInfo.InvariantCulture), date.Start);
+        Assert.Equal(written, date.ToString());
+    }
+
+    [Theory]
+    [InlineData("juli 1974")]
+    [InlineData("1974-13")]
+    [InlineData("74")]
+    [InlineData("")]
+    public void Refuses_anything_else(string input) =>
+        Assert.False(PartialDate.TryParse(input, out _));
 }
 
 public class TextRecognitionTests

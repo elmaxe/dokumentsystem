@@ -39,14 +39,21 @@ export const tagRulesQuery = queryOptions({
   refetchInterval: (query) => (query.state.data?.some((rule) => rule.running) ? 2_000 : false),
 });
 
+/** Files per page in the rule preview. */
+export const tagRulePreviewPage = 50;
+
 export const admin = {
   createTagRule: (tag: string, words: string, enabled: boolean) =>
     unwrap(api.POST("/api/v1/admin/tag-rules", { body: { tag, words, enabled } })),
   updateTagRule: (id: string, tag: string, words: string, enabled: boolean) =>
     unwrap(api.PUT("/api/v1/admin/tag-rules/{id}", { params: { path: { id } }, body: { tag, words, enabled } })),
   deleteTagRule: (id: string) => send(api.DELETE("/api/v1/admin/tag-rules/{id}", { params: { path: { id } } })),
-  previewTagRule: (tag: string, words: string): Promise<TagRulePreview> =>
-    unwrap(api.POST("/api/v1/admin/tag-rules/preview", { body: { tag: tag || null, words } })),
+  previewTagRule: (tag: string, words: string, offset: number): Promise<TagRulePreview> =>
+    unwrap(
+      api.POST("/api/v1/admin/tag-rules/preview", {
+        body: { tag: tag || null, words, offset, limit: tagRulePreviewPage },
+      }),
+    ),
   putStorage: (defaultQuotaBytes: number | null) =>
     unwrap(api.PUT("/api/v1/admin/settings/storage", { body: { defaultQuotaBytes } })),
   putVersions: (keepDays: number, maxVersions: number) =>

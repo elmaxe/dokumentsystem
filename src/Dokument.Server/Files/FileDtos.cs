@@ -2,6 +2,7 @@ using Dokument.Domain.Files;
 using Dokument.Domain.Previews;
 using Dokument.Domain.Tags;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Tags;
 
 namespace Dokument.Server.Files;
@@ -12,6 +13,10 @@ namespace Dokument.Server.Files;
 /// <param name="Thumbnail">Whether <c>/nodes/{id}/thumbnail</c> has an image yet. Pending means the worker is on it; poll or wait.</param>
 /// <param name="Contents">How many files and folders a folder holds, at any depth. Null for files.</param>
 /// <param name="Starred">Whether the person asking starred it. Stars are each person's own.</param>
+/// <param name="Processing">
+/// The steps the worker still has to do for the current version, in pipeline order; empty when it is done. Files with
+/// any show a "Processing" badge. See <c>/nodes/{id}/processing</c> for every step.
+/// </param>
 /// <param name="Tags">The file's tags, by name: the ones people added and the automatic ones nobody removed (§13.4).</param>
 public sealed record NodeDto(
     Guid Id,
@@ -30,6 +35,7 @@ public sealed record NodeDto(
     ThumbnailState Thumbnail,
     FolderCounts? Contents,
     bool Starred,
+    List<ActiveStepDto> Processing,
     List<TagDto> Tags
 )
 {
@@ -39,6 +45,7 @@ public sealed record NodeDto(
         IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails,
         IReadOnlyDictionary<Guid, FolderContents> folders,
         IReadOnlySet<Guid> starred,
+        IReadOnlyDictionary<ContentHash, List<ActiveStep>> processing,
         IReadOnlyDictionary<Guid, List<TagView>> tags
     ) =>
         new(
@@ -62,11 +69,19 @@ public sealed record NodeDto(
                 : ThumbnailState.None,
             contents is null ? null : new FolderCounts(contents.Files, contents.Folders),
             starred.Contains(node.Id),
+            node.CurrentVersion is { } current
+            && processing.TryGetValue(current.BlobHash, out var steps)
+                ? steps.Select(s => new ActiveStepDto(JobKinds.Of(s.Type), s.Running)).ToList()
+                : [],
             tags.TryGetValue(node.Id, out var shown)
                 ? shown.Select(t => new TagDto(t.Name, t.Source, t.RuleId)).ToList()
                 : []
         );
 }
+
+/// <summary>A processing step that hasn't finished yet.</summary>
+/// <param name="Running">False while it waits its turn.</param>
+public sealed record ActiveStepDto(JobKind Step, bool Running);
 
 /// <param name="Source">Who added it: a person (<c>user</c>), a keyword rule or the ML service. Show automatic ones differently.</param>
 /// <param name="RuleId">For <c>rule</c>: which keyword rule added it.</param>

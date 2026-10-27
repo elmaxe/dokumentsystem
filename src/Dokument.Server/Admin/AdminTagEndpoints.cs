@@ -41,18 +41,28 @@ public sealed record TagRuleListing(List<TagRuleDto> Rules);
 public sealed record TagRuleRequest(string Tag, string Words, bool Enabled = true);
 
 /// <param name="Tag">Leaves out files someone took this tag off, when given.</param>
-public sealed record TagRulePreviewRequest(string? Tag, string Words);
+/// <param name="Offset">How many matching files to skip, for the next page.</param>
+/// <param name="Limit">Files per page, 1 to 100.</param>
+public sealed record TagRulePreviewRequest(
+    string? Tag,
+    string Words,
+    int Offset = 0,
+    int Limit = 50
+);
 
+/// <param name="Owner">The owner's name; admins see every owner's files.</param>
 /// <param name="Snippet">Where the rule matched, with the words marked.</param>
-public sealed record TagRuleExampleDto(
+public sealed record TagRuleMatchDto(
     Guid NodeId,
     string Name,
     string? MimeType,
+    string Owner,
     SnippetDto? Snippet
 );
 
 /// <param name="Files">Live files, of every owner, that would show the tag.</param>
-public sealed record TagRulePreviewDto(int Files, List<TagRuleExampleDto> Examples);
+/// <param name="Matches">One page of them, newest first.</param>
+public sealed record TagRulePreviewDto(int Files, List<TagRuleMatchDto> Matches);
 
 /// <summary>Keyword rules (docs/design.md §13.4), on the admin Tags page. Admins only.</summary>
 public static class AdminTagEndpoints
@@ -82,7 +92,7 @@ public static class AdminTagEndpoints
             .MapPost("/preview", Preview)
             .WithName("AdminPreviewTagRule")
             .WithDescription(
-                "How many files a rule would tag, with a few examples. Changes nothing."
+                "How many files a rule would tag, and which, a page at a time. Changes nothing."
             );
         return api;
     }
@@ -150,15 +160,22 @@ public static class AdminTagEndpoints
         CancellationToken ct
     )
     {
-        var preview = await rules.PreviewAsync(request.Tag, request.Words, ct);
+        var preview = await rules.PreviewAsync(
+            request.Tag,
+            request.Words,
+            request.Offset,
+            request.Limit,
+            ct
+        );
         return TypedResults.Ok(
             new TagRulePreviewDto(
                 preview.Files,
                 preview
-                    .Examples.Select(e => new TagRuleExampleDto(
+                    .Matches.Select(e => new TagRuleMatchDto(
                         e.NodeId,
                         e.Name,
                         e.MimeType,
+                        e.OwnerName,
                         e.Snippet is Snippet s
                             ? new SnippetDto(s.Text, [.. s.Highlights], s.CutStart, s.CutEnd)
                             : null

@@ -19,10 +19,17 @@ namespace Dokument.Infrastructure.Tags;
 public sealed record TagRuleSummary(TagRule Rule, int Files, bool Running);
 
 /// <summary>A file a rule would tag, for the preview. Admins see every owner's files, as on the Jobs page.</summary>
-public sealed record TagRuleExample(Guid NodeId, string Name, string? MimeType, Snippet? Snippet);
+public sealed record TagRuleMatch(
+    Guid NodeId,
+    string Name,
+    string? MimeType,
+    string OwnerName,
+    Snippet? Snippet
+);
 
 /// <param name="Files">Live files that would show the tag, leaving out those it was removed from.</param>
-public sealed record TagRulePreview(int Files, IReadOnlyList<TagRuleExample> Examples);
+/// <param name="Matches">One page of those files, newest first.</param>
+public sealed record TagRulePreview(int Files, IReadOnlyList<TagRuleMatch> Matches);
 
 /// <summary>
 /// Keyword rules (docs/design.md §13.4): an admin's tag plus words, matched against the stored text and metadata of
@@ -38,7 +45,9 @@ public sealed class TagRules(
 )
 {
     public const int MaxRules = 500;
-    private const int ExampleCount = 3;
+
+    /// <summary>The most files one preview page lists.</summary>
+    public const int MaxPage = 100;
 
     public async Task<List<TagRuleSummary>> ListAsync(CancellationToken ct = default)
     {
@@ -169,6 +178,8 @@ public sealed class TagRules(
     public async Task<TagRulePreview> PreviewAsync(
         string? tag,
         string words,
+        int offset,
+        int limit,
         CancellationToken ct = default
     )
     {
@@ -189,14 +200,20 @@ public sealed class TagRules(
                 key == null || !db.NodeTagRemovals.Any(r => r.NodeId == n.Id && r.TagKey == key)
             );
         var count = await files.CountAsync(ct);
-        var examples = await files
+        var page = await files
             .Include(n => n.CurrentVersion)
             .OrderByDescending(n => n.ModifiedAt)
-            .Take(ExampleCount)
+            .ThenBy(n => n.Id)
+            .Skip(Math.Max(0, offset))
+            .Take(Math.Clamp(limit, 1, MaxPage))
             .ToListAsync(ct);
+        var ownerIds = page.Select(n => n.OwnerId).Distinct().ToList();
+        var owners = await db
+            .Users.Where(u => ownerIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
         var query = BmQuery.Rule(parsed);
-        var result = new List<TagRuleExample>();
-        foreach (var node in examples)
+        var result = new List<TagRuleMatch>();
+        foreach (var node in page)
         {
             var hash = node.CurrentVersion!.BlobHash.ToArray();
             var text = await db
@@ -205,10 +222,11 @@ public sealed class TagRules(
                 )
                 .FirstOrDefaultAsync(ct);
             result.Add(
-                new TagRuleExample(
+                new TagRuleMatch(
                     node.Id,
                     node.Name.Value,
                     node.CurrentVersion.MimeType,
+                    owners.GetValueOrDefault(node.OwnerId, ""),
                     text is null ? null : Highlighter.Snip(text, parsed.AllWords, 120)
                 )
             );

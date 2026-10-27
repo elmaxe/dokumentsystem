@@ -36,6 +36,8 @@ public static class AuditActions
     public const string VersionKeepForever = "version.keep_forever";
     public const string NodeRename = "node.rename";
     public const string NodeMove = "node.move";
+    public const string FileDetailsEdit = "file.details_edit";
+    public const string FileTextEdit = "file.text_edit";
     public const string FileDownload = "file.download";
     public const string NodeTrash = "node.trash";
     public const string NodeRestore = "node.restore";

@@ -16,12 +16,12 @@ import {
   useFormat,
   useSnackbar,
 } from "@dokument/ui";
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../files/drive";
 import { AdminFrame } from "./AdminPage";
-import { admin, tagRulesQuery } from "./adminApi";
+import { admin, tagRulePreviewPage, tagRulesQuery } from "./adminApi";
 
 /**
  * Admin → Tags (docs/design.md §13.4): keyword rules that tag files whose text or details contain one of the words.
@@ -156,7 +156,7 @@ export function AdminTagsPage() {
   );
 }
 
-/** Adds or edits a rule, with a live count and a few examples of what it would tag. */
+/** Adds or edits a rule, with a live count and the list of files it would tag. */
 function RuleDialog({
   rule,
   onClose,
@@ -182,13 +182,20 @@ function RuleDialog({
     return () => clearTimeout(timer);
   }, [words]);
 
-  const preview = useQuery({
+  const preview = useInfiniteQuery({
     queryKey: ["admin", "tag-rule-preview", tag.trim(), typed.trim()],
-    queryFn: () => admin.previewTagRule(tag.trim(), typed.trim()),
+    queryFn: ({ pageParam }) => admin.previewTagRule(tag.trim(), typed.trim(), pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.length * tagRulePreviewPage;
+      return loaded < last.files ? loaded : undefined;
+    },
     enabled: !!rule && typed.trim().replace(/[\s,"]/g, "").length > 0,
     placeholderData: keepPreviousData,
     retry: false,
   });
+  const files = preview.data?.pages[0]?.files ?? 0;
+  const matches = preview.data?.pages.flatMap((page) => page.matches) ?? [];
 
   const save = async () => {
     setSaving(true);
@@ -238,25 +245,45 @@ function RuleDialog({
           <div className="flex flex-col gap-2 rounded-md bg-surface-container-lowest p-3" aria-live="polite">
             <span className="flex items-center gap-2 text-title-sm">
               <Icon name="preview" className="text-primary" />
-              {preview.isFetching
+              {preview.isFetching && !preview.isFetchingNextPage
                 ? t("admin.tags.previewing")
-                : preview.data.files > 0
-                  ? t("admin.tags.preview", { count: preview.data.files })
+                : files > 0
+                  ? t("admin.tags.preview", { count: files })
                   : t("admin.tags.previewNone")}
             </span>
-            {preview.data.examples.map((example) => (
-              <span key={example.nodeId} className="flex min-w-0 items-center gap-2 text-body-sm">
-                <FileTypeIcon kind={kindOf(example.name, example.mimeType)} size="sm" />
-                <span className="max-w-[45%] shrink-0 truncate font-medium text-on-surface">{example.name}</span>
-                {example.snippet && (
-                  <span className="min-w-0 truncate text-on-surface-variant">
-                    “{example.snippet.cutStart && "… "}
-                    <Highlighted text={example.snippet.text} ranges={example.snippet.highlights} />
-                    {example.snippet.cutEnd && " …"}”
-                  </span>
+            {matches.length > 0 && (
+              <ul className="-mx-1 flex max-h-72 flex-col gap-2 overflow-y-auto px-1">
+                {matches.map((match) => (
+                  <li key={match.nodeId} className="flex min-w-0 items-start gap-2 text-body-sm">
+                    <FileTypeIcon kind={kindOf(match.name, match.mimeType)} size="sm" />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="flex min-w-0 items-baseline gap-2">
+                        <span className="min-w-0 truncate font-medium text-on-surface">{match.name}</span>
+                        <span className="shrink-0 text-label-sm text-on-surface-variant">{match.owner}</span>
+                      </span>
+                      {match.snippet && (
+                        <span className="truncate text-on-surface-variant">
+                          “{match.snippet.cutStart && "… "}
+                          <Highlighted text={match.snippet.text} ranges={match.snippet.highlights} />
+                          {match.snippet.cutEnd && " …"}”
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+                {preview.hasNextPage && (
+                  <li>
+                    <Button
+                      variant="text"
+                      disabled={preview.isFetchingNextPage}
+                      onClick={() => void preview.fetchNextPage()}
+                    >
+                      {t("admin.tags.previewMore", { count: Math.min(tagRulePreviewPage, files - matches.length) })}
+                    </Button>
+                  </li>
                 )}
-              </span>
-            ))}
+              </ul>
+            )}
           </div>
         )}
       </div>

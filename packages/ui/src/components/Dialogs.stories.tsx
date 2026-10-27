@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { people } from "../mockup/data";
 import { DuplicateDialog } from "./DuplicateDialog";
+import { TextDialog } from "./FileInfo";
 import { ShareDialog, type ShareLink } from "./ShareDialog";
 
 const meta = {
@@ -62,5 +63,55 @@ export const ShareDialogDefault: Story = { name: "Share dialog", render: () => <
 export const ShareSheet: Story = {
   name: "Share sheet",
   render: () => <Share />,
+  globals: { viewport: { value: "phone", isRotated: false } },
+};
+
+const longText = {
+  state: "ready" as const,
+  ocrSkipped: false,
+  pageCount: 42,
+  totalPages: 40,
+  maxPage: 42,
+  words: 18_250,
+  editedPages: 1,
+  pages: [],
+};
+
+function LongText() {
+  const [page, setPage] = useState(3);
+  return (
+    <TextDialog
+      open
+      onOpenChange={noop}
+      name="Årsredovisning 2025.pdf"
+      text={longText}
+      pages={
+        page === 7
+          ? []
+          : [
+              {
+                pageNo: page,
+                source: page % 2 ? ("ocr" as const) : ("text" as const),
+                text: `Sida ${page}\n\nFörvaltningsberättelse. Föreningen har under året fortsatt arbetet med stambytet och ny ventilation i trapphus A och B.`,
+                edited: page === 3,
+                editedBy: page === 3 ? "Axel" : undefined,
+              },
+            ]
+      }
+      paging="pages"
+      pager={{ page, total: 42, onPage: setPage }}
+      onCopy={noop}
+      onSavePage={async () => {}}
+      onRevertPage={async () => {}}
+    />
+  );
+}
+
+/** Files over 10 pages show their text one page at a time (§13.5). Page 7 has no text. */
+export const TextOnePageAtATime: Story = { name: "Text, one page at a time", render: () => <LongText /> };
+
+export const TextOnePageAtATimeSheet: Story = {
+  ...TextOnePageAtATime,
+  name: "Text, one page at a time (phone)",
   globals: { viewport: { value: "phone", isRotated: false } },
 };
