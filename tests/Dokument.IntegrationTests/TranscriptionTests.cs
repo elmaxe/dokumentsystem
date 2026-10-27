@@ -120,6 +120,63 @@ public sealed class TranscriptionTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task A_recording_is_transcribed_again_from_the_start_after_a_model_change()
+    {
+        var ml = new FakeMl();
+        await using var app = await DokumentApp.StartAsync(postgres, FastWorker, ml.Install);
+        using var admin = await SignInAsync(app, Admin);
+        (
+            await admin.PutAsJsonAsync(
+                "/api/v1/admin/settings/ml",
+                new UpdateMlSettingsRequest([new MlEndpointUpdate("http://ml:3003", null, false)])
+            )
+        ).EnsureSuccessStatusCode();
+        var memo = await UploadAsync(admin, "memo.m4a", Memo, null);
+        await WaitForTranscribeAsync(app);
+        (
+            await admin.PutAsJsonAsync(
+                "/api/v1/admin/settings/transcription",
+                new UpdateTranscriptionRequest(true, "kb-whisper-small", true)
+            )
+        ).EnsureSuccessStatusCode();
+
+        // A finished transcript isn't redone by itself; asking for it queues it ahead of other work.
+        Assert.Single(ml.Requests);
+        var redo = await admin.PostAsync($"/api/v1/nodes/{memo}/transcript/redo", null);
+        redo.EnsureSuccessStatusCode();
+        var waiting = await redo.Content.ReadFromJsonAsync<TranscriptDto>(Json.Options);
+        Assert.Contains(waiting!.State, new[] { TranscriptState.Waiting, TranscriptState.Running });
+        await WaitForTranscribeAsync(app);
+
+        Assert.Equal(["auto", "kb-whisper-small"], ml.Requests.Select(r => r.Model));
+        Assert.Equal("0", ml.Requests.Last().StartMs);
+        var transcript = await admin.GetFromJsonAsync<TranscriptDto>(
+            $"/api/v1/nodes/{memo}/transcript",
+            Json.Options
+        );
+        Assert.Equal(TranscriptState.Ready, transcript!.State);
+        Assert.Equal(3, transcript.Lines.Count);
+
+        // Admins can redo them all, e.g. after picking another model.
+        var progress = await admin.PostAsync("/api/v1/admin/transcription/redo", null);
+        progress.EnsureSuccessStatusCode();
+        var queued = await progress.Content.ReadFromJsonAsync<TranscriptionProgress>(Json.Options);
+        Assert.Equal(0, queued!.Done);
+        Assert.Equal(1, queued.Waiting + queued.Running);
+        await WaitForTranscribeAsync(app);
+        Assert.Equal(3, ml.Requests.Count);
+        await using var scope = app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<DokumentDbContext>();
+        Assert.Equal(
+            2,
+            await db.ContentPages.CountAsync(
+                p => p.Source == PageSource.Transcript,
+                TestContext.Current.CancellationToken
+            )
+        );
+    }
+
+    [Fact]
     public async Task An_ml_service_set_by_the_environment_is_used_and_shown()
     {
         var ml = new FakeMl();

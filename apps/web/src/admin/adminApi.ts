@@ -90,6 +90,7 @@ export const admin = {
   putTranscription: (enabled: boolean, model: string, videos: boolean) =>
     unwrap(api.PUT("/api/v1/admin/settings/transcription", { body: { enabled, model, videos } })),
   rereadText: () => unwrap(api.POST("/api/v1/admin/text-recognition/reread")),
+  redoTranscripts: () => unwrap(api.POST("/api/v1/admin/transcription/redo")),
   putVideos: (videos: AdminSettings["videos"]) => unwrap(api.PUT("/api/v1/admin/settings/videos", { body: videos })),
   putOffice: (gotenbergUrl: string | null) => unwrap(api.PUT("/api/v1/admin/settings/office", { body: { gotenbergUrl } })),
   testOffice: (url: string) => unwrap(api.POST("/api/v1/admin/office/test", { body: { url } })),

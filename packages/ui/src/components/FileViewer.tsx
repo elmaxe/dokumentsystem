@@ -68,6 +68,8 @@ export type FileViewerProps = {
   banner?: ReactNode;
   /** What's said in a video or audio file, shown beside the player (§11.1). */
   transcript?: TranscriptView;
+  /** Transcribes the recording again from the start, e.g. after the admin picked another model. */
+  onTranscriptRedo?: () => void;
   /** WebVTT captions for a video, from its transcript. */
   captions?: string;
   /** Where a recording starts playing, in milliseconds: just before the hit it was opened from. */
@@ -92,6 +94,7 @@ export function FileViewer({
   position,
   banner,
   transcript,
+  onTranscriptRedo,
   captions,
   startAtMs,
 }: FileViewerProps) {
@@ -385,6 +388,7 @@ export function FileViewer({
             currentMs={currentMs}
             terms={marks?.terms}
             onSeek={seek}
+            onRedo={onTranscriptRedo}
             onClose={() => setTranscriptOpen(false)}
             className="lg:w-96 lg:shrink-0 lg:border-l max-lg:h-[45%] max-lg:border-t"
           />

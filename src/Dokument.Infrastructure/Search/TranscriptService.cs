@@ -71,6 +71,71 @@ public sealed class TranscriptService(
     }
 
     /// <summary>
+    /// Transcribes a recording again, e.g. after the admin picked another model. The old transcript stays readable and
+    /// searchable until the new run starts, which replaces it from the beginning. False when it isn't transcribed at
+    /// all (no sound, turned off, or no ML service). Adds the job to the unit of work; the caller saves.
+    /// </summary>
+    public async Task<bool> RedoAsync(
+        BlobMedia media,
+        JobPriority priority,
+        CancellationToken ct = default
+    )
+    {
+        if (!await WantedAsync(media, ct))
+        {
+            return false;
+        }
+
+        await RestartAsync(media.BlobHash, ct);
+        await jobs.EnqueueAsync(JobType.Transcribe, media.BlobHash.Hex, priority, ct);
+        return true;
+    }
+
+    /// <summary>
+    /// Every stored recording transcribed again, in the background, as <see cref="RedoAsync"/> does for one. Returns how
+    /// many were queued: none when it's off or there's no ML service, and then nothing changes.
+    /// </summary>
+    public async Task<int> RedoAllAsync(DateTimeOffset now, CancellationToken ct = default)
+    {
+        var transcription = await settings.GetAsync(SettingKeys.Transcription, ct);
+        if (!transcription.Enabled || !await ml.ConfiguredAsync(ct))
+        {
+            return 0;
+        }
+
+        await RestartAsync(null, ct);
+        return await EnqueueMissingAsync(now, ct);
+    }
+
+    /// <summary>
+    /// Marks transcripts as partial with nothing done, so the next run starts over (it deletes the old pages when it
+    /// starts), and forgets failed runs so they're queued again.
+    /// </summary>
+    private async Task RestartAsync(ContentHash? hash, CancellationToken ct)
+    {
+        var transcripts = hash is null
+            ? db.BlobTranscripts
+            : db.BlobTranscripts.Where(t => t.BlobHash == hash);
+        await transcripts.ExecuteUpdateAsync(
+            s =>
+                s.SetProperty(t => t.Status, TranscriptStatus.Partial)
+                    .SetProperty(t => t.DoneMs, 0)
+                    .SetProperty(t => t.Error, (string?)null),
+            ct
+        );
+
+        var failed = db.Jobs.Where(j =>
+            j.Type == JobType.Transcribe && j.Status == JobStatus.Failed
+        );
+        if (hash is not null)
+        {
+            failed = failed.Where(j => j.Subject == hash.Hex);
+        }
+
+        await failed.ExecuteDeleteAsync(ct);
+    }
+
+    /// <summary>
     /// The backfill, on worker start and when an admin adds an ML service or turns transcription on: every stored
     /// recording not transcribed yet, at background priority. Returns how many were queued.
     /// </summary>

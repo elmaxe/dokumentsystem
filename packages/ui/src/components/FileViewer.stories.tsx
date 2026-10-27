@@ -126,6 +126,7 @@ const meetingLines = [
 const meeting: FileViewerProps["transcript"] = {
   state: "ready",
   language: "sv",
+  model: "kb-whisper-small",
   durationMs: 150_000,
   lines: meetingLines.map(([startMs, text], i) => ({
     startMs,
@@ -142,6 +143,7 @@ const files: Record<string, { item: FileItem; preview: () => PreviewSource; extr
     preview: () => ({ type: "audio", src: sampleWav(150) }),
     extra: {
       transcript: meeting,
+      onTranscriptRedo: () => {},
       startAtMs: 19_400,
       marks: {
         query: "hyresavtal",

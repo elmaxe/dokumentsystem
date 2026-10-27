@@ -606,6 +606,9 @@ export const sv: Strings = {
     found_other: "{{count}} rader",
     recognized: "{{language}}, identifierat automatiskt",
     misheard: "Ord kan vara felhörda",
+    model: "Modell {{model}}",
+    redo: "Transkribera igen",
+    redoStarted: "Den transkriberas igen från början",
     silence: "Inget tal {{from}} till {{to}}",
     running: "Lyssnar… vid {{at}} av {{total}}. Resten visas när det är klart.",
     captions: "Undertexter från transkriptionen",
@@ -936,7 +939,7 @@ export const sv: Strings = {
       videosHint: "Transkribera ljudet i videor också",
       model: "Modell",
       modelHint:
-        "Större modeller hör bättre och tar längre tid. Automatiskt väljer det bästa tjänsten klarar: large-v3-turbo på ett grafikkort, small på en processor. En ändring gäller inspelningar som transkriberas från och med nu.",
+        "Större modeller hör bättre och tar längre tid. Automatiskt väljer det bästa tjänsten klarar: large-v3-turbo på ett grafikkort, small på en processor. En ändring gäller inspelningar som transkriberas från och med nu; välj Transkribera alla igen för att göra om resten.",
       auto: "Automatiskt",
       kbWhisper: "KB-Whisper {{size}} (bättre svenska)",
       done_one: "{{count}} inspelning transkriberad",
@@ -947,6 +950,8 @@ export const sv: Strings = {
       engine:
         "Transkriberas med faster-whisper på tjänsten för maskininlärning, en inspelning i taget. Musik och tystnad hoppas över.",
       offNote: "Inspelningar som laddas upp medan det är avstängt transkriberas när du slår på det.",
+      redo: "Transkribera alla igen",
+      redoStarted: "Alla inspelningar transkriberas igen i bakgrunden",
     },
     textRecognition: {
       intro:
