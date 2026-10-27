@@ -4,6 +4,7 @@ import { cn } from "../lib/cn";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
+import { TextField } from "./TextField";
 
 /** Where a tag came from (docs/design.md §13.4): a person, a keyword rule, or the ML service. */
 export type TagSource = "user" | "rule" | "ml";
@@ -261,6 +262,112 @@ export function TagInput({
       <p className={cn("m-0 text-body-sm", tooLong ? "text-error" : "text-on-surface-variant")}>
         {tooLong ? t("tags.tooLong") : t("tags.addHint")}
       </p>
+    </div>
+  );
+}
+
+export type TagFieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  /** Tags to suggest for what's typed so far, most used first; all of them while it's empty. */
+  suggestions: TagSuggestionItem[];
+  hint?: string;
+  autoFocus?: boolean;
+};
+
+/**
+ * A field for one tag, such as a filing rule's (§13.6): the tags already on files are listed under it as soon as it
+ * has focus, narrowed as the person types, with how many files have each. Picking one fills the field; any other
+ * text is a tag too.
+ */
+export function TagField({ label, value, onChange, suggestions, hint, autoFocus }: TagFieldProps) {
+  const { t } = useTranslation();
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const typed = value.trim().toLowerCase();
+  const options = suggestions.filter((s) => s.name.toLowerCase() !== typed).slice(0, 6);
+  const shown = open && options.length > 0;
+
+  const pick = (name: string) => {
+    onChange(name);
+    setOpen(false);
+    setActive(-1);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setOpen(true);
+      if (options.length > 0)
+        setActive(
+          event.key === "ArrowDown" ? (active + 1) % options.length : active <= 0 ? options.length - 1 : active - 1,
+        );
+    } else if (event.key === "Enter" && shown && options[active]) {
+      event.preventDefault();
+      pick(options[active].name);
+    } else if (event.key === "Escape" && shown) {
+      // Closes the list, not the dialog around it.
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <TextField
+        label={label}
+        icon="sell"
+        value={value}
+        hint={hint}
+        maxLength={50}
+        autoComplete="off"
+        autoFocus={autoFocus}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={shown}
+        aria-controls={`${id}-list`}
+        aria-activedescendant={shown && active >= 0 ? `${id}-${active}` : undefined}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
+          setActive(-1);
+        }}
+        onKeyDown={onKeyDown}
+      />
+      {shown && (
+        <div
+          role="listbox"
+          id={`${id}-list`}
+          aria-label={label}
+          className="rounded-xs bg-surface-container py-2 shadow-elevation-2"
+        >
+          {options.map((option, index) => (
+            <div
+              key={option.name}
+              id={`${id}-${index}`}
+              role="option"
+              aria-selected={active === index}
+              onPointerDown={(event) => event.preventDefault()}
+              onPointerEnter={() => setActive(index)}
+              onClick={() => pick(option.name)}
+              className={cn(
+                "flex min-h-11 cursor-pointer items-center gap-3 px-3 text-body-md pointer-coarse:min-h-touch",
+                active === index && "bg-on-surface/8",
+              )}
+            >
+              <Icon name="sell" className="text-on-surface-variant" />
+              <span className="min-w-0 flex-1 truncate">{option.name}</span>
+              <span className="tabular text-body-sm text-on-surface-variant">
+                {t("tags.files", { count: option.files })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

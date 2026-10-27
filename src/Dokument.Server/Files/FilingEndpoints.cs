@@ -57,7 +57,7 @@ public sealed record FiledFileDto(
 
 public sealed record FiledFiles(List<FiledFileDto> Items);
 
-/// <summary>Each person's own filing rules (docs/design.md §13.5), in their Settings, and Undo for what they moved.</summary>
+/// <summary>Each person's own filing rules (docs/design.md §13.6), in their Settings, and Undo for what they moved.</summary>
 public static class FilingEndpoints
 {
     public static RouteGroupBuilder MapFilingEndpoints(this RouteGroupBuilder api)

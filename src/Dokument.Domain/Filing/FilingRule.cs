@@ -3,7 +3,7 @@ using Dokument.Domain.Tags;
 namespace Dokument.Domain.Filing;
 
 /// <summary>
-/// A person's own filing rule (docs/design.md §13.5): when one of their files gets <see cref="Tag"/>, move it to
+/// A person's own filing rule (docs/design.md §13.6): when one of their files gets <see cref="Tag"/>, move it to
 /// <see cref="Folder"/>. Rules are ordered, and the first that matches a file wins. One rule per tag.
 /// </summary>
 public sealed class FilingRule
@@ -40,7 +40,7 @@ public sealed class FilingRule
 }
 
 /// <summary>
-/// A file that a filing rule moved (docs/design.md §13.5). A file is filed at most once, so if its owner moves it back or
+/// A file that a filing rule moved (docs/design.md §13.6). A file is filed at most once, so if its owner moves it back or
 /// elsewhere, or undoes the move, it stays there.
 /// </summary>
 public sealed class NodeFiling

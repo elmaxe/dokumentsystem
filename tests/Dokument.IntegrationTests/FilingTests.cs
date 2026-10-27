@@ -45,7 +45,16 @@ public sealed class FilingTests(PostgresFixture postgres)
         var receipt = await UploadAsync(alice, "kvitto.pdf", TestFiles.TextPdf("Hej"), null);
         var inbox = await CreateFolderAsync(alice, null, "Inkorg");
         var other = await UploadAsync(alice, "kvitto.pdf", TestFiles.TextPdf("Annat"), inbox.Id);
+        var scan = await UploadAsync(alice, "gammalt.pdf", TestFiles.TextPdf("Gammalt"), inbox.Id);
         await WaitForWorkerAsync(app);
+
+        // A date taken people gave the file comes first, as written.
+        var dated = await alice.PutAsJsonAsync(
+            $"/api/v1/nodes/{scan}/details",
+            new FileDetailsRequest(null, null, "1974"),
+            TestContext.Current.CancellationToken
+        );
+        Assert.Equal(HttpStatusCode.NoContent, dated.StatusCode);
 
         // Templates are checked, and a person has one rule per tag.
         Assert.Equal(
@@ -78,7 +87,13 @@ public sealed class FilingTests(PostgresFixture postgres)
             ["kvitto (1).pdf", "kvitto.pdf"],
             (await ListAsync(alice, year)).Items.Select(i => i.Name).Order()
         );
-        Assert.Equal(2, (await RulesAsync(alice)).Single().Filed);
+        await TagAsync(alice, [scan], "receipt");
+        await WaitForWorkerAsync(app);
+        Assert.Equal(
+            await FolderAsync(app, alice, ["Kvitton", "1974"]),
+            await ParentAsync(app, scan)
+        );
+        Assert.Equal(3, (await RulesAsync(alice)).Single().Filed);
 
         // The move is the system's, naming the rule.
         await using (var scope = app.Services.CreateAsyncScope())
@@ -95,8 +110,10 @@ public sealed class FilingTests(PostgresFixture postgres)
 
         // The message lists both, with where they went; Bob sees none of it.
         var recent = await RecentAsync(alice);
-        Assert.Equal(2, recent.Count);
-        Assert.All(recent, f => Assert.Equal($"Kvitton / {Year}", f.Folder));
+        Assert.Equal(
+            ["Kvitton / 1974", $"Kvitton / {Year}", $"Kvitton / {Year}"],
+            recent.Select(f => f.Folder).Order()
+        );
         Assert.Empty(await RecentAsync(bob));
         Assert.Equal(
             HttpStatusCode.NotFound,
@@ -117,7 +134,7 @@ public sealed class FilingTests(PostgresFixture postgres)
         );
         Assert.Equal(HttpStatusCode.NoContent, undo.StatusCode);
         Assert.Equal(inbox.Id, await ParentAsync(app, other));
-        Assert.Single(await RecentAsync(alice));
+        Assert.Equal(2, (await RecentAsync(alice)).Count);
         await TagAsync(alice, [other], "receipt 2");
         await TagAsync(alice, [other], remove: "receipt");
         await TagAsync(alice, [other], "receipt");

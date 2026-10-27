@@ -248,7 +248,7 @@ public sealed class TagService(
             }
         }
 
-        // A tag someone adds can file the file (§13.5).
+        // A tag someone adds can file the file (§13.6).
         await filing.RequestAsync(gained, JobPriority.Interactive, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);

@@ -162,10 +162,19 @@ public sealed class TagTests(PostgresFixture postgres)
             new TagRulePreviewRequest("receipt", "kvitto, \"tack för ditt köp\"")
         );
         Assert.Equal(1, preview.Files);
-        var example = Assert.Single(preview.Examples);
+        var example = Assert.Single(preview.Matches);
         Assert.Equal("ica.pdf", example.Name);
         Assert.Contains("Kvittot", example.Snippet!.Text);
         Assert.Empty((await TagsAsync(alice, before)).Tags);
+
+        // The preview lists every matching file, a page at a time.
+        var next = await PostAsync<TagRulePreviewDto>(
+            admin,
+            "/api/v1/admin/tag-rules/preview",
+            new TagRulePreviewRequest("receipt", "kvitto", Offset: 1)
+        );
+        Assert.Equal(1, next.Files);
+        Assert.Empty(next.Matches);
 
         // Typos don't match: "kvitta" isn't "kvitto".
         Assert.Equal(

@@ -10,13 +10,14 @@ import {
   IconButton,
   Switch,
   TagChip,
+  TagField,
   TextField,
   kindOf,
   useSnackbar,
   type MenuAction,
 } from "@dokument/ui";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError, errorMessage, tagSuggestionsQuery } from "../files/drive";
 import { exampleFolder, filing, filingRulesQuery, folderProblem } from "./filing";
@@ -24,7 +25,7 @@ import { exampleFolder, filing, filingRulesQuery, folderProblem } from "./filing
 type RuleAction = "edit" | "up" | "down" | "delete";
 
 /**
- * Filing rules in the person's Settings (docs/design.md §13.5): when one of their files gets a tag, move it to a
+ * Filing rules in the person's Settings (docs/design.md §13.6): when one of their files gets a tag, move it to a
  * folder, once. The first rule that matches wins, so the list can be reordered.
  */
 export function FilingRules() {
@@ -202,7 +203,6 @@ function RuleDialog({
   onSaved: () => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const listId = useId();
   const folderRef = useRef<HTMLInputElement>(null);
   const existing = rule && rule !== "new" ? rule : null;
   const [tag, setTag] = useState(existing?.tag ?? "");
@@ -279,17 +279,13 @@ function RuleDialog({
       }
     >
       <div className="flex flex-col gap-4">
-        <TextField
+        <TagField
           label={t("filing.tag")}
           value={tag}
-          maxLength={50}
-          list={listId}
-          autoComplete="off"
-          onChange={(event) => setTag(event.target.value)}
+          onChange={setTag}
+          suggestions={suggestions.data ?? []}
+          autoFocus={!existing}
         />
-        <datalist id={listId}>
-          {suggestions.data?.map((suggestion) => <option key={suggestion.name} value={suggestion.name} />)}
-        </datalist>
         <div className="flex flex-col gap-2">
           <TextField
             ref={folderRef}

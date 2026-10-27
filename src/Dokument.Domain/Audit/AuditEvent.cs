@@ -36,6 +36,8 @@ public static class AuditActions
     public const string VersionKeepForever = "version.keep_forever";
     public const string NodeRename = "node.rename";
     public const string NodeMove = "node.move";
+    public const string FileDetailsEdit = "file.details_edit";
+    public const string FileTextEdit = "file.text_edit";
     public const string FileDownload = "file.download";
     public const string NodeTrash = "node.trash";
     public const string NodeRestore = "node.restore";
@@ -56,6 +58,6 @@ public static class AuditActions
     /// <summary>An admin added, changed or deleted a keyword rule (§13.4).</summary>
     public const string TagRuleChange = "admin.tag_rule";
 
-    /// <summary>A person added, changed, reordered or deleted one of their own filing rules (§13.5).</summary>
+    /// <summary>A person added, changed, reordered or deleted one of their own filing rules (§13.6).</summary>
     public const string FilingRuleChange = "filing_rule.change";
 }

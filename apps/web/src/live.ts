@@ -6,7 +6,7 @@ import { clientId, sessionQuery } from "./api";
 
 /** What each topic refetches. Only queries on screen fetch at once; the rest are marked stale for next time. */
 const topicQueries: Record<LiveTopic, string[][]> = {
-  files: [["folder"], ["node"], ["versions"], ["starred"], ["recent"]],
+  files: [["folder"], ["node"], ["versions"], ["fileDetails"], ["fileText"], ["starred"], ["recent"]],
   recent: [["recent"]],
   trash: [["trash"]],
   storage: [["storage"]],
@@ -52,7 +52,7 @@ export function onRemoteFileChange(listener: () => void) {
   return () => void fileChangeListeners.delete(listener);
 }
 
-/** Calls back when a filing rule moved some of the person's files (§13.5). */
+/** Calls back when a filing rule moved some of the person's files (§13.6). */
 export function onFilings(listener: () => void) {
   filingListeners.add(listener);
   return () => void filingListeners.delete(listener);

@@ -30,6 +30,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<BlobContent> BlobContents => Set<BlobContent>();
     public DbSet<ContentPage> ContentPages => Set<ContentPage>();
     public DbSet<BlobMetadata> BlobMetadata => Set<BlobMetadata>();
+    public DbSet<VersionDetails> VersionDetails => Set<VersionDetails>();
     public DbSet<NodeTag> NodeTags => Set<NodeTag>();
     public DbSet<NodeTagRemoval> NodeTagRemovals => Set<NodeTagRemoval>();
     public DbSet<BlobTag> BlobTags => Set<BlobTag>();
@@ -140,6 +141,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(j => j.LastError).HasColumnName("last_error");
             e.Property(j => j.CreatedAt).HasColumnName("created_at");
             e.Property(j => j.FinishedAt).HasColumnName("finished_at");
+            e.Property(j => j.StartedAt).HasColumnName("started_at");
             e.Property(j => j.TraceParent).HasColumnName("trace_parent");
 
             // The claim query's index: what is due, best first. Finished jobs stay out of it.
@@ -227,9 +229,46 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(p => p.Source)
                 .HasColumnName("source")
                 .HasConversion(LowercaseEnum<PageSource>());
+            e.Property(p => p.VersionId).HasColumnName("version_id");
             e.Property(p => p.Text).HasColumnName("text");
             e.Property(p => p.Words).HasColumnName("words").HasColumnType("jsonb");
-            e.HasIndex(p => new { p.BlobHash, p.PageNo }).IsUnique();
+            e.Property(p => p.EditedBy).HasColumnName("edited_by");
+            e.Property(p => p.EditedAt).HasColumnName("edited_at");
+
+            // Read pages are one per blob and number; corrections one per version and number (§13.5). A correction
+            // goes with its version when the purge removes it.
+            e.HasIndex(p => new { p.BlobHash, p.PageNo })
+                .IsUnique()
+                .HasFilter("version_id IS NULL");
+            e.HasIndex(p => new { p.VersionId, p.PageNo })
+                .IsUnique()
+                .HasFilter("version_id IS NOT NULL");
+            e.HasOne<FileVersion>()
+                .WithMany()
+                .HasForeignKey(p => p.VersionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<VersionDetails>(e =>
+        {
+            e.ToTable("version_details");
+            e.HasKey(d => d.VersionId);
+            e.Property(d => d.VersionId).HasColumnName("version_id");
+            e.Property(d => d.Title).HasColumnName("title");
+            e.Property(d => d.Description).HasColumnName("description");
+            e.Property(d => d.TakenAt).HasColumnName("taken_at");
+            e.Property(d => d.TakenPrecision)
+                .HasColumnName("taken_precision")
+                .HasConversion(LowercaseEnum<DatePrecision>());
+            e.Ignore(d => d.Taken);
+            e.Property(d => d.EditedBy).HasColumnName("edited_by");
+            e.Property(d => d.EditedAt).HasColumnName("edited_at");
+            e.Ignore(d => d.IsEmpty);
+            e.Ignore(d => d.SearchText);
+            e.HasOne<FileVersion>()
+                .WithOne()
+                .HasForeignKey<VersionDetails>(d => d.VersionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<BlobMetadata>(e =>
@@ -241,8 +280,11 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
                 .HasConversion(ContentHashConverter);
             e.Property(m => m.PipelineVersion).HasColumnName("pipeline_version");
             e.Property(m => m.TakenAt).HasColumnName("taken_at");
+            e.Property(m => m.TakenOffsetMinutes).HasColumnName("taken_offset_minutes");
             e.Property(m => m.Camera).HasColumnName("camera");
             e.Property(m => m.DurationSeconds).HasColumnName("duration_seconds");
+            e.Property(m => m.Latitude).HasColumnName("latitude");
+            e.Property(m => m.Longitude).HasColumnName("longitude");
             e.Property(m => m.Tags).HasColumnName("tags").HasColumnType("jsonb");
             e.Property(m => m.Readable).HasColumnName("readable");
             e.Property(m => m.UpdatedAt).HasColumnName("updated_at");
@@ -339,7 +381,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
 
     private static void ConfigureFiling(ModelBuilder modelBuilder)
     {
-        // Filing rules (docs/design.md §13.5): each person's own, and one row per file a rule moved, so it moves once.
+        // Filing rules (docs/design.md §13.6): each person's own, and one row per file a rule moved, so it moves once.
         modelBuilder.Entity<FilingRule>(e =>
         {
             e.ToTable("filing_rules");

@@ -18,10 +18,17 @@ public sealed class BlobMetadata
     /// <summary>When a photo or video was taken, from the camera's clock. Null when the file doesn't say.</summary>
     public DateTimeOffset? TakenAt { get; set; }
 
+    /// <summary>The camera's UTC offset in minutes, so the details panel shows its clock; null when it didn't record one.</summary>
+    public int? TakenOffsetMinutes { get; set; }
+
     /// <summary>"Make Model", e.g. "FUJIFILM X-T30".</summary>
     public string? Camera { get; set; }
 
     public double? DurationSeconds { get; set; }
+
+    /// <summary>Where it was taken, from GPS, in decimal degrees. Shown in the details panel; not searchable yet (§10.3).</summary>
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
 
     /// <summary>The kept tags as a JSON object of name to text, e.g. <c>{"Title": "…", "Artist": "…"}</c>.</summary>
     public string Tags { get; set; } = "{}";

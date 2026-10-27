@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace Dokument.Infrastructure.Filing;
 
 /// <summary>
-/// Runs a person's filing rules on one of their files (docs/design.md §13.5). The first enabled rule whose tag the file
+/// Runs a person's filing rules on one of their files (docs/design.md §13.6). The first enabled rule whose tag the file
 /// got while the rule was on moves it to the rule's folder, made if missing, with the file's year and month. A file is
 /// filed once: after that it stays wherever its owner puts it. The move is audited as the system's, naming the rule.
 /// </summary>
@@ -120,11 +120,21 @@ public sealed partial class Filer(
     }
 
     /// <summary>
-    /// The file's date for <c>{year}</c> and <c>{month}</c>, on the server's clock: when the photo was taken, else when
-    /// the file last changed on the device it came from, else when it was uploaded.
+    /// The file's date for <c>{year}</c> and <c>{month}</c>: the date taken people gave it, else when the photo was taken
+    /// (on the server's clock), else when the file last changed on the device it came from, else when it was uploaded.
     /// </summary>
     internal async Task<DateTimeOffset> DateOfAsync(FileVersion version, CancellationToken ct)
     {
+        // A date people gave the file is a wall-clock date already (§13.5), so "1974" stays in 1974.
+        var edited = await db
+            .VersionDetails.Where(d => d.VersionId == version.Id)
+            .Select(d => d.TakenAt)
+            .FirstOrDefaultAsync(ct);
+        if (edited is { } wall)
+        {
+            return new DateTimeOffset(wall.DateTime, TimeSpan.Zero);
+        }
+
         var taken = await db
             .BlobMetadata.Where(m => m.BlobHash == version.BlobHash)
             .Select(m => m.TakenAt)

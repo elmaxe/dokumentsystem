@@ -428,6 +428,7 @@ public sealed class DriveService(
             actor,
             clientModifiedAt: old.ClientModifiedAt,
             restoredFrom: old.Number,
+            new CarriedEdits(old.Id, WithText: true),
             ct
         );
         audit.Add(
@@ -674,6 +675,9 @@ public sealed class DriveService(
             actor,
             file.ClientModifiedAt,
             restoredFrom: null,
+            existing?.CurrentVersionId is { } previous
+                ? new CarriedEdits(previous, WithText: false)
+                : null,
             ct
         );
         await SettleQuotaAsync(ownerId, reservedBytes, alreadyOwned ? 0 : file.Size, ct);
@@ -728,7 +732,10 @@ public sealed class DriveService(
         blobs.CopyIn(source, ownerId, hash);
     }
 
-    /// <summary>Adds the next version of a file and makes it current. The caller saves.</summary>
+    /// <summary>
+    /// Adds the next version of a file and makes it current, with the edits of <paramref name="carried"/> (§13.5). The
+    /// caller saves.
+    /// </summary>
     private async Task<FileVersion> AddVersionAsync(
         Node node,
         ContentHash hash,
@@ -738,6 +745,7 @@ public sealed class DriveService(
         Actor actor,
         DateTimeOffset? clientModifiedAt,
         int? restoredFrom,
+        CarriedEdits? carried,
         CancellationToken ct
     )
     {
@@ -769,13 +777,24 @@ public sealed class DriveService(
         node.CurrentVersionId = version.Id;
         node.CurrentVersion = version;
         node.ModifiedAt = now;
+        if (carried is not null)
+        {
+            await FileDetailsService.CarryEditsAsync(
+                db,
+                carried.FromVersionId,
+                version,
+                carried.WithText,
+                ct
+            );
+        }
+
         await db
             .Blobs.Where(b => b.OwnerId == node.OwnerId && b.Hash == hash)
             .ExecuteUpdateAsync(s => s.SetProperty(b => b.RefCount, b => b.RefCount + 1), ct);
         await previews.RequestAsync(hash, JobPriority.Interactive, ct);
         await content.RequestAsync(hash, JobPriority.Interactive, ct);
 
-        // Bytes that already have tags, such as a copy, may match a filing rule at once (§13.5).
+        // Bytes that already have tags, such as a copy, may match a filing rule at once (§13.6).
         await filing.RequestAsync([(node.OwnerId, node.Id)], JobPriority.Interactive, ct);
         return version;
     }
@@ -948,6 +967,9 @@ internal sealed record NewFile(
 public sealed record TreeFolder(string Path, Node Folder, bool Created, List<string> ExistingNames);
 
 public sealed record AddedFile(Node Node, FileVersion Version, bool Created, bool NewVersion);
+
+/// <summary>Which version's edits a new version starts with, and whether its text corrections too (§13.5).</summary>
+internal sealed record CarriedEdits(Guid FromVersionId, bool WithText);
 
 public sealed record FileContent(Node Node, FileVersion Version, string PhysicalPath);
 

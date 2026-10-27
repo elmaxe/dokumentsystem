@@ -15,7 +15,7 @@ public sealed class EffectiveTag
 
     /// <summary>
     /// When the file got the tag: when someone added it, or when its current bytes got it from a rule or were uploaded,
-    /// whichever is later. Filing rules only move files that got their tag while the rule was on (§13.5).
+    /// whichever is later. Filing rules only move files that got their tag while the rule was on (§13.6).
     /// </summary>
     public DateTimeOffset Since { get; init; }
 }

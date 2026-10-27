@@ -629,6 +629,38 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/processing": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Where the worker is with the file's current version: thumbnail, metadata and text. Admins also get each failed step's job and error.",
+        "operationId": "GetProcessing",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileProcessing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/versions/{versionId}/restore": {
       "post": {
         "tags": [
@@ -797,6 +829,197 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/details": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "What the file's current version says about itself (title, date taken, camera, place…), with people's edits on top.",
+        "operationId": "GetFileDetails",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDetailsDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Edits the current version's title, description and date taken, all three at once; null keeps what the file says. Later versions start with these edits. The file itself is never changed.",
+        "operationId": "SetFileDetails",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileDetailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/text": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "The searchable text of the current version, page by page from `from`, with corrections in place.",
+        "operationId": "GetFileText",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileTextDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/text/{pageNo}": {
+      "put": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Corrects one page of the current version's text, or adds text to a page where none was read. Search uses it from then on.",
+        "operationId": "SetFileTextPage",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pageNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileTextPageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Drops a page's correction, so the text read from the file counts again.",
+        "operationId": "RevertFileTextPage",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pageNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         }
       }
@@ -2063,6 +2286,240 @@
         }
       }
     },
+    "/api/v1/admin/jobs/queues": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminGetJobQueues",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobQueueDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/jobs/queues/{type}/paused": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Paused queues start no new jobs; running ones finish.",
+        "operationId": "AdminPauseJobQueue",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseQueueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobQueueDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/jobs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Running jobs longest-running first, queued ones in the order they will run, failed ones latest first.",
+        "operationId": "AdminListJobs",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "running"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/jobs/{id}/retry": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminRetryJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/jobs/retry-failed": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Every failed job, or those of one type, with fresh attempts.",
+        "operationId": "AdminRetryFailedJobs",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobQueueDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/jobs/{id}": {
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Forgets a failed job without running it again.",
+        "operationId": "AdminClearJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/v1/admin/tag-rules": {
       "get": {
         "tags": [
@@ -2182,7 +2639,7 @@
         "tags": [
           "Admin"
         ],
-        "description": "How many files a rule would tag, with a few examples. Changes nothing.",
+        "description": "How many files a rule would tag, and which, a page at a time. Changes nothing.",
         "operationId": "AdminPreviewTagRule",
         "requestBody": {
           "content": {
@@ -2211,6 +2668,21 @@
   },
   "components": {
     "schemas": {
+      "ActiveStepDto": {
+        "required": [
+          "step",
+          "running"
+        ],
+        "type": "object",
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "running": {
+            "type": "boolean"
+          }
+        }
+      },
       "AdminSettingsDto": {
         "required": [
           "storage",
@@ -2435,6 +2907,29 @@
           }
         }
       },
+      "DatePrecision": {
+        "enum": [
+          "year",
+          "month",
+          "day",
+          "time"
+        ]
+      },
+      "DetailField": {
+        "required": [
+          "key",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
       "DuplicateCheckItem": {
         "required": [
           "name",
@@ -2528,6 +3023,64 @@
           }
         }
       },
+      "EditableTakenDto": {
+        "required": [
+          "value",
+          "read",
+          "edited"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TakenDto"
+              }
+            ]
+          },
+          "read": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TakenDto"
+              }
+            ]
+          },
+          "edited": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EditableTextDto": {
+        "required": [
+          "value",
+          "read",
+          "edited"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "read": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "edited": {
+            "type": "boolean"
+          }
+        }
+      },
       "EmptyTrashResponse": {
         "required": [
           "items"
@@ -2537,6 +3090,136 @@
           "items": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "FileDetailsDto": {
+        "required": [
+          "reading",
+          "title",
+          "description",
+          "taken",
+          "camera",
+          "lens",
+          "width",
+          "height",
+          "durationSeconds",
+          "pageCount",
+          "place",
+          "fields",
+          "editedBy",
+          "editedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "reading": {
+            "type": "boolean"
+          },
+          "title": {
+            "$ref": "#/components/schemas/EditableTextDto"
+          },
+          "description": {
+            "$ref": "#/components/schemas/EditableTextDto"
+          },
+          "taken": {
+            "$ref": "#/components/schemas/EditableTakenDto"
+          },
+          "camera": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lens": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "width": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "height": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "durationSeconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "pageCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "place": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlaceDto"
+              }
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DetailField"
+            }
+          },
+          "editedBy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "editedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "FileDetailsRequest": {
+        "required": [
+          "title",
+          "description",
+          "taken"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "taken": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2598,6 +3281,20 @@
           }
         }
       },
+      "FileProcessing": {
+        "required": [
+          "steps"
+        ],
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProcessingStepDto"
+            }
+          }
+        }
+      },
       "FileTags": {
         "required": [
           "tags",
@@ -2616,6 +3313,75 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "FileTextDto": {
+        "required": [
+          "state",
+          "ocrSkipped",
+          "pageCount",
+          "totalPages",
+          "maxPage",
+          "words",
+          "editedPages",
+          "pages",
+          "nextFrom"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/TextState"
+          },
+          "ocrSkipped": {
+            "type": "boolean"
+          },
+          "pageCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxPage": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "words": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "editedPages": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TextPageDto"
+            }
+          },
+          "nextFrom": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "FileTextPageRequest": {
+        "required": [
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
           }
         }
       },
@@ -2948,6 +3714,212 @@
           }
         }
       },
+      "JobDto": {
+        "required": [
+          "id",
+          "type",
+          "status",
+          "priority",
+          "attempts",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "runAfter",
+          "error",
+          "size",
+          "mimeType",
+          "files"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/JobPriority"
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "runAfter": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "size": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobFileDto"
+            }
+          }
+        }
+      },
+      "JobFileDto": {
+        "required": [
+          "nodeId",
+          "name",
+          "ownerId",
+          "ownerName",
+          "use",
+          "versionNumber",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ownerName": {
+            "type": "string"
+          },
+          "use": {
+            "$ref": "#/components/schemas/JobFileUse"
+          },
+          "versionNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          }
+        }
+      },
+      "JobFileUse": {
+        "enum": [
+          "current",
+          "trashed",
+          "olderVersion"
+        ]
+      },
+      "JobKind": {
+        "enum": [
+          "thumbnail",
+          "metadata",
+          "text"
+        ]
+      },
+      "JobList": {
+        "required": [
+          "items",
+          "more"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobDto"
+            }
+          },
+          "more": {
+            "type": "boolean"
+          }
+        }
+      },
+      "JobPriority": {
+        "enum": [
+          "background",
+          "interactive"
+        ]
+      },
+      "JobQueueDto": {
+        "required": [
+          "type",
+          "running",
+          "waiting",
+          "failed",
+          "doneLastWeek",
+          "paused"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "running": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waiting": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "doneLastWeek": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "paused": {
+            "type": "boolean"
+          }
+        }
+      },
+      "JobStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed"
+        ]
+      },
       "KeepForeverRequest": {
         "required": [
           "keepForever"
@@ -3114,6 +4086,7 @@
           "thumbnail",
           "contents",
           "starred",
+          "processing",
           "tags"
         ],
         "type": "object",
@@ -3199,6 +4172,12 @@
           "starred": {
             "type": "boolean"
           },
+          "processing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActiveStepDto"
+            }
+          },
           "tags": {
             "type": "array",
             "items": {
@@ -3259,7 +4238,8 @@
         "enum": [
           "text",
           "ocr",
-          "metadata"
+          "metadata",
+          "added"
         ]
       },
       "PathEntry": {
@@ -3275,6 +4255,34 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "PauseQueueRequest": {
+        "required": [
+          "paused"
+        ],
+        "type": "object",
+        "properties": {
+          "paused": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PlaceDto": {
+        "required": [
+          "latitude",
+          "longitude"
+        ],
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -3294,6 +4302,60 @@
               "null",
               "string"
             ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProcessingStepDto": {
+        "required": [
+          "step",
+          "state",
+          "at",
+          "ahead",
+          "jobId",
+          "attempts",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "state": {
+            "$ref": "#/components/schemas/StepState"
+          },
+          "at": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "ahead": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "attempts": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           },
           "error": {
             "type": [
@@ -3718,6 +4780,20 @@
           }
         }
       },
+      "StepState": {
+        "enum": [
+          "notStarted",
+          "waiting",
+          "paused",
+          "running",
+          "done",
+          "nothingFound",
+          "skipped",
+          "unsupported",
+          "unreadable",
+          "failed"
+        ]
+      },
       "StorageReport": {
         "required": [
           "filesBytes",
@@ -3884,11 +4960,26 @@
           }
         }
       },
-      "TagRuleExampleDto": {
+      "TagRuleListing": {
+        "required": [
+          "rules"
+        ],
+        "type": "object",
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagRuleDto"
+            }
+          }
+        }
+      },
+      "TagRuleMatchDto": {
         "required": [
           "nodeId",
           "name",
           "mimeType",
+          "owner",
           "snippet"
         ],
         "type": "object",
@@ -3906,6 +4997,9 @@
               "string"
             ]
           },
+          "owner": {
+            "type": "string"
+          },
           "snippet": {
             "oneOf": [
               {
@@ -3918,24 +5012,10 @@
           }
         }
       },
-      "TagRuleListing": {
-        "required": [
-          "rules"
-        ],
-        "type": "object",
-        "properties": {
-          "rules": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TagRuleDto"
-            }
-          }
-        }
-      },
       "TagRulePreviewDto": {
         "required": [
           "files",
-          "examples"
+          "matches"
         ],
         "type": "object",
         "properties": {
@@ -3943,10 +5023,10 @@
             "type": "integer",
             "format": "int32"
           },
-          "examples": {
+          "matches": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/TagRuleExampleDto"
+              "$ref": "#/components/schemas/TagRuleMatchDto"
             }
           }
         }
@@ -3966,6 +5046,16 @@
           },
           "words": {
             "type": "string"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "default": 50
           }
         }
       },
@@ -4025,6 +5115,29 @@
           }
         }
       },
+      "TakenDto": {
+        "required": [
+          "value",
+          "precision",
+          "offsetMinutes"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/DatePrecision"
+          },
+          "offsetMinutes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "TestMlRequest": {
         "required": [
           "url",
@@ -4051,6 +5164,45 @@
         "properties": {
           "address": {
             "type": "string"
+          }
+        }
+      },
+      "TextPageDto": {
+        "required": [
+          "pageNo",
+          "source",
+          "text",
+          "edited",
+          "editedBy",
+          "editedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "pageNo": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PageSource"
+          },
+          "text": {
+            "type": "string"
+          },
+          "edited": {
+            "type": "boolean"
+          },
+          "editedBy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "editedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -4091,6 +5243,15 @@
             "type": "boolean"
           }
         }
+      },
+      "TextState": {
+        "enum": [
+          "reading",
+          "ready",
+          "empty",
+          "unsupported",
+          "unreadable"
+        ]
       },
       "ThumbnailState": {
         "enum": [

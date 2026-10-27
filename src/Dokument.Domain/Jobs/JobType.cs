@@ -18,11 +18,14 @@ public sealed record JobType
     /// <summary>Runs one keyword rule over the stored text of every blob, after an admin changed it (§13.4).</summary>
     public static readonly JobType TagRule = new("tag-rule");
 
-    /// <summary>Runs its owner's filing rules on one file, after it got a tag or new bytes (§13.5). The subject is the node id.</summary>
+    /// <summary>Runs its owner's filing rules on one file, after it got a tag or new bytes (§13.6). The subject is the node id.</summary>
     public static readonly JobType File = new("file");
 
-    /// <summary>Files everything that has a filing rule's tag now, when the person asks for it (§13.5).</summary>
+    /// <summary>Files everything that has a filing rule's tag now, when the person asks for it (§13.6).</summary>
     public static readonly JobType FilingRule = new("filing-rule");
+
+    /// <summary>The types the worker runs, in the order the admin Jobs page shows them (§10.1).</summary>
+    public static readonly IReadOnlyList<JobType> All = [Thumbnail, Metadata, Text];
 
     private JobType(string name) => Name = name;
 

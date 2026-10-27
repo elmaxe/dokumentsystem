@@ -105,7 +105,7 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                 column: "rule_id"
             );
 
-            // When each file got each tag, for filing rules (docs/design.md §13.5): a tag someone added counts from when
+            // When each file got each tag, for filing rules (docs/design.md §13.6): a tag someone added counts from when
             // they added it, or from when the bytes had it already; an automatic one from when the current bytes got it
             // or were uploaded, whichever is later.
             migrationBuilder.Sql(

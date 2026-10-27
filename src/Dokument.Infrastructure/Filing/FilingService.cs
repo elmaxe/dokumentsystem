@@ -36,7 +36,7 @@ public sealed record FiledFile(
 );
 
 /// <summary>
-/// A person's own filing rules (docs/design.md §13.5): listing, changing and ordering them, previewing one, the files
+/// A person's own filing rules (docs/design.md §13.6): listing, changing and ordering them, previewing one, the files
 /// rules just moved, and undoing a move. Rules only ever touch their owner's files.
 /// </summary>
 public sealed class FilingService(

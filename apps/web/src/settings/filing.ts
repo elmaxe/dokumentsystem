@@ -7,7 +7,7 @@ import { api } from "../api";
 import { errorMessage, send, unwrap } from "../files/drive";
 import { onFilings } from "../live";
 
-/** The person's filing rules, in order (§13.5). */
+/** The person's filing rules, in order (§13.6). */
 export const filingRulesQuery = queryOptions({
   queryKey: ["filing-rules"],
   queryFn: async (): Promise<FilingRule[]> => (await unwrap(api.GET("/api/v1/me/filing-rules"))).rules,
@@ -55,7 +55,7 @@ export function exampleFolder(template: string, now = new Date()): string {
 }
 
 /**
- * Says when a filing rule moved the person's files, wherever they are in the app, with Undo (§13.5). The worker's
+ * Says when a filing rule moved the person's files, wherever they are in the app, with Undo (§13.6). The worker's
  * notice only says that something was filed; the files come from the API, newer than the last ones shown.
  */
 export function useFiledMessages() {

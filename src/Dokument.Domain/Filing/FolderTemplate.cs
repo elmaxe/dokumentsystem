@@ -7,7 +7,7 @@ using Dokument.Domain.Files;
 namespace Dokument.Domain.Filing;
 
 /// <summary>
-/// Where a filing rule moves a file (docs/design.md §13.5): folders from the top of My files, separated by "/", which
+/// Where a filing rule moves a file (docs/design.md §13.6): folders from the top of My files, separated by "/", which
 /// may hold <c>{year}</c> and <c>{month}</c>, such as <c>Kvitton/{year}</c>. The month is two digits, so the folders
 /// sort in order. Stored as written, with the folders trimmed and empty ones dropped.
 /// </summary>

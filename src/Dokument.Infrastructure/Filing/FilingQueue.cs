@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Dokument.Infrastructure.Filing;
 
 /// <summary>
-/// Queues a <see cref="JobType.File"/> job for files that may have just got a tag or new bytes (docs/design.md §13.5),
+/// Queues a <see cref="JobType.File"/> job for files that may have just got a tag or new bytes (docs/design.md §13.6),
 /// so their owner's filing rules run on them. Only files whose owner has a filing rule turned on, and that no rule has
 /// filed yet, are queued; the job decides whether a rule matches.
 /// </summary>

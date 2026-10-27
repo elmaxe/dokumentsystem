@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.25** · Last updated: 2026-10-25
+> Status: **Draft v0.26** · Last updated: 2026-10-27
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -194,7 +194,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   - backup schedule
   - ML URLs
   - Gotenberg URL
-  - job concurrency (until the admin queue page exists: `Worker__ThumbnailConcurrency`, default 2; `Worker__MetadataConcurrency`, default 2; `Worker__TextConcurrency`, default 1)
+  - job concurrency (until the Jobs page can edit it: `Worker__ThumbnailConcurrency`, default 2; `Worker__MetadataConcurrency`, default 2; `Worker__TextConcurrency`, default 1)
   - OCR languages (until then `Worker__OcrLanguages`, default `swe+eng`)
 
 ---
@@ -275,13 +275,19 @@ blob_previews(blob_hash PK, status {ready|unsupported|failed}, pipeline_version,
 renditions(blob_hash, kind {thumb_s|thumb_m|preview|preview_pdf|video_web|poster|…},
            storage_key, mime_type, width, height, created_at, PRIMARY KEY (blob_hash, kind))
 
-blob_metadata(blob_hash PK, pipeline_version, taken_at NULL, camera NULL, duration_seconds NULL,
+blob_metadata(blob_hash PK, pipeline_version, taken_at NULL, taken_offset_minutes NULL, camera NULL,
+              duration_seconds NULL, latitude NULL, longitude NULL,
               tags jsonb, readable, updated_at)  -- exiftool's searchable tags and the filter values (§10.3)
 blob_contents(blob_hash PK, status {ready|empty|unsupported|failed}, pipeline_version, page_count NULL,
               ocr_skipped, ocr_engine NULL, updated_at)   -- what the text stage made of a blob
-content_pages(id, blob_hash, page_no, source {text|ocr|metadata|transcript}, text,
+content_pages(id, blob_hash, version_id NULL, page_no, source {text|ocr|metadata|added|transcript}, text,
               words jsonb NULL,                  -- OCR word boxes, [[x, y, w, h, "word"], …] as page fractions
-              UNIQUE (blob_hash, page_no))       -- BM25-indexed; page 0 is the metadata text
+              edited_by NULL, edited_at NULL,
+              UNIQUE (blob_hash, page_no) WHERE version_id IS NULL,      -- what was read, per blob
+              UNIQUE (version_id, page_no) WHERE version_id IS NOT NULL) -- people's corrections, per version (§13.5)
+                                                 -- BM25-indexed; page 0 is the metadata text
+version_details(version_id PK → file_versions, title NULL, description NULL, taken_at NULL,
+                taken_precision {year|month|day|time} NULL, edited_by, edited_at)   -- edits over what was read (§13.5)
 embeddings(blob_hash, page_no NULL, model, vector vchord) -- optional (M7)
 
 blob_tags(blob_hash, tag, tag_key, source {rule|ml}, rule_id NULL, created_at,
@@ -291,10 +297,10 @@ node_tag_removals(node_id, tag, tag_key, removed_by, removed_at,
                   PRIMARY KEY (node_id, tag_key))  -- an automatic tag someone took off this file
 tag_rules(id, tag, tag_key UNIQUE, words, enabled, created_by, created_at, updated_at)  -- "kvitto, receipt" → receipt
 effective_node_tags  -- a view: node_tags, plus the current version's blob_tags minus removals (what a file shows),
-                     -- with since: when the file got each tag (filing rules, §13.5)
+                     -- with since: when the file got each tag (filing rules, §13.6)
 
 filing_rules(id, owner_id, tag, tag_key, folder_template, position, enabled, active_since, created_at, updated_at,
-             UNIQUE (owner_id, tag_key))      -- each person's own: "receipt" → Kvitton/{year} (§13.5)
+             UNIQUE (owner_id, tag_key))      -- each person's own: "receipt" → Kvitton/{year} (§13.6)
 node_filings(node_id PK, rule_id NULL, tag, from_folder_id NULL, to_folder_id NULL, filed_at, undone_at NULL)
                                               -- a file is filed once; moving it back, or Undo, sticks
 
@@ -326,6 +332,7 @@ Notes:
 - **Name uniqueness within a folder:** NFC-normalized and case-insensitive (`name_key`). The top of each user's "My files" (parent NULL) counts as one folder, hence `NULLS NOT DISTINCT`. Conflicts are resolved like Drive: either "file (1).pdf" or "upload as new version", chosen by the user.
 - **Names** (`NodeName` in the domain) are trimmed, NFC, at most 255 UTF-8 bytes, never "." or "..", and contain no slashes or control characters, so `dokument export` can write any of them to disk.
 - **Renditions belong to the bytes, not versions or owners** (decisions 15 and 23): identical bytes are rendered once, even for two people, and a copy or a restored version has its thumbnail at once. **Extracted text, metadata and automatic tags do too** (decision 24), so a copy is searchable at once.
+- **People's corrections belong to the version** (decision 28): what was read is shared by everyone with the same bytes, so edits of the title, description, date taken and text are rows of `version_details` and `content_pages` with a `version_id`, and go with their version when it is purged.
 - **`path ltree`** makes subtree operations cheap: permission inheritance, "trash folder", "folder size", "search in folder".
 
 ---
@@ -467,7 +474,8 @@ On disk, identical bytes are always stored once per person (§6, §7). On top of
 - **Priorities:** interactive work (a user just uploaded) before bulk imports and rescans.
 - **Backfill:** when the worker starts, it queues the thumbnail, metadata and text stages at background priority for every blob without results from the current `pipeline_version`. That covers files from before a stage existed and pipeline upgrades.
 - **Timeouts per job type:** the default 5 minutes, except the text stage, which gets 30 minutes because a long scanned PDF is read page by page.
-- **Admin UI:** queue sizes, running and failed jobs with errors, "retry failed", "regenerate missing", pause/resume per queue.
+- **Admin UI** (built, decision 27): the Jobs page at `/admin/jobs` shows one card per queue (running, waiting, failed, done in the last 7 days) with **Pause/Resume**, then the running, waiting or failed jobs, filterable by type. Each job names the **files that use its content**, whoever owns them: name, owner, folder path, and whether it's the current file, an older version or in the trash. Failed jobs show their last error and can be retried or cleared, one at a time or all at once. Jobs record `started_at`, so running jobs show how long they've been at it. A paused queue is stored in the `jobs` setting (`{"paused": ["text"]}`) and checked in the claim query, so every worker honours it. Still to come: "regenerate missing" and editing concurrency.
+- **Per file:** the details panel's Info tab has a **Processing** section with each stage's state (done, working on it, waiting with the number of jobs ahead, paused, nothing found, unsupported, unreadable, failed), and file listings carry the stages still waiting or running so grid and list can show a badge (§16.4). Admins also see a failed step's error and can retry it there.
 
 ### 10.2 Stages
 
@@ -478,7 +486,7 @@ upload complete (or the backfill)
    ├─► text       (text layer: PDF, Office, ODF, plain text)  built (M3)
    │      └─► ocr (pages and images with no text layer)       Tesseract now, ML in M7
    │             └─► tag rules (keyword rules → blob_tags)    built (§13.4)
-   │                    └─► filing rules (tag → move)         built (§13.5)
+   │                    └─► filing rules (tag → move)         built (§13.6)
    ├─► transcode (video/audio only if not browser-playable)
    ├─► embed     (optional, ML)
    └─► transcribe (optional, ML, M7; audio/video → timed transcript pages)
@@ -507,8 +515,8 @@ The stages are independent jobs per blob, queued together when an upload finishe
 
 **Metadata stage, as built (M3):**
 - `exiftool -json -n -fast` on the original, with a 1-minute timeout. The searchable tags (title, subject, description, keywords, author/creator/artist, album, genre, company, comments, camera make and model, lens) become content page 0, so "fujifilm" or a PDF's author finds the file; their values are capped at 4000 characters each.
-- The camera ("FUJIFILM X-T30", without repeating the brand), the date taken (with the camera's UTC offset when it recorded one, otherwise the camera's clock as if it were UTC) and the duration are columns of `blob_metadata`, for the `camera:` and `taken:` filters. The kept tags are stored as JSON for the details panel later.
-- GPS is read but not searchable yet: place search needs offline geodata.
+- The camera ("FUJIFILM X-T30", without repeating the brand), the date taken (with the camera's UTC offset when it recorded one, otherwise the camera's clock as if it were UTC) and the duration are columns of `blob_metadata`, for the `camera:` and `taken:` filters. The offset is kept too (`taken_offset_minutes`), so the details panel shows the camera's own clock. The kept tags, including the lens and the picture size, are stored as JSON for the details panel (§13.5).
+- The GPS position (`GPSPosition`, signed decimal degrees; 0, 0 is a receiver without a fix) is kept as `latitude` and `longitude` and shown in the details panel. It isn't searchable yet: place search needs offline geodata.
 
 **Text stage, as built (M3):**
 - The format comes from the bytes: `%PDF-`, a zip (`PK`), text by MIME type with no NUL bytes, or an image libvips can load from the same allowlist as thumbnails.
@@ -645,12 +653,27 @@ Built after M3 (decision 29).
 - **API:** `GET /nodes/{id}/tags` (tags and removed ones), `POST /nodes/tags` (`ids`, `add`, `remove`, up to 1000 files and 20 tags), `GET /tags?q=` (suggestions with counts), tags on every `NodeDto`, and `/admin/tag-rules` (list, create, update, delete, `preview`). Changes send a live `files` notice and write `file.tags_change` per file, naming the tags (§18).
 - **Not yet:** renaming or merging a tag across all files, tag colours, a Tags item in the main nav, and copying tags with a file copy (when copying lands, the copy gets the file's tags and removals).
 
-### 13.5 Filing rules
+### 13.5 Details and text in the file info
+
+Built after M3 (decision 28). The details panel's Info tab shows what the worker read from a file, and people can correct it.
+
+- **Details** shows what the current version says about itself, only the rows it has: title, description, date taken (in the camera's clock, with its UTC offset when known), camera, lens, picture size, length, pages, place (coordinates and an "Open map" link to OpenStreetMap; place names wait for offline geodata), then subject, author, artist, composer, album, genre, company, keywords and comment. `GET /nodes/{id}/details`.
+- **Text in this file** shows where the text came from (the file's own text, recognized in a scan or photo, or added by people), the word count, and the start of the first page. "Show all text" opens a dialog with each page labelled with its source, and Copy for all of it. A file of up to 10 pages shows them all; a longer one shows one page at a time, with previous, next and a field to go to a page (pages without text show as empty, so text can be added there). A file whose format has no text (a zip) has no Text section; a photo with no text says so and offers "Add text". While the text is still being read, the section says search won't find words inside the file yet. `GET /nodes/{id}/text?from=&limit=`.
+- **Editing the details:** the title, the description and the date taken. A date can be known to the year, month, day or minute ("1974", "1974-07", "1974-07-14 15:30"), for scans of old photos. Camera, lens, size, length and pages are facts about the file and can't be changed; keywords stay read-only because adding words to a file is what tags (§13.4) are for. Edited rows are marked and show what the file says, with "Use this" to drop the edit. A value the same as the file's isn't an edit. `PUT /nodes/{id}/details` sends all three; null keeps what the file says, and an empty title or description hides the file's.
+- **Editing the text** works one page at a time, so a long scan never becomes one huge text box. Text the same as what was read drops the correction, and "Use the text read from the file" does too (`PUT` and `DELETE /nodes/{id}/text/{page}`). Text can be added to a page where nothing was read, up to the file's page count (one page for files without pages). A page holds at most 200,000 characters, the text stage's own cap.
+- **Edits belong to the file version, never to the bytes** (§6): what was read is keyed by blob and shared by everyone with the same bytes, so fixing your copy must not change someone else's. A new upload starts with the previous version's details edits, but not its text corrections, because new bytes have new text. Restoring a version brings back that version's edits, text included. "Read all files again" or a better recognizer replaces what was read underneath and leaves the edits alone. The original is never changed (§1), and Download still gives the exact bytes.
+- **Search uses the edits.** An edited page replaces the read page of the same number for that version only; the version's page 0 holds the edited title and description and adds to what was read, so the file's own title still matches. An edited date wins over the camera's in `taken:`, and a partial date counts from its first day ("1974-07" matches `taken:1974` and `taken:1974-07`). The viewer still marks hits on a corrected scan from the read word boxes, so words people changed are found but not marked.
+- **Who:** everyone who can open the file sees its details and text; everyone who can change it (the owner now, editors once sharing lands) can edit them. Link viewers (M4) won't see the place. Each save writes a `file.details_edit` audit event naming the fields, or `file.text_edit` naming the page, never the text, and sends a live notice (`files`), so other tabs refresh.
+- **Later:** opening the text dialog from the viewer on the page being shown, and writing edits into an exported copy's EXIF.
+
+---
+
+### 13.6 Filing rules
 
 Built after tags (decision 30). The case: upload a receipt, and it ends up in `Kvitton/2026` with the receipt tag, without anyone moving it.
 
 - **Filing rules are each person's own,** in a Filing rules section of their Settings (`/settings`), not an admin's: moving files is the owner's business, and an admin's rule shouldn't rearrange someone's folders. A rule is a tag plus a folder: "When a file of mine gets **receipt**, move it to **Kvitton/{year}**". One rule per tag, at most 100 per person.
-- **Folders** are a path from the top of My files, folders separated by `/`, which may hold `{year}` and `{month}` (`Kvitton/{year}`, `Räkningar/{year}/{month}`). The month is two digits, so the folders sort in order. Other `{…}` are refused, and every folder must make a valid name. The date is when the photo was taken (`blob_metadata`), else the file's modified time on the device it came from, else when the version was uploaded, on the server's clock (`TZ`). Once file details can be corrected (decision 28), the corrected date comes first. Missing folders are made; a folder name held by a file stops the filing; a file name already taken in the folder is numbered as an upload would ("kvitto (1).pdf").
+- **Folders** are a path from the top of My files, folders separated by `/`, which may hold `{year}` and `{month}` (`Kvitton/{year}`, `Räkningar/{year}/{month}`). The month is two digits, so the folders sort in order. Other `{…}` are refused, and every folder must make a valid name. The date is the date taken people gave the version (§13.5, as written, so a scan dated "1974" goes to 1974), else when the photo was taken (`blob_metadata`), else the file's modified time on the device it came from, else when the version was uploaded, on the server's clock (`TZ`). Missing folders are made; a folder name held by a file stops the filing; a file name already taken in the folder is numbered as an upload would ("kvitto (1).pdf").
 - **When it runs:** a `file` job (subject: the node id, concurrency 1) runs the owner's rules on one file. It's queued when a file gets a tag (`POST /nodes/tags`), when a keyword rule tags its bytes (after the text or metadata stage, or when an admin changes a rule), and when a file gets new bytes (upload, new version, restore, copy), since bytes that already have tags may match at once. Only files whose owner has a rule on, not in the trash, and not filed before, are queued.
 - **Only tags got while the rule was on:** the `effective_node_tags` view says since when a file has each tag (when someone added it, or when its current bytes got it or were uploaded, whichever is later), and a rule matches a tag only from its `active_since` (made, turned back on, or given another tag). So a new rule doesn't move the files that already have its tag, unless the person ticks "Also file the N files that have this tag now", which queues a `filing-rule` job for those. Keyword rules keep the tags blobs already had when they run again, so their time stays.
 - **Once, and reversibly:** a file is filed at most once, by whichever rule (`node_filings`, one row per file). If the person moves it back or elsewhere, or presses Undo, it stays there. The move is a `node.move` in the audit log with the actor `system`, naming the rule and the tag (and the new name if it was numbered); folders it makes are `folder.create` by the system. Deleting a rule leaves its files where they are.
@@ -660,13 +683,11 @@ Built after tags (decision 30). The case: upload a receipt, and it ends up in `K
 - **API:** `/me/filing-rules` (list with `filed` counts and `running`, create, update, delete, `PUT /order`, `POST /preview`), `GET /filings/recent`, `POST /filings/{id}/undo`. Rule changes write `filing_rule.change` and send an `account` notice.
 - **Not yet:** shared folders (M4: a file in a folder shared with others should only be filed if it stays visible to the same people, or the rule asks first), the mobile app, and conditions beyond a single tag.
 
----
-
 ## 14. Viewers
 
 | Type | Web | Mobile |
 |---|---|---|
-| Images | The original, or the WebP preview for HEIC/TIFF/SVG and huge images; zoom/pan; EXIF info panel later | Same; `expo-image` |
+| Images | The original, or the WebP preview for HEIC/TIFF/SVG and huge images; zoom/pan; EXIF details in the details panel (§13.5) | Same; `expo-image` |
 | PDF | **pdf.js** with page thumbnails, search-in-document, OCR text-layer overlay for scans | `react-native-pdf` (or pdf.js in a WebView) |
 | Office | The server's **PDF rendition** in the PDF viewer | Same |
 | Video | `<video>` with HTTP Range; web rendition if the original isn't playable | `expo-video` |
@@ -709,7 +730,7 @@ These are better in React DOM than through React Native Web.
 
 - **Layout:** a left nav rail, a top search bar and a content area. On mobile it collapses to a bottom nav.
   - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter. The phone bottom nav has no room for Trash, so it is in the account menu there.
-  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota), **Tags** (`/admin/tags`: keyword rules, §13.4) and **Settings** (`/admin/settings`: search and text recognition, machine learning, virus scanning, trash and versions, sign-in). Job queues and server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
+  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: search and text recognition, machine learning, virus scanning, trash and versions, sign-in). **Jobs** (`/admin/jobs`, §10.1) and **Tags** (`/admin/tags`: keyword rules, §13.4) sit between Storage and Settings, in that order. Server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
 - **Content area:** grid/list toggle, breadcrumbs, sorting, multi-select with a contextual action bar, right-click menu.
 - **Search** (M3, §13.3): the search bar sits in the top bar on every page except admin and settings, with name suggestions as you type and "Narrow it down" chips (PDFs, Images, In this folder). `/search` shows the results; on phones the bottom nav's Search opens it and focuses the bar, which then has a back arrow. The admin page's "Search and text recognition" section has the text recognition switch, progress (files read, waiting, in progress, failed) and "Read all files again".
 - **Starred and Recent** (decision 21):
@@ -719,7 +740,7 @@ These are better in React DOM than through React Native Web.
   - Recent is stored in `recent_files`, one row per person and file. It is **private to that person** and is **not the audit log**: the viewer reports an open with `POST /nodes/{id}/opened`, which is never audited (§18); downloads and uploads are noted by the server as they happen.
   - Trashed items (and everything inside a trashed folder) drop out of both pages. A star comes back on restore; deleting forever removes stars and recent rows with the node.
   - A file opened from Starred or Recent steps through that page's files in the viewer, and closing returns there.
-- **Details panel:** info (with the file's tags, §13.4), sharing, versions, activity.
+- **Details panel:** info (with the file's tags, §13.4), sharing, versions, activity. Info goes on with the file's **Details** and **Text in this file**, which people can correct (§13.5), and ends with its **Processing** steps (§10.1, §16.4), folded to one line once every step is done.
 - **Upload tray** (bottom-right) with per-file progress, pause/resume and retry.
 - **Live updates** (§15.4): changes from other tabs and devices, and thumbnails as they are made, show up without a refresh.
 - Optionally a PWA, for "Add to home screen" on phones.
@@ -747,12 +768,12 @@ Changes made in one tab or on one device show up in the person's other open clie
 
   | Topic | Sent when | The web refetches |
   |---|---|---|
-  | `files` | create, rename, move, upload, version restore or Keep forever, trash and restore, star, version purge, a thumbnail is ready | folder listings, file details, versions, Starred, Recent |
+  | `files` | create, rename, move, upload, version restore or Keep forever, trash and restore, star, version purge, a thumbnail is ready, details or text edited | folder listings, file details, versions, the Details and Text sections, Starred, Recent |
   | `recent` | an open or download | Recent |
   | `trash` | trash, restore, delete forever, empty, trash purge | Trash |
   | `storage` | anything that changes usage, a quota or the default quota | the storage meter |
   | `account` | language or preferences, filing rules | the session, filing rules |
-  | `filings` | a filing rule moved files (§13.5) | filing rules, and the "Filed" snackbar |
+  | `filings` | a filing rule moved files (§13.6) | filing rules, and the "Filed" snackbar |
 
 - **Who hears what:** notices go to the owner of the changed items (and the person who made the change, when that's someone else). Sharing (M4) will add the people with access. A change to the default quota goes to everyone.
 - **Echo skip:** each tab makes a random client id and sends it as `X-Dokument-Client` on its mutations and tus requests. The server passes it on as the notice's origin (only if it is at most 64 letters, digits and dashes), and the tab that made the change skips that notice, since it has already updated itself.
@@ -849,6 +870,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
   - A file with a ready thumbnail shows it in place of the type icon: 32 px, 40 px on phones, with pages showing their top as in the grid. Folders and files without a preview keep the icon, in a box of the same size so names line up; a pending thumbnail shimmers.
   - **Folders show their size:** the current version of every live file below them, at any depth. Old versions and trashed files don't count, so it isn't the same number as quota usage (§17). The listing API returns it as the folder's `size` plus `contents` (file and folder counts) from one ltree query per listing. An empty folder shows "—", and hovering a folder's size shows what it holds ("1,204 files, 38 folders").
   - Hovering a date shows the full timestamp ("23 October 2026, 17:40").
+- **Processing indicators** (decision 27): while the worker has steps waiting or running for a file, its grid tile shows a "Processing" pill on the thumbnail and its list row a small spinner after the name, both with a tooltip naming the steps and their state ("Processing: Thumbnail: running, Searchable text: waiting"). Failed steps don't keep the badge; they show in the details panel and on the admin Jobs page. The details panel's **Processing** section folds to "Processing · all done" once every step is settled, and otherwise lists Thumbnail, Metadata and Searchable text with an icon and words for each state, notes that search can't find words inside the file until its text is read, and gives admins the error and **Try again** on a failed step. Only a finished thumbnail sends a live notice (§15.4), so while metadata or text steps are pending the listing and the section poll every 2 s (every 10 s after a minute); a pending thumbnail is polled for only without a live connection.
 - **ActionBar:** the selection count plus Share, Download, Move, Trash and More.
 - **UploadTray:** one row per tus upload, in one of the states hashing, uploading, paused, done, duplicate ("Remove this copy") or failed (Retry), each with an icon and words.
 - **DuplicateDialog:** the §8.3 prompt. A batch offers Skip duplicates / Upload all / Review; a single file offers Skip / Upload anyway / Open existing.
@@ -867,7 +889,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - Keyboard navigation everywhere: arrow keys in the grid, Space to select, Enter to open, Delete to trash. Focus is shown by a visible 2 px focus ring. Every icon button has a label.
 - **Clickable mockup:** `packages/ui` holds the components in Storybook (`pnpm --filter @dokument/ui dev`), with toolbar switches for light/dark, sv/en and phone to desktop widths. The **Screens** stories are one app on fake data: the file browser, viewer, search results and admin settings, with selection, sharing, uploads and the duplicate prompt working locally.
 - Dates in lists come from `formatFileDate` in `packages/core`: "Today 09:14", "Yesterday", "12 Mar", then "21 Jun 2025". English uses British day-month order and a 24-hour clock. Tooltips and the details panel use `formatFullDate` ("23 October 2026, 17:40").
-- **Settings page** (`/settings`, "Settings" in the account menu): the person's own settings, with the normal nav, saved as soon as they change. Sections so far: Language (the same choice as the account menu's quick switch), Filing rules (§13.5) and Date and time.
+- **Settings page** (`/settings`, "Settings" in the account menu): the person's own settings, with the normal nav, saved as soon as they change. Sections so far: Language (the same choice as the account menu's quick switch), Filing rules (§13.6) and Date and time.
 - **Show seconds in times** is a per-person switch on the Settings page, off by default and saved on the account (`users.show_seconds`, `PUT /api/v1/me/preferences`) so it follows them across devices. When it is on, every time shown gets seconds ("Today 09:14:07", "23 October 2026, 17:40:12"). Components read it through `useFormat()` in `packages/ui`.
 - **Sizes are binary everywhere** (decision 19): 1 KiB = 1024 B, labelled B, KiB, MiB, GiB and TiB, through `formatBytes` in `packages/core`. Inputs use the same units: quotas are entered in GiB. There is no setting, so every screen, the API docs and the admin pages agree.
 
@@ -905,7 +927,7 @@ People who are managed in an IdP can get their storage from it instead of from t
 - **Events:**
   - auth: login, logout, session revoked, API key created
   - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`), tags added or removed (`file.tags_change`, naming the tags), filing rules added, changed, reordered or deleted (`filing_rule.change`)
-  - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), and filing rules moving files (`node.move`, `folder.create`, naming the rule, §13.5), with the actor kind `system`
+  - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), and filing rules moving files (`node.move`, `folder.create`, naming the rule, §13.6), with the actor kind `system`
   - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged. (Each person's Recent page remembers their own opens in `recent_files`, which nobody else sees and which isn't part of the audit log, §15.2.)
   - sharing: share granted/changed/revoked, link created/accessed/revoked
   - admin: settings changed, quota changed, keyword rule added, changed or deleted (`admin.tag_rule`), user disabled
@@ -1030,8 +1052,8 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 |---|---|
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
 | **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, folder uploads and live updates. |
-| **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, and the web viewer for images, PDFs, text and browser-playable media. **Still to come:** metadata, video posters and transcoding, Gotenberg, the admin queue page, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
-| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Tags with keyword rules were built right after it (§13.4, decision 29), then filing rules that move tagged files (§13.5, decision 30). |
+| **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, the web viewer for images, PDFs, text and browser-playable media, and the admin Jobs page with per-file processing status (decision 27). **Still to come:** metadata, video posters and transcoding, Gotenberg, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
+| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Then details and text in the file info, with corrections search uses (§13.6, decision 28). Tags with keyword rules came next (§13.4, decision 29). Then filing rules that move tagged files (§13.6, decision 30). |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
@@ -1070,8 +1092,10 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 24 | Folder uploads | 2026-10-25: one `POST /api/v1/folders/tree` makes all the folders first; a taken top-folder name asks Merge (default) / Keep both / Cancel, and merged folders reuse subfolders with the same names; the whole folder's size is checked against the quota before anything is made; hashing and the duplicate check run in batches so uploading starts early, with one duplicate and one name-clash question per folder; one tray row per folder; OS junk files skipped silently (§8.1) |
 | 25 | Live updates | 2026-10-25: one SignalR hub; notices sent with `pg_notify` inside the changing transaction and forwarded by a `LISTEN`ing server; thin notices (topics and an origin, no ids or names) that make clients refetch; owner's clients only until sharing; per-tab client id to skip echoes; refetch everything after a reconnect; viewer banners instead of swapping the open file; ended sessions sign their clients out; the thumbnail poll stays only as a fallback (§15.4) |
 | 26 | Search (M3) | 2026-10-25: pg_search BM25 over names (words + 3-grams) and page text indexed Swedish-stemmed, English-stemmed and unstemmed together, no language detection; text, metadata and automatic tags keyed by blob; Tesseract (`swe+eng`) in the worker for scans and photos, at background priority with an admin switch (default on), replaced by the ML service in M7; exiftool metadata searchable now, with `camera:` and `taken:`; snippets as text + offsets, one marking rule shared by server and clients; queries never logged. Tags planned as shared per file, sources user / rule / ml, automatic ones per blob and removable per file. Transcription waits for M7 (§6, §10, §13, §14) |
-| 29 | Tags | 2026-10-25: tags are shared per file (files only), case-insensitive, at most 50 characters; sources user / rule / ml; automatic tags per blob with per-file removals that stick, and a person's own tag wins over a rule's; admin keyword rules (one per tag) match stored text and metadata by stem, phrase or, from 5 letters, word start, but never typos, after the text and metadata stages and over everything when changed; admin Tags page with a preview; a Tags section in the Info tab, a bulk dialog, two tags in wide list rows; `tag:` and a Tag chip, and plain words match tags. Filing rules are decision 30 (§6, §10.2, §13.4, §13.5, §15.2, §16.4, §18) |
-| 30 | Filing rules | 2026-10-25: each person's own rules in Settings, a tag plus a folder from the top of My files with `{year}` and `{month}` (two digits), dated by date taken, then device modified time, then upload; one rule per tag, ordered, first match wins; only tags a file got while the rule was on, plus "Also file the N files that have this tag now"; a file is filed once, and moving it back or Undo sticks; `node.move` by the system naming the rule; a snackbar with Undo from a `filings` live notice, not the upload tray (§6, §10.2, §13.5, §15.4, §16.5, §18) |
+| 27 | Seeing what the worker is doing | 2026-10-25: admins see every job's files by name, owner and folder, whoever owns them (the admin already runs the server, and a hash alone is no use); jobs record `started_at`; queues pause per type through the `jobs` setting, checked when claiming; failed jobs can be retried or cleared, singly or all. Everyone sees a Processing section per file in the details panel, and a badge in grid and list only while steps wait or run; failed steps show only in details (errors for admins) and on the Jobs page. Metadata and text steps send no live notices yet, so pages poll every 2 s while they're pending; the Jobs page polls every 2 s; concurrency isn't editable yet (§10.1, §15.2, §16.4) |
+| 28 | Details and text in the file info | 2026-10-25: the Info tab shows what was read (details from exiftool, now with GPS, lens, size and the camera's UTC offset; and the text with its source) and lets people edit the title, description and date taken (partial dates allowed) and the text, page by page; edits belong to the file version, not the shared bytes, so nobody else's copy changes; a new version keeps the details edits but not the text corrections, a restore brings back that version's edits; search uses the edits (corrected pages replace read ones, edited dates win in `taken:`); the original is never changed; edits are audited without their text (§6, §10.3, §13.5) |
+| 29 | Tags | 2026-10-25: tags are shared per file (files only), case-insensitive, at most 50 characters; sources user / rule / ml; automatic tags per blob with per-file removals that stick, and a person's own tag wins over a rule's; admin keyword rules (one per tag) match stored text and metadata by stem, phrase or, from 5 letters, word start, but never typos, after the text and metadata stages and over everything when changed; admin Tags page with a preview; a Tags section in the Info tab, a bulk dialog, two tags in wide list rows; `tag:` and a Tag chip, and plain words match tags. Filing rules are decision 30 (§6, §10.2, §13.4, §13.6, §15.2, §16.4, §18) |
+| 30 | Filing rules | 2026-10-25: each person's own rules in Settings, a tag plus a folder from the top of My files with `{year}` and `{month}` (two digits), dated by the edited date taken, then the camera's, then device modified time, then upload; one rule per tag, ordered, first match wins; only tags a file got while the rule was on, plus "Also file the N files that have this tag now"; a file is filed once, and moving it back or Undo sticks; `node.move` by the system naming the rule; a snackbar with Undo from a `filings` live notice, not the upload tray (§6, §10.2, §13.6, §15.4, §16.5, §18) |
 
 ## 26. Open questions
 

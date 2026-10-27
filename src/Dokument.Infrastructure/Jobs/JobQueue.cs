@@ -51,7 +51,10 @@ public sealed class JobQueue(DokumentDbContext db, TimeProvider time)
         }
     }
 
-    /// <summary>Takes the most urgent due job of <paramref name="type"/>, or returns null when there is none.</summary>
+    /// <summary>
+    /// Takes the most urgent due job of <paramref name="type"/>, or returns null when there is none or an admin paused
+    /// the queue (the <c>jobs</c> setting).
+    /// </summary>
     public async Task<Job?> ClaimAsync(
         JobType type,
         string workerId,
@@ -64,11 +67,13 @@ public sealed class JobQueue(DokumentDbContext db, TimeProvider time)
         var jobs = await db
             .Jobs.FromSql(
                 $"""
-                UPDATE jobs SET status = 'running', attempts = attempts + 1, locked_by = {workerId}, locked_until = {lockedUntil}
+                UPDATE jobs SET status = 'running', attempts = attempts + 1, locked_by = {workerId}, locked_until = {lockedUntil},
+                                started_at = {now}
                 WHERE id = (
                     SELECT id FROM jobs
                     WHERE type = {type.Name}
                       AND ((status = 'queued' AND run_after <= {now}) OR (status = 'running' AND locked_until < {now}))
+                      AND NOT EXISTS (SELECT 1 FROM settings s WHERE s.key = 'jobs' AND s.value -> 'paused' ? {type.Name})
                     ORDER BY priority DESC, run_after
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED)
