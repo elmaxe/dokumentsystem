@@ -46,6 +46,31 @@ public sealed class FakeOidcProvider : IAsyncDisposable
 
     public HttpClient CreateBrowser() => new(Handler) { BaseAddress = new Uri(Issuer) };
 
+    /// <summary>A signed JWT access token for <paramref name="user"/>, as an IdP issues to the API reference's client.</summary>
+    public string CreateAccessToken(FakeUser user, string audience = ClientId)
+    {
+        var now = DateTime.UtcNow;
+        return new JsonWebTokenHandler().CreateToken(
+            new SecurityTokenDescriptor
+            {
+                Issuer = Issuer,
+                Audience = audience,
+                IssuedAt = now,
+                NotBefore = now,
+                Expires = now.AddMinutes(5),
+                SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256),
+                Claims = new Dictionary<string, object>
+                {
+                    ["sub"] = user.Subject,
+                    ["azp"] = "dokument-scalar",
+                    ["name"] = user.Name,
+                    ["email"] = user.Email,
+                    ["groups"] = user.Groups,
+                },
+            }
+        );
+    }
+
     public static async Task<FakeOidcProvider> StartAsync()
     {
         var builder = WebApplication.CreateSlimBuilder();

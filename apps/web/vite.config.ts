@@ -15,6 +15,9 @@ export default defineConfig({
       // WebSockets too, for live updates (docs/design.md §15.4).
       "/api": { target: apiTarget, ws: true },
       "/health": apiTarget,
+      // The API reference, so it signs in and calls the API at the same public URL as the app.
+      "/scalar": apiTarget,
+      "/openapi": apiTarget,
     },
   },
 });

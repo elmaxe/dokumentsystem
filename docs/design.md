@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.21** · Last updated: 2026-10-25
+> Status: **Draft v0.22** · Last updated: 2026-10-27
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -236,6 +236,8 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 - **Rate limiting:** 20 login starts per minute per IP.
 - **Break-glass:** a CLI command in the container (`dokument admin reset-oidc` / `create-admin-token`) for when the IdP is broken.
 - **Local development:** Aspire runs Keycloak with a `dokument` realm. Its test users are alice (admin), bob (user) and carol (no groups); each password is the username.
+  - The API reference (Scalar, `${PUBLIC_URL}/scalar/`) signs in with its own public client, `dokument-scalar` (code + PKCE), set by `OIDC_SCALAR_CLIENT_ID`. Its access tokens must name our client (`OIDC_CLIENT_ID`) as their audience.
+  - In development only, the server then accepts those IdP access tokens as bearer tokens. The person is provisioned as at login, without a session and without reading the quota claim. Production keeps accepting only our own sessions until API keys and scopes are designed.
 - **Built in M0:** login, sessions, CSRF and active devices. **Still to come:**
   - API keys and the break-glass CLI
   - auth audit events, with the audit table in M1
