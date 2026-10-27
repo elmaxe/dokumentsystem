@@ -4,6 +4,7 @@ using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
 using Dokument.Domain.Identity;
 using Dokument.Domain.Jobs;
+using Dokument.Infrastructure.Filing;
 using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
@@ -23,6 +24,7 @@ public sealed class DriveService(
     ContentService content,
     SettingsStore settings,
     RecentFiles recent,
+    FilingQueue filing,
     LiveChanges live,
     TimeProvider time
 )
@@ -791,6 +793,9 @@ public sealed class DriveService(
             .ExecuteUpdateAsync(s => s.SetProperty(b => b.RefCount, b => b.RefCount + 1), ct);
         await previews.RequestAsync(hash, JobPriority.Interactive, ct);
         await content.RequestAsync(hash, JobPriority.Interactive, ct);
+
+        // Bytes that already have tags, such as a copy, may match a filing rule at once (§13.6).
+        await filing.RequestAsync([(node.OwnerId, node.Id)], JobPriority.Interactive, ct);
         return version;
     }
 

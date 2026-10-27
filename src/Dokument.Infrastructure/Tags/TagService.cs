@@ -2,8 +2,10 @@ using System.Text.Json.Nodes;
 using Dokument.Application.Files;
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
+using Dokument.Domain.Jobs;
 using Dokument.Domain.Tags;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Filing;
 using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +27,7 @@ public sealed record TagCount(string Name, int Files);
 public sealed class TagService(
     DokumentDbContext db,
     AuditLog audit,
+    FilingQueue filing,
     LiveChanges live,
     TimeProvider time
 )
@@ -147,6 +150,7 @@ public sealed class TagService(
                     .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
 
         var now = time.GetUtcNow();
+        var gained = new List<(Guid, Guid)>();
         foreach (var node in nodes)
         {
             bool Automatic(TagName tag) =>
@@ -224,6 +228,11 @@ public sealed class TagService(
                 removed.Add(tag.Value);
             }
 
+            if (added.Count > 0)
+            {
+                gained.Add((node.OwnerId, node.Id));
+            }
+
             if (added.Count + removed.Count > 0)
             {
                 audit.Add(
@@ -239,6 +248,8 @@ public sealed class TagService(
             }
         }
 
+        // A tag someone adds can file the file (§13.6).
+        await filing.RequestAsync(gained, JobPriority.Interactive, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);
         await live.NotifyAsync(nodes.Select(n => n.OwnerId), LiveTopics.Files, ct);

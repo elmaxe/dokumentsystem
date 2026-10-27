@@ -1,8 +1,9 @@
-import { useId, type InputHTMLAttributes, type ReactNode } from "react";
+import { useId, type InputHTMLAttributes, type ReactNode, type Ref } from "react";
 import { cn } from "../lib/cn";
 import { Icon } from "./Icon";
 
 export type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
+  ref?: Ref<HTMLInputElement>;
   label?: string;
   icon?: string;
   /** A sentence under the field. Errors say what happened and what to do (§16.5). */

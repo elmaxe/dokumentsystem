@@ -3,13 +3,18 @@ using Dokument.Infrastructure.Jobs;
 
 namespace Dokument.Server.Files;
 
-/// <summary>A kind of job, as the API names it: a file's processing steps (docs/design.md §10.2), then keyword-rule runs (§13.4).</summary>
+/// <summary>
+/// A kind of job, as the API names it: a file's processing steps (docs/design.md §10.2), keyword-rule runs (§13.4),
+/// then filing a file and a filing rule's "file existing" run (§13.6).
+/// </summary>
 public enum JobKind
 {
     Thumbnail,
     Metadata,
     Text,
     TagRule,
+    File,
+    FilingRule,
 }
 
 /// <summary>A step every file goes through, as the API names it (docs/design.md §10.2).</summary>
@@ -38,6 +43,8 @@ public static class JobKinds
             _ when type == JobType.Metadata => JobKind.Metadata,
             _ when type == JobType.Text => JobKind.Text,
             _ when type == JobType.TagRule => JobKind.TagRule,
+            _ when type == JobType.File => JobKind.File,
+            _ when type == JobType.FilingRule => JobKind.FilingRule,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(type),
                 type,
@@ -55,6 +62,8 @@ public static class JobKinds
             JobKind.Thumbnail => JobType.Thumbnail,
             JobKind.Metadata => JobType.Metadata,
             JobKind.TagRule => JobType.TagRule,
+            JobKind.File => JobType.File,
+            JobKind.FilingRule => JobType.FilingRule,
             _ => JobType.Text,
         };
 }

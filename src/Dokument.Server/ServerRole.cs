@@ -121,6 +121,7 @@ public static class ServerRole
         api.MapStarredAndRecentEndpoints();
         api.MapSearchEndpoints();
         api.MapTagEndpoints();
+        api.MapFilingEndpoints();
         api.MapTusEndpoints();
         api.MapAdminEndpoints();
         api.MapAdminTagEndpoints();

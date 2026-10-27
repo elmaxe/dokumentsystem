@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.24** · Last updated: 2026-10-25
+> Status: **Draft v0.26** · Last updated: 2026-10-27
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -296,12 +296,13 @@ node_tags(node_id, tag, tag_key, added_by, added_at, PRIMARY KEY (node_id, tag_k
 node_tag_removals(node_id, tag, tag_key, removed_by, removed_at,
                   PRIMARY KEY (node_id, tag_key))  -- an automatic tag someone took off this file
 tag_rules(id, tag, tag_key UNIQUE, words, enabled, created_by, created_at, updated_at)  -- "kvitto, receipt" → receipt
-effective_node_tags  -- a view: node_tags, plus the current version's blob_tags minus removals (what a file shows)
+effective_node_tags  -- a view: node_tags, plus the current version's blob_tags minus removals (what a file shows),
+                     -- with since: when the file got each tag (filing rules, §13.6)
 
--- Planned (decision 29, §13.6), not built yet:
-filing_rules(id, owner_id, tag_key, folder_template, enabled, created_at, updated_at)  -- "receipt" → Kvitton/{year}
-node_filings(node_id, rule_id, folder_id, filed_at, undone_at NULL,
-             PRIMARY KEY (node_id, rule_id))   -- a rule moves a file once; moving it back sticks
+filing_rules(id, owner_id, tag, tag_key, folder_template, position, enabled, active_since, created_at, updated_at,
+             UNIQUE (owner_id, tag_key))      -- each person's own: "receipt" → Kvitton/{year} (§13.6)
+node_filings(node_id PK, rule_id NULL, tag, from_folder_id NULL, to_folder_id NULL, filed_at, undone_at NULL)
+                                              -- a file is filed once; moving it back, or Undo, sticks
 
 stars(user_id, node_id, starred_at, PRIMARY KEY (user_id, node_id))   -- each person's own (§15.2)
 recent_files(user_id, node_id, at, action {opened|downloaded|uploaded|restored},
@@ -473,7 +474,7 @@ On disk, identical bytes are always stored once per person (§6, §7). On top of
 - **Priorities:** interactive work (a user just uploaded) before bulk imports and rescans.
 - **Backfill:** when the worker starts, it queues the thumbnail, metadata and text stages at background priority for every blob without results from the current `pipeline_version`. That covers files from before a stage existed and pipeline upgrades.
 - **Timeouts per job type:** the default 5 minutes, except the text stage, which gets 30 minutes because a long scanned PDF is read page by page.
-- **Admin UI** (built, decision 27): the Jobs page at `/admin/jobs` shows one card per queue (running, waiting, failed, done in the last 7 days) with **Pause/Resume**, then the running, waiting or failed jobs, filterable by type. Each job names the **files that use its content**, whoever owns them: name, owner, folder path, and whether it's the current file, an older version or in the trash. Tag-rule runs (§13.4) have their own card and name the rule's tag instead of files. Failed jobs show their last error and can be retried or cleared, one at a time or all at once. Jobs record `started_at`, so running jobs show how long they've been at it. A paused queue is stored in the `jobs` setting (`{"paused": ["text"]}`) and checked in the claim query, so every worker honours it. Still to come: "regenerate missing" and editing concurrency.
+- **Admin UI** (built, decision 27): the Jobs page at `/admin/jobs` shows one card per queue (running, waiting, failed, done in the last 7 days) with **Pause/Resume**, then the running, waiting or failed jobs, filterable by type. Each job names the **files that use its content**, whoever owns them: name, owner, folder path, and whether it's the current file, an older version or in the trash. Tag-rule runs (§13.4) have their own card and name the rule's tag instead of files. Filing (§13.6) has two: `file` jobs name the file being filed, and a filing rule's "file existing" run names its tag (without a link, since filing rules are each person's own). Failed jobs show their last error and can be retried or cleared, one at a time or all at once. Jobs record `started_at`, so running jobs show how long they've been at it. A paused queue is stored in the `jobs` setting (`{"paused": ["text"]}`) and checked in the claim query, so every worker honours it. Still to come: "regenerate missing" and editing concurrency.
 - **Per file:** the details panel's Info tab has a **Processing** section with each stage's state (done, working on it, waiting with the number of jobs ahead, paused, nothing found, unsupported, unreadable, failed), and file listings carry the stages still waiting or running so grid and list can show a badge (§16.4). Admins also see a failed step's error and can retry it there.
 
 ### 10.2 Stages
@@ -485,7 +486,7 @@ upload complete (or the backfill)
    ├─► text       (text layer: PDF, Office, ODF, plain text)  built (M3)
    │      └─► ocr (pages and images with no text layer)       Tesseract now, ML in M7
    │             └─► tag rules (keyword rules → blob_tags)    built (§13.4)
-   │                    └─► filing rules (tag → move)         planned (§13.6)
+   │                    └─► filing rules (tag → move)         built (§13.6)
    ├─► transcode (video/audio only if not browser-playable)
    ├─► embed     (optional, ML)
    └─► transcribe (optional, ML, M7; audio/video → timed transcript pages)
@@ -667,15 +668,20 @@ Built after M3 (decision 28). The details panel's Info tab shows what the worker
 
 ---
 
-### 13.6 Filing rules (planned)
+### 13.6 Filing rules
 
-Prepared with tags (decision 29); not built. The case: upload a receipt, and it ends up in `Kvitton/2026` with the receipt tag, without anyone moving it.
+Built after tags (decision 30). The case: upload a receipt, and it ends up in `Kvitton/2026` with the receipt tag, without anyone moving it.
 
-- **Filing rules are each person's own,** under the person's Settings, not an admin's: moving files is the owner's business, and an admin's rule shouldn't rearrange someone's folders. A rule is a tag plus a folder template: "When a file of mine gets **receipt**, move it to **Kvitton/{year}**".
-- **Templates** are a path from the top of My files with `{year}` and `{month}` (e.g. `Kvitton/{year}/{month}`). The date is the file's date taken (with the person's correction from the file info details, decision 28), else its modified time on the device, else the upload time. Missing folders are made; a name clash numbers the file as an upload would ("kvitto (1).pdf").
-- **When it runs:** when a file gains the tag, from a rule or a person, through the same place both kinds of change go through today (the rule runner and `POST /nodes/tags`), which then queues a `file` job per file for the owner's filing rules. Only files the person owns, not in the trash. New rules don't touch existing files unless the person picks "Also file the N files that have this tag now".
-- **Once, and reversibly:** each rule moves a file at most once (`node_filings`). If the person moves it back, or somewhere else, it stays there. The move is a normal `node.move` in the audit log with the actor `system` and the rule, the upload tray row says "Filed in Kvitton/2026", the file's Activity tab says "Moved by your rule receipt", and the snackbar or notification offers Undo.
-- **Order and conflicts:** rules are ordered; the first that matches wins, so a file with two tags moves once. A file in a folder shared with others (M4) is only filed if it stays visible to the same people, or the rule asks first.
+- **Filing rules are each person's own,** in a Filing rules section of their Settings (`/settings`), not an admin's: moving files is the owner's business, and an admin's rule shouldn't rearrange someone's folders. A rule is a tag plus a folder: "When a file of mine gets **receipt**, move it to **Kvitton/{year}**". One rule per tag, at most 100 per person.
+- **Folders** are a path from the top of My files, folders separated by `/`, which may hold `{year}` and `{month}` (`Kvitton/{year}`, `Räkningar/{year}/{month}`). The month is two digits, so the folders sort in order. Other `{…}` are refused, and every folder must make a valid name. The date is the date taken people gave the version (§13.5, as written, so a scan dated "1974" goes to 1974), else when the photo was taken (`blob_metadata`), else the file's modified time on the device it came from, else when the version was uploaded, on the server's clock (`TZ`). Missing folders are made; a folder name held by a file stops the filing; a file name already taken in the folder is numbered as an upload would ("kvitto (1).pdf").
+- **When it runs:** a `file` job (subject: the node id, concurrency 1) runs the owner's rules on one file. It's queued when a file gets a tag (`POST /nodes/tags`), when a keyword rule tags its bytes (after the text or metadata stage, or when an admin changes a rule), and when a file gets new bytes (upload, new version, restore, copy), since bytes that already have tags may match at once. Only files whose owner has a rule on, not in the trash, and not filed before, are queued.
+- **Only tags got while the rule was on:** the `effective_node_tags` view says since when a file has each tag (when someone added it, or when its current bytes got it or were uploaded, whichever is later), and a rule matches a tag only from its `active_since` (made, turned back on, or given another tag). So a new rule doesn't move the files that already have its tag, unless the person ticks "Also file the N files that have this tag now", which queues a `filing-rule` job for those. Keyword rules keep the tags blobs already had when they run again, so their time stays.
+- **Once, and reversibly:** a file is filed at most once, by whichever rule (`node_filings`, one row per file). If the person moves it back or elsewhere, or presses Undo, it stays there. The move is a `node.move` in the audit log with the actor `system`, naming the rule and the tag (and the new name if it was numbered); folders it makes are `folder.create` by the system. Deleting a rule leaves its files where they are.
+- **Telling the person:** the worker sends a `filings` live notice. The web app waits for notices to settle (0.8 s), fetches `GET /filings/recent?after=` (the person's filings after the last ones shown, still where the rule put them) and shows one snackbar wherever the person is: "Filed IMG_4471.jpg in Kvitton / 2026", or "Filed 3 files in Kvitton / 2026", with Undo (`POST /filings/{id}/undo`, which moves each back where it was, or to the top of My files if that folder is gone). The upload tray doesn't say it, since a tag can arrive minutes after an upload (OCR). The Activity tab shows the move once it lists audit events.
+- **Order:** rules are ordered (Move up and Move down in a rule's menu); the first enabled rule that matches wins, so a file with two tags moves once.
+- **Settings:** each rule shows its tag, its folder ("Kvitton / Year"), how many files it filed with an example ("for example Kvitton / 2026"), an on/off switch and a menu (Edit, Move up, Move down, Delete). The dialog has the tag (with suggestions), the folder with Year and Month buttons that insert the placeholders, a preview of where two of the files that have the tag now would go, and the "Also file" choice, on by default for a new rule.
+- **API:** `/me/filing-rules` (list with `filed` counts and `running`, create, update, delete, `PUT /order`, `POST /preview`), `GET /filings/recent`, `POST /filings/{id}/undo`. Rule changes write `filing_rule.change` and send an `account` notice.
+- **Not yet:** shared folders (M4: a file in a folder shared with others should only be filed if it stays visible to the same people, or the rule asks first), the mobile app, and conditions beyond a single tag.
 
 ## 14. Viewers
 
@@ -766,7 +772,8 @@ Changes made in one tab or on one device show up in the person's other open clie
   | `recent` | an open or download | Recent |
   | `trash` | trash, restore, delete forever, empty, trash purge | Trash |
   | `storage` | anything that changes usage, a quota or the default quota | the storage meter |
-  | `account` | language or preferences | the session |
+  | `account` | language or preferences, filing rules | the session, filing rules |
+  | `filings` | a filing rule moved files (§13.6) | filing rules, and the "Filed" snackbar |
 
 - **Who hears what:** notices go to the owner of the changed items (and the person who made the change, when that's someone else). Sharing (M4) will add the people with access. A change to the default quota goes to everyone.
 - **Echo skip:** each tab makes a random client id and sends it as `X-Dokument-Client` on its mutations and tus requests. The server passes it on as the notice's origin (only if it is at most 64 letters, digits and dashes), and the tab that made the change skips that notice, since it has already updated itself.
@@ -882,7 +889,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - Keyboard navigation everywhere: arrow keys in the grid, Space to select, Enter to open, Delete to trash. Focus is shown by a visible 2 px focus ring. Every icon button has a label.
 - **Clickable mockup:** `packages/ui` holds the components in Storybook (`pnpm --filter @dokument/ui dev`), with toolbar switches for light/dark, sv/en and phone to desktop widths. The **Screens** stories are one app on fake data: the file browser, viewer, search results and admin settings, with selection, sharing, uploads and the duplicate prompt working locally.
 - Dates in lists come from `formatFileDate` in `packages/core`: "Today 09:14", "Yesterday", "12 Mar", then "21 Jun 2025". English uses British day-month order and a 24-hour clock. Tooltips and the details panel use `formatFullDate` ("23 October 2026, 17:40").
-- **Settings page** (`/settings`, "Settings" in the account menu): the person's own settings, with the normal nav, saved as soon as they change. Sections so far: Language (the same choice as the account menu's quick switch) and Date and time.
+- **Settings page** (`/settings`, "Settings" in the account menu): the person's own settings, with the normal nav, saved as soon as they change. Sections so far: Language (the same choice as the account menu's quick switch), Filing rules (§13.6) and Date and time.
 - **Show seconds in times** is a per-person switch on the Settings page, off by default and saved on the account (`users.show_seconds`, `PUT /api/v1/me/preferences`) so it follows them across devices. When it is on, every time shown gets seconds ("Today 09:14:07", "23 October 2026, 17:40:12"). Components read it through `useFormat()` in `packages/ui`.
 - **Sizes are binary everywhere** (decision 19): 1 KiB = 1024 B, labelled B, KiB, MiB, GiB and TiB, through `formatBytes` in `packages/core`. Inputs use the same units: quotas are entered in GiB. There is no setting, so every screen, the API docs and the admin pages agree.
 
@@ -919,8 +926,8 @@ People who are managed in an IdP can get their storage from it instead of from t
 - **Append-only `audit_events`**, written **in the same transaction** as the change itself.
 - **Events:**
   - auth: login, logout, session revoked, API key created
-  - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`), tags added or removed (`file.tags_change`, naming the tags)
-  - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), with the actor kind `system`
+  - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`), tags added or removed (`file.tags_change`, naming the tags), filing rules added, changed, reordered or deleted (`filing_rule.change`)
+  - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), and filing rules moving files (`node.move`, `folder.create`, naming the rule, §13.6), with the actor kind `system`
   - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged. (Each person's Recent page remembers their own opens in `recent_files`, which nobody else sees and which isn't part of the audit log, §15.2.)
   - sharing: share granted/changed/revoked, link created/accessed/revoked
   - admin: settings changed, quota changed, keyword rule added, changed or deleted (`admin.tag_rule`), user disabled
@@ -1046,7 +1053,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
 | **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, folder uploads and live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, the web viewer for images, PDFs, text and browser-playable media, and the admin Jobs page with per-file processing status (decision 27). **Still to come:** metadata, video posters and transcoding, Gotenberg, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
-| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Then details and text in the file info, with corrections search uses (§13.5, decision 28). Tags with keyword rules came next (§13.4, decision 29). **Next:** filing rules that move tagged files (§13.6). |
+| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Then details and text in the file info, with corrections search uses (§13.6, decision 28). Tags with keyword rules came next (§13.4, decision 29). Then filing rules that move tagged files (§13.6, decision 30). |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
@@ -1087,7 +1094,8 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 26 | Search (M3) | 2026-10-25: pg_search BM25 over names (words + 3-grams) and page text indexed Swedish-stemmed, English-stemmed and unstemmed together, no language detection; text, metadata and automatic tags keyed by blob; Tesseract (`swe+eng`) in the worker for scans and photos, at background priority with an admin switch (default on), replaced by the ML service in M7; exiftool metadata searchable now, with `camera:` and `taken:`; snippets as text + offsets, one marking rule shared by server and clients; queries never logged. Tags planned as shared per file, sources user / rule / ml, automatic ones per blob and removable per file. Transcription waits for M7 (§6, §10, §13, §14) |
 | 27 | Seeing what the worker is doing | 2026-10-25: admins see every job's files by name, owner and folder, whoever owns them (the admin already runs the server, and a hash alone is no use); jobs record `started_at`; queues pause per type through the `jobs` setting, checked when claiming; failed jobs can be retried or cleared, singly or all. Everyone sees a Processing section per file in the details panel, and a badge in grid and list only while steps wait or run; failed steps show only in details (errors for admins) and on the Jobs page. Metadata and text steps send no live notices yet, so pages poll every 2 s while they're pending; the Jobs page polls every 2 s; concurrency isn't editable yet (§10.1, §15.2, §16.4) |
 | 28 | Details and text in the file info | 2026-10-25: the Info tab shows what was read (details from exiftool, now with GPS, lens, size and the camera's UTC offset; and the text with its source) and lets people edit the title, description and date taken (partial dates allowed) and the text, page by page; edits belong to the file version, not the shared bytes, so nobody else's copy changes; a new version keeps the details edits but not the text corrections, a restore brings back that version's edits; search uses the edits (corrected pages replace read ones, edited dates win in `taken:`); the original is never changed; edits are audited without their text (§6, §10.3, §13.5) |
-| 29 | Tags | 2026-10-25: tags are shared per file (files only), case-insensitive, at most 50 characters; sources user / rule / ml; automatic tags per blob with per-file removals that stick, and a person's own tag wins over a rule's; admin keyword rules (one per tag) match stored text and metadata by stem, phrase or, from 5 letters, word start, but never typos, after the text and metadata stages and over everything when changed; admin Tags page with a preview; a Tags section in the Info tab, a bulk dialog, two tags in wide list rows; `tag:` and a Tag chip, and plain words match tags. Filing rules (tag → folder per year) planned per person, moving a file once (§6, §10.2, §13.4, §13.5, §15.2, §16.4, §18) |
+| 29 | Tags | 2026-10-25: tags are shared per file (files only), case-insensitive, at most 50 characters; sources user / rule / ml; automatic tags per blob with per-file removals that stick, and a person's own tag wins over a rule's; admin keyword rules (one per tag) match stored text and metadata by stem, phrase or, from 5 letters, word start, but never typos, after the text and metadata stages and over everything when changed; admin Tags page with a preview; a Tags section in the Info tab, a bulk dialog, two tags in wide list rows; `tag:` and a Tag chip, and plain words match tags. Filing rules are decision 30 (§6, §10.2, §13.4, §13.6, §15.2, §16.4, §18) |
+| 30 | Filing rules | 2026-10-25: each person's own rules in Settings, a tag plus a folder from the top of My files with `{year}` and `{month}` (two digits), dated by the edited date taken, then the camera's, then device modified time, then upload; one rule per tag, ordered, first match wins; only tags a file got while the rule was on, plus "Also file the N files that have this tag now"; a file is filed once, and moving it back or Undo sticks; `node.move` by the system naming the rule; a snackbar with Undo from a `filings` live notice, not the upload tray (§6, §10.2, §13.6, §15.4, §16.5, §18) |
 
 ## 26. Open questions
 

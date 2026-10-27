@@ -770,6 +770,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/filing-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ListFilingRules"];
+        put?: never;
+        /** @description Adds a rule at the end of the list: when one of your files gets the tag, it moves to the folder. */
+        post: operations["CreateFilingRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["UpdateFilingRule"];
+        post?: never;
+        /** @description Deletes a rule. Files it moved stay where they are. */
+        delete: operations["DeleteFilingRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-rules/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Puts all your rules in this order. The first that matches a file wins. */
+        put: operations["ReorderFilingRules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-rules/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description How many of your files have the tag now and would be filed, with where a few would go. Changes nothing. */
+        post: operations["PreviewFilingRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/filings/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Files your rules moved after `after` (by default, the last two minutes) that are still there, oldest first. */
+        get: operations["ListRecentFilings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/filings/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Moves a filed file back where it was. No rule files it again. */
+        post: operations["UndoFiling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads/{id}": {
         parameters: {
             query?: never;
@@ -1313,6 +1415,21 @@ export interface components {
             description: null | string;
             taken: null | string;
         };
+        FiledFileDto: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            mimeType: null | string;
+            /** Format: uuid */
+            folderId: null | string;
+            folder: string;
+            tag: string;
+            /** Format: date-time */
+            filedAt: string;
+        };
+        FiledFiles: {
+            items: components["schemas"]["FiledFileDto"][];
+        };
         FileProcessing: {
             steps: components["schemas"]["ProcessingStepDto"][];
         };
@@ -1341,6 +1458,46 @@ export interface components {
         };
         FileTextPageRequest: {
             text: string;
+        };
+        FilingExampleDto: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            mimeType: null | string;
+            folder: string;
+        };
+        FilingPreviewDto: {
+            /** Format: int32 */
+            files: number;
+            examples: components["schemas"]["FilingExampleDto"][];
+        };
+        FilingPreviewRequest: {
+            tag: null | string;
+            folder: null | string;
+        };
+        FilingRuleDto: {
+            /** Format: uuid */
+            id: string;
+            tag: string;
+            folder: string;
+            enabled: boolean;
+            /** Format: int32 */
+            filed: number;
+            running: boolean;
+        };
+        FilingRuleListing: {
+            rules: components["schemas"]["FilingRuleDto"][];
+        };
+        FilingRuleOrderRequest: {
+            ids: string[];
+        };
+        FilingRuleRequest: {
+            tag: string;
+            folder: string;
+            /** @default true */
+            enabled: boolean;
+            /** @default false */
+            fileExisting: boolean;
         };
         /**
          * @default fail
@@ -1429,7 +1586,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text" | "tagRule";
+        JobKind: "thumbnail" | "metadata" | "text" | "tagRule" | "file" | "filingRule";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;
@@ -2995,6 +3152,184 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TagSuggestions"];
                 };
+            };
+        };
+    };
+    ListFilingRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingRuleListing"];
+                };
+            };
+        };
+    };
+    CreateFilingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingRuleDto"];
+                };
+            };
+        };
+    };
+    UpdateFilingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingRuleDto"];
+                };
+            };
+        };
+    };
+    DeleteFilingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReorderFilingRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingRuleOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PreviewFilingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingPreviewDto"];
+                };
+            };
+        };
+    };
+    ListRecentFilings: {
+        parameters: {
+            query?: {
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FiledFiles"];
+                };
+            };
+        };
+    };
+    UndoFiling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

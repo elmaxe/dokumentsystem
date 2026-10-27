@@ -74,7 +74,14 @@ public sealed class JobTests(PostgresFixture postgres)
         );
         var queues = await QueuesAsync(admin);
         Assert.All(queues, q => Assert.True(q.Paused));
-        Assert.All(queues, q => Assert.Equal(q.Type == JobKind.TagRule ? 0 : 2, q.Waiting));
+        Assert.All(
+            queues,
+            q =>
+                Assert.Equal(
+                    q.Type is JobKind.Thumbnail or JobKind.Metadata or JobKind.Text ? 2 : 0,
+                    q.Waiting
+                )
+        );
         var waiting = await JobsAsync(admin, "status=queued&type=text");
         Assert.False(waiting.More);
         Assert.Equal(

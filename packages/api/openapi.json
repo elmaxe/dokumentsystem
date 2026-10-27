@@ -1537,6 +1537,230 @@
         }
       }
     },
+    "/api/v1/me/filing-rules": {
+      "get": {
+        "tags": [
+          "Filing"
+        ],
+        "operationId": "ListFilingRules",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingRuleListing"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Adds a rule at the end of the list: when one of your files gets the tag, it moves to the folder.",
+        "operationId": "CreateFilingRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingRuleDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-rules/{id}": {
+      "put": {
+        "tags": [
+          "Filing"
+        ],
+        "operationId": "UpdateFilingRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingRuleDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Deletes a rule. Files it moved stay where they are.",
+        "operationId": "DeleteFilingRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-rules/order": {
+      "put": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Puts all your rules in this order. The first that matches a file wins.",
+        "operationId": "ReorderFilingRules",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingRuleOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-rules/preview": {
+      "post": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "How many of your files have the tag now and would be filed, with where a few would go. Changes nothing.",
+        "operationId": "PreviewFilingRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingPreviewDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filings/recent": {
+      "get": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Files your rules moved after `after` (by default, the last two minutes) that are still there, oldest first.",
+        "operationId": "ListRecentFilings",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FiledFiles"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filings/{id}/undo": {
+      "post": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Moves a filed file back where it was. No rule files it again.",
+        "operationId": "UndoFiling",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
     "/api/v1/uploads/{id}": {
       "get": {
         "tags": [
@@ -2999,6 +3223,64 @@
           }
         }
       },
+      "FiledFileDto": {
+        "required": [
+          "nodeId",
+          "name",
+          "mimeType",
+          "folderId",
+          "folder",
+          "tag",
+          "filedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "filedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FiledFiles": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FiledFileDto"
+            }
+          }
+        }
+      },
       "FileProcessing": {
         "required": [
           "steps"
@@ -3107,6 +3389,158 @@
         "properties": {
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "FilingExampleDto": {
+        "required": [
+          "nodeId",
+          "name",
+          "mimeType",
+          "folder"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "folder": {
+            "type": "string"
+          }
+        }
+      },
+      "FilingPreviewDto": {
+        "required": [
+          "files",
+          "examples"
+        ],
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilingExampleDto"
+            }
+          }
+        }
+      },
+      "FilingPreviewRequest": {
+        "required": [
+          "tag",
+          "folder"
+        ],
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "folder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "FilingRuleDto": {
+        "required": [
+          "id",
+          "tag",
+          "folder",
+          "enabled",
+          "filed",
+          "running"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "filed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "running": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FilingRuleListing": {
+        "required": [
+          "rules"
+        ],
+        "type": "object",
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilingRuleDto"
+            }
+          }
+        }
+      },
+      "FilingRuleOrderRequest": {
+        "required": [
+          "ids"
+        ],
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "FilingRuleRequest": {
+        "required": [
+          "tag",
+          "folder"
+        ],
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "fileExisting": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -3431,7 +3865,9 @@
           "thumbnail",
           "metadata",
           "text",
-          "tagRule"
+          "tagRule",
+          "file",
+          "filingRule"
         ]
       },
       "JobList": {
@@ -5176,6 +5612,9 @@
     },
     {
       "name": "Tags"
+    },
+    {
+      "name": "Filing"
     },
     {
       "name": "Uploads"

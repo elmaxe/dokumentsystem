@@ -6,6 +6,7 @@ using Dokument.Domain.Jobs;
 using Dokument.Domain.Search;
 using Dokument.Domain.Tags;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Filing;
 using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
@@ -40,6 +41,7 @@ public sealed class TagRules(
     DokumentDbContext db,
     AuditLog audit,
     JobQueue jobs,
+    FilingQueue filing,
     LiveChanges live,
     TimeProvider time
 )
@@ -235,24 +237,51 @@ public sealed class TagRules(
         return new TagRulePreview(count, result);
     }
 
-    /// <summary>Runs one rule over every blob's stored text: its old tags go, and every blob that matches now gets the tag.</summary>
+    /// <summary>
+    /// Runs one rule over every blob's stored text: blobs that no longer match lose the tag, and every blob that matches
+    /// has it. Blobs that already had it keep it as it was, so only those that just got it can be filed (§13.6).
+    /// </summary>
     public async Task ApplyRuleAsync(Guid ruleId, CancellationToken ct = default)
     {
         var rule = await db.TagRules.AsNoTracking().SingleOrDefaultAsync(r => r.Id == ruleId, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        await db.BlobTags.Where(b => b.RuleId == ruleId).ExecuteDeleteAsync(ct);
         if (rule is { Enabled: true })
         {
-            var now = time.GetUtcNow();
+            var query = BmQuery.Rule(rule.Words);
             await db.Database.ExecuteSqlAsync(
                 $"""
-                INSERT INTO blob_tags (blob_hash, tag, tag_key, source, rule_id, created_at)
-                SELECT DISTINCT blob_hash, {rule.Tag.Value}, {rule.TagKey}, 'rule', {rule.Id}, {now}
-                FROM content_pages WHERE id @@@ {BmQuery.Rule(rule.Words)}::jsonb
-                ON CONFLICT DO NOTHING
+                DELETE FROM blob_tags
+                WHERE rule_id = {rule.Id}
+                  AND (tag_key <> {rule.TagKey}
+                       OR blob_hash NOT IN (SELECT blob_hash FROM content_pages WHERE id @@@ {query}::jsonb))
                 """,
                 ct
             );
+            await db.Database.ExecuteSqlAsync(
+                $"UPDATE blob_tags SET tag = {rule.Tag.Value} WHERE rule_id = {rule.Id} AND tag <> {rule.Tag.Value}",
+                ct
+            );
+            var now = time.GetUtcNow();
+            var added = await db
+                .Database.SqlQuery<byte[]>(
+                    $"""
+                    INSERT INTO blob_tags (blob_hash, tag, tag_key, source, rule_id, created_at)
+                    SELECT DISTINCT blob_hash, {rule.Tag.Value}, {rule.TagKey}, 'rule', {rule.Id}, {now}
+                    FROM content_pages WHERE id @@@ {query}::jsonb
+                    ON CONFLICT DO NOTHING
+                    RETURNING blob_hash AS "Value"
+                    """
+                )
+                .ToListAsync(ct);
+            await filing.RequestForBlobsAsync(
+                added.Select(b => ContentHash.FromBytes(b)).ToList(),
+                JobPriority.Background,
+                ct
+            );
+        }
+        else
+        {
+            await db.BlobTags.Where(b => b.RuleId == ruleId).ExecuteDeleteAsync(ct);
         }
 
         await live.NotifyEveryoneAsync(LiveTopics.Files, ct);
@@ -319,6 +348,11 @@ public sealed class TagRules(
                 """,
                 ct
             );
+        }
+
+        if (added.Count > 0)
+        {
+            await filing.RequestForBlobsAsync([hash], JobPriority.Interactive, ct);
         }
 
         var owners = await db

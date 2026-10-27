@@ -382,6 +382,100 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("uploads", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Filing.FilingRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ActiveSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("active_since");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Folder")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("folder_template");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.Property<string>("TagKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "TagKey")
+                        .IsUnique();
+
+                    b.ToTable("filing_rules", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Filing.NodeFiling", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<DateTimeOffset>("FiledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("filed_at");
+
+                    b.Property<Guid?>("FromFolderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("from_folder_id");
+
+                    b.Property<Guid?>("RuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rule_id");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.Property<Guid?>("ToFolderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("to_folder_id");
+
+                    b.Property<DateTimeOffset?>("UndoneAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("undone_at");
+
+                    b.HasKey("NodeId");
+
+                    b.HasIndex("FiledAt");
+
+                    b.HasIndex("RuleId");
+
+                    b.ToTable("node_filings", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Domain.Identity.Session", b =>
                 {
                     b.Property<Guid>("Id")
@@ -886,6 +980,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("rule_id");
 
+                    b.Property<DateTimeOffset>("Since")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("since");
+
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasColumnType("text")
@@ -1118,6 +1216,29 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Filing.FilingRule", b =>
+                {
+                    b.HasOne("Dokument.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Filing.NodeFiling", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dokument.Domain.Filing.FilingRule", null)
+                        .WithMany()
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Dokument.Domain.Identity.Session", b =>

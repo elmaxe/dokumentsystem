@@ -57,4 +57,7 @@ public static class AuditActions
 
     /// <summary>An admin added, changed or deleted a keyword rule (§13.4).</summary>
     public const string TagRuleChange = "admin.tag_rule";
+
+    /// <summary>A person added, changed, reordered or deleted one of their own filing rules (§13.6).</summary>
+    public const string FilingRuleChange = "filing_rule.change";
 }

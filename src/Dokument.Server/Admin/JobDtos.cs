@@ -30,7 +30,10 @@ public sealed record JobList(List<JobDto> Items, bool More);
 /// The files that use the content, best match first: current versions, then trashed files, then older versions. Empty
 /// when no file uses it any more, and for keyword-rule runs.
 /// </param>
-/// <param name="RuleTag">For a keyword-rule run (<c>tagRule</c>): the tag of the rule it runs. Null once the rule is deleted.</param>
+/// <param name="RuleTag">
+/// For a keyword-rule run (<c>tagRule</c>) or a filing rule's run (<c>filingRule</c>): the tag of the rule it runs.
+/// Null once the rule is deleted.
+/// </param>
 public sealed record JobDto(
     Guid Id,
     JobKind Type,

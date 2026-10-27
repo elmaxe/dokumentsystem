@@ -1,4 +1,5 @@
 using Dokument.Domain.Jobs;
+using Dokument.Worker.Filing;
 using Dokument.Worker.Jobs;
 using Dokument.Worker.Previews;
 using Dokument.Worker.Search;
@@ -54,6 +55,14 @@ public static class WorkerRole
         services.AddScoped<TagRuleHandler>();
         services.AddSingleton(
             new JobHandlerRegistration(JobType.TagRule, typeof(TagRuleHandler), 1)
+        );
+
+        // One at a time, so two files filed into a new folder don't both make it.
+        services.AddScoped<FileHandler>();
+        services.AddSingleton(new JobHandlerRegistration(JobType.File, typeof(FileHandler), 1));
+        services.AddScoped<FilingRuleHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(JobType.FilingRule, typeof(FilingRuleHandler), 1)
         );
 
         services.AddHostedService<JobRunner>();
