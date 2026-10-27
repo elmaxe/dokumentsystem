@@ -29,6 +29,7 @@ export * from "./components/ShareDialog";
 export * from "./components/Snackbar";
 export * from "./components/StorageMeter";
 export * from "./components/Switch";
+export * from "./components/Tags";
 export * from "./components/TextField";
 export * from "./components/UploadTray";
 export * from "./components/VersionHistory";

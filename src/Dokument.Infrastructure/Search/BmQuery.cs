@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Dokument.Domain.Search;
+using Dokument.Domain.Tags;
 
 namespace Dokument.Infrastructure.Search;
 
@@ -103,6 +104,50 @@ internal static class BmQuery
         );
     }
 
+    /// <summary>
+    /// A keyword rule (§13.4) on page text and metadata: any entry matches. A word matches as itself, as a Swedish or
+    /// English stem, or, from 5 letters, as the start of a longer word ("kvitto" in "kvittot", which the Swedish
+    /// stemmer keeps apart); a phrase matches word for word. No typos, unlike search, so a rule doesn't tag files it
+    /// shouldn't.
+    /// </summary>
+    public static string Rule(TagRuleWords words) =>
+        new JsonObject
+        {
+            ["boolean"] = new JsonObject
+            {
+                ["should"] = new JsonArray([
+                    .. words.Entries.Select(entry =>
+                        entry.Count == 1
+                            ? RuleWord(entry[0])
+                            : new JsonObject
+                            {
+                                ["phrase"] = new JsonObject
+                                {
+                                    ["field"] = "text_raw",
+                                    ["phrases"] = Array(entry),
+                                },
+                            }
+                    ),
+                ]),
+            },
+        }.ToJsonString();
+
+    private static JsonNode RuleWord(string word)
+    {
+        var options = new List<JsonNode>
+        {
+            Match("text_sv", word),
+            Match("text_en", word),
+            Match("text_raw", word),
+        };
+        if (word.Length >= FuzzyFrom)
+        {
+            options.Add(FuzzyTerm(word, distance: 0, prefix: true, field: "text_raw"));
+        }
+
+        return Should([.. options]);
+    }
+
     private static string Boolean(JsonArray must, IEnumerable<JsonNode> mustNot)
     {
         var boolean = new JsonObject { ["must"] = must };
@@ -139,12 +184,17 @@ internal static class BmQuery
         return new JsonObject { ["match"] = match };
     }
 
-    private static JsonNode FuzzyTerm(string value, int distance, bool prefix) =>
+    private static JsonNode FuzzyTerm(
+        string value,
+        int distance,
+        bool prefix,
+        string field = "name_words"
+    ) =>
         new JsonObject
         {
             ["fuzzy_term"] = new JsonObject
             {
-                ["field"] = "name_words",
+                ["field"] = field,
                 ["value"] = value,
                 ["distance"] = distance,
                 ["prefix"] = prefix,

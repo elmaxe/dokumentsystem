@@ -1,7 +1,9 @@
 using Dokument.Domain.Files;
 using Dokument.Domain.Previews;
+using Dokument.Domain.Tags;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Jobs;
+using Dokument.Infrastructure.Tags;
 
 namespace Dokument.Server.Files;
 
@@ -15,6 +17,7 @@ namespace Dokument.Server.Files;
 /// The steps the worker still has to do for the current version, in pipeline order; empty when it is done. Files with
 /// any show a "Processing" badge. See <c>/nodes/{id}/processing</c> for every step.
 /// </param>
+/// <param name="Tags">The file's tags, by name: the ones people added and the automatic ones nobody removed (§13.4).</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -32,7 +35,8 @@ public sealed record NodeDto(
     ThumbnailState Thumbnail,
     FolderCounts? Contents,
     bool Starred,
-    List<ActiveStepDto> Processing
+    List<ActiveStepDto> Processing,
+    List<TagDto> Tags
 )
 {
     public static NodeDto From(
@@ -41,7 +45,8 @@ public sealed record NodeDto(
         IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails,
         IReadOnlyDictionary<Guid, FolderContents> folders,
         IReadOnlySet<Guid> starred,
-        IReadOnlyDictionary<ContentHash, List<ActiveStep>> processing
+        IReadOnlyDictionary<ContentHash, List<ActiveStep>> processing,
+        IReadOnlyDictionary<Guid, List<TagView>> tags
     ) =>
         new(
             node.Id,
@@ -66,14 +71,35 @@ public sealed record NodeDto(
             starred.Contains(node.Id),
             node.CurrentVersion is { } current
             && processing.TryGetValue(current.BlobHash, out var steps)
-                ? steps.Select(s => new ActiveStepDto(JobKinds.Of(s.Type), s.Running)).ToList()
+                ? steps.Select(s => new ActiveStepDto(JobKinds.StepOf(s.Type), s.Running)).ToList()
+                : [],
+            tags.TryGetValue(node.Id, out var shown)
+                ? shown.Select(t => new TagDto(t.Name, t.Source, t.RuleId)).ToList()
                 : []
         );
 }
 
 /// <summary>A processing step that hasn't finished yet.</summary>
 /// <param name="Running">False while it waits its turn.</param>
-public sealed record ActiveStepDto(JobKind Step, bool Running);
+public sealed record ActiveStepDto(FileStep Step, bool Running);
+
+/// <param name="Source">Who added it: a person (<c>user</c>), a keyword rule or the ML service. Show automatic ones differently.</param>
+/// <param name="RuleId">For <c>rule</c>: which keyword rule added it.</param>
+public sealed record TagDto(string Name, TagSource Source, Guid? RuleId);
+
+/// <param name="Tags">What the file shows.</param>
+/// <param name="Removed">Automatic tags someone took off this file, which "Put back" can restore.</param>
+public sealed record FileTags(List<TagDto> Tags, List<string> Removed);
+
+/// <param name="Ids">Files to change, 1 to 1000.</param>
+/// <param name="Add">Tags to add, at most 20. Adding a removed automatic tag puts it back.</param>
+/// <param name="Remove">Tags to remove, at most 20.</param>
+public sealed record ChangeTagsRequest(List<Guid> Ids, List<string>? Add, List<string>? Remove);
+
+/// <param name="Files">How many of the person's files have it.</param>
+public sealed record TagSuggestion(string Name, int Files);
+
+public sealed record TagSuggestions(List<TagSuggestion> Tags);
 
 /// <summary>What a folder holds, at any depth.</summary>
 public sealed record FolderCounts(int Files, int Folders);

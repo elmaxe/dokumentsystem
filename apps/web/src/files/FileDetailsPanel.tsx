@@ -19,6 +19,7 @@ import {
   versionsQuery,
   type Item,
 } from "./drive";
+import { FileTagsSection } from "./tags";
 
 type Props = {
   item: Item;
@@ -193,6 +194,7 @@ export function FileDetailsPanel({
       onClose={onClose}
       onManageAccess={() => toast(t("common.notYet"))}
       onStarChange={onStarChange}
+      tags={isFile ? <FileTagsSection item={item} /> : undefined}
       fileDetails={fileDetails.data && { details: fileDetails.data, onSave: saveDetails }}
       fileText={
         fileText.data && {

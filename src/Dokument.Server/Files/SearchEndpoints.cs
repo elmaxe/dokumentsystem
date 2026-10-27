@@ -2,6 +2,7 @@ using Dokument.Domain.Files;
 using Dokument.Domain.Search;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Search;
+using Dokument.Infrastructure.Tags;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -42,7 +43,12 @@ public sealed record SearchResponse(
 
 public sealed record SuggestionDto(NodeDto Node, List<PathEntry> Path);
 
-public sealed record SuggestResponse(List<SuggestionDto> Items, List<string> Terms);
+/// <param name="Tags">Tags that start with what was typed, at most two, shown above the names (§13.4).</param>
+public sealed record SuggestResponse(
+    List<SuggestionDto> Items,
+    List<string> Terms,
+    List<TagSuggestion> Tags
+);
 
 /// <param name="Boxes">Hits in recognized text, as <c>[x, y, width, height]</c> fractions of the page. Empty for a text layer, which the viewer searches itself.</param>
 public sealed record PageMatchDto(int PageNo, PageSource Source, List<double[]> Boxes);
@@ -60,13 +66,14 @@ public static class SearchEndpoints
             .WithName("Search")
             .WithDescription(
                 "Files and folders whose name, text or metadata match. `q` takes words, \"exact phrases\", -excluded "
-                    + "words and the operators type:, in:, after:, before:, camera:, taken: and is:starred; the other "
-                    + "parameters are the filter chips and override the operators."
+                    + "words and the operators type:, in:, after:, before:, camera:, taken:, tag: and is:starred; the "
+                    + "other parameters are the filter chips and override the operators. A word also finds files "
+                    + "with a tag that has it."
             );
         group
             .MapGet("/search/suggest", Suggest)
             .WithName("SearchSuggest")
-            .WithDescription("Name matches as someone types, best first.");
+            .WithDescription("Tags and name matches as someone types, best first.");
         group
             .MapGet("/nodes/{id:guid}/matches", Matches)
             .WithName("SearchMatchesInFile")
@@ -88,6 +95,7 @@ public static class SearchEndpoints
         DateTimeOffset? modifiedBefore = null,
         Guid? folderId = null,
         bool starred = false,
+        string[]? tag = null,
         SearchSort sort = SearchSort.Relevance,
         int offset = 0,
         int limit = 50
@@ -116,6 +124,7 @@ public static class SearchEndpoints
                 modifiedBefore,
                 folderId,
                 starred,
+                tag,
                 sort,
                 Math.Max(0, offset),
                 limit
@@ -159,6 +168,7 @@ public static class SearchEndpoints
     private static async Task<Ok<SuggestResponse>> Suggest(
         HttpContext context,
         SearchService search,
+        TagService tags,
         DriveService drive,
         NodeDtoMapper mapper,
         CancellationToken ct,
@@ -166,12 +176,16 @@ public static class SearchEndpoints
     )
     {
         var nodes = await search.SuggestAsync(context.Actor(), q, limit: 6, ct);
+        var matchingTags = string.IsNullOrWhiteSpace(q)
+            ? []
+            : await tags.SuggestAsync(context.Actor(), q, limit: 2, ct);
         var dtos = await mapper.MapAsync(nodes, ct);
         var paths = await PathsAsync(drive, nodes, ct);
         return TypedResults.Ok(
             new SuggestResponse(
                 nodes.Select((n, i) => new SuggestionDto(dtos[i], paths[n.Id])).ToList(),
-                [.. SearchQuery.Parse(q).HighlightTerms]
+                [.. SearchQuery.Parse(q).HighlightTerms],
+                matchingTags.Select(t => new TagSuggestion(t.Name, t.Files)).ToList()
             )
         );
     }

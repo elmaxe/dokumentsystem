@@ -36,6 +36,8 @@ export type DetailsPanelProps = {
   /** Shows a star toggle in the header, filled when the item is starred. */
   onStarChange?: (starred: boolean) => void;
   versions?: VersionHistoryProps;
+  /** The Tags section, under the file facts in the Info tab (§13.4). */
+  tags?: ReactNode;
   /** What the file says about itself, and its searchable text (§13.5); shown under its info once loaded. */
   fileDetails?: DetailsSectionProps;
   fileText?: TextSectionProps;
@@ -63,6 +65,7 @@ export function DetailsPanel({
   onManageAccess,
   onStarChange,
   versions,
+  tags,
   fileDetails,
   fileText,
   processing,
@@ -152,6 +155,7 @@ export function DetailsPanel({
                 </Row>
               )}
             </dl>
+            {tags}
             {!folder && fileDetails && <DetailsSection {...fileDetails} />}
             {!folder && fileText && <TextSection {...fileText} />}
             {!folder && processing && <ProcessingSection {...processing} />}

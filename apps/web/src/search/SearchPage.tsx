@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { nodeQuery, pathLabel, toItem } from "../files/drive";
+import { nodeQuery, pathLabel, tagSuggestionsQuery, toItem } from "../files/drive";
 import {
   hasFilters,
   modifiedRanges,
@@ -26,6 +26,7 @@ export function SearchPage({ params }: { params: SearchParams }) {
   const router = useRouter();
   const [limit, setLimit] = useState(pageSize);
   const results = useQuery(searchQuery(params, limit));
+  const tags = useQuery(tagSuggestionsQuery("", 30));
   const folder = useQuery({ ...nodeQuery(params.folder ?? ""), enabled: !!params.folder });
   const folderName = folder.data?.node.name;
   const q = params.q ?? "";
@@ -103,6 +104,31 @@ export function SearchPage({ params }: { params: SearchParams }) {
           <Chip icon="star" selected={!!params.starred} onClick={() => update({ starred: params.starred ? undefined : true })}>
             {t("search.chips.starred")}
           </Chip>
+          {params.tag ? (
+            <Chip icon="sell" selected onRemove={() => update({ tag: undefined })}>
+              {params.tag}
+            </Chip>
+          ) : (
+            (tags.data?.length ?? 0) > 0 && (
+              <ActionMenu
+                align="start"
+                actions={(tags.data ?? []).map((tag) => ({
+                  id: tag.name,
+                  icon: "sell",
+                  label: `${tag.name} · ${t("tags.files", { count: tag.files })}`,
+                }))}
+                onAction={(tag) => update({ tag })}
+                trigger={
+                  <span className="inline-flex">
+                    <Chip icon="sell">
+                      {t("search.tagChip")}
+                      <Icon name="arrow_drop_down" size={18} />
+                    </Chip>
+                  </span>
+                }
+              />
+            )
+          )}
           {q && (
             <ActionMenu
               align="end"

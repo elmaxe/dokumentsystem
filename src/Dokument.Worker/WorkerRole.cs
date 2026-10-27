@@ -51,6 +51,11 @@ public static class WorkerRole
             )
         );
 
+        services.AddScoped<TagRuleHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(JobType.TagRule, typeof(TagRuleHandler), 1)
+        );
+
         services.AddHostedService<JobRunner>();
         services.AddHostedService<ThumbnailBackfill>();
         services.AddHostedService<ContentBackfill>();

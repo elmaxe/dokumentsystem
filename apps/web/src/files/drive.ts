@@ -1,5 +1,6 @@
 import type {
   DuplicateCheckResult,
+  FileTags,
   FileDetailsDto,
   FileProcessing,
   FileTextDto,
@@ -14,12 +15,13 @@ import type {
   RestoredItem,
   StarredListing,
   StorageUsage,
+  TagSuggestion,
   TrashListing,
   VersionDto,
 } from "@dokument/api";
 import { thumbnailUrl } from "@dokument/api";
 import { kindOf, type FileItem } from "@dokument/ui";
-import { queryOptions, type QueryClient } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, type QueryClient } from "@tanstack/react-query";
 import type { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { isLiveConnected } from "../live";
@@ -81,6 +83,7 @@ export const toItem = (node: NodeDto): Item => ({
   thumbnail: node.thumbnail === "ready" ? thumbnailUrl(node.id, node.currentVersionId) : undefined,
   thumbnailPending: node.thumbnail === "pending",
   starred: node.starred,
+  tags: node.tags.map((tag) => ({ name: tag.name, source: tag.source })),
   processing: node.processing,
   node,
 });
@@ -154,6 +157,23 @@ export const versionsQuery = (id: string) =>
       unwrap(api.GET("/api/v1/nodes/{id}/versions", { params: { path: { id } } })),
   });
 
+/** A file's tags and the automatic ones someone took off it (§13.4). */
+export const fileTagsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ["tags", "file", id],
+    queryFn: (): Promise<FileTags> => unwrap(api.GET("/api/v1/nodes/{id}/tags", { params: { path: { id } } })),
+  });
+
+/** Tags on files the person can see that start with what's typed, most used first. */
+export const tagSuggestionsQuery = (q: string, limit = 8) =>
+  queryOptions({
+    queryKey: ["tags", "suggest", q, limit],
+    queryFn: async (): Promise<TagSuggestion[]> =>
+      (await unwrap(api.GET("/api/v1/tags", { params: { query: { q: q || undefined, limit } } }))).tags,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+
 export const storageQuery = queryOptions({
   queryKey: ["storage"],
   queryFn: (): Promise<StorageUsage> => unwrap(api.GET("/api/v1/storage")),
@@ -193,6 +213,15 @@ export async function invalidateStars(queryClient: QueryClient) {
   );
 }
 
+/** Refetches what shows tags: every listing, the open file, its tags, search results and suggestions. */
+export async function invalidateTags(queryClient: QueryClient) {
+  await Promise.all(
+    ["folder", "node", "tags", "search", "starred", "recent"].map((key) =>
+      queryClient.invalidateQueries({ queryKey: [key] }),
+    ),
+  );
+}
+
 /** Refetches after moving things in or out of the trash: the trash, the storage meter and every folder listing. */
 export async function invalidateTrash(queryClient: QueryClient) {
   await Promise.all([
@@ -228,6 +257,8 @@ export const drive = {
   revertTextPage: (id: string, pageNo: number) =>
     send(api.DELETE("/api/v1/nodes/{id}/text/{pageNo}", { params: { path: { id, pageNo } } })),
   trash: (ids: string[]) => send(api.POST("/api/v1/nodes/trash", { body: { ids } })),
+  changeTags: (ids: string[], change: { add?: string[]; remove?: string[] }) =>
+    send(api.POST("/api/v1/nodes/tags", { body: { ids, add: change.add ?? [], remove: change.remove ?? [] } })),
   star: (ids: string[], starred: boolean) =>
     send(api.POST(starred ? "/api/v1/nodes/star" : "/api/v1/nodes/unstar", { body: { ids } })),
   /** Tells the server the person opened a file, for their Recent page. Not audited (§18). */

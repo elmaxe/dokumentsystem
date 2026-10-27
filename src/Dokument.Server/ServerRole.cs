@@ -120,8 +120,10 @@ public static class ServerRole
         api.MapTrashEndpoints();
         api.MapStarredAndRecentEndpoints();
         api.MapSearchEndpoints();
+        api.MapTagEndpoints();
         api.MapTusEndpoints();
         api.MapAdminEndpoints();
+        api.MapAdminTagEndpoints();
         app.MapHub<LiveHub>(LiveHub.Path).RequireAuthorization();
         app.MapFallback("/api/{**path}", () => TypedResults.NotFound());
         app.MapFallbackToFile("index.html");

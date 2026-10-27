@@ -4,6 +4,7 @@ using Dokument.Domain.Search;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Settings;
+using Dokument.Infrastructure.Tags;
 using Dokument.Infrastructure.Telemetry;
 using Dokument.Worker.Jobs;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +14,7 @@ namespace Dokument.Worker.Search;
 
 /// <summary>
 /// The text stage (docs/design.md §10.2) for one blob: reads its text, recognizing scans and photos when that is on,
-/// and replaces the blob's text pages. A file it can't read is recorded as such and not retried; only unexpected errors
+/// and replaces the blob's text pages, then runs the keyword rules on it. A file it can't read is recorded as such and not retried; only unexpected errors
 /// (I/O, the database, Tesseract crashing) make the job fail and retry. A missing Tesseract counts as recognition being
 /// off for that file.
 /// </summary>
@@ -22,6 +23,7 @@ internal sealed partial class TextHandler(
     BlobStore blobs,
     TextExtractor extractor,
     SettingsStore settings,
+    TagRules rules,
     TimeProvider time,
     ILogger<TextHandler> logger
 ) : IJobHandler
@@ -120,6 +122,9 @@ internal sealed partial class TextHandler(
         content.UpdatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+
+        // Keyword rules run right after the text stage, on what it stored (§13.4).
+        await rules.ApplyToBlobAsync(hash, ct);
 
         var recognized = result.Pages.Count(p => p.Source == PageSource.Ocr);
         if (recognized > 0)
