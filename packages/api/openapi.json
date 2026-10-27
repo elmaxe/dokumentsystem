@@ -140,6 +140,20 @@
         }
       }
     },
+    "/api/v1/auth/token": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "description": "An OAuth token request (form: grant_type=authorization_code, code, code_verifier, redirect_uri) for a code from the IdP. Returns a bearer session as access_token.",
+        "operationId": "RedeemCode",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/auth/session": {
       "get": {
         "tags": [

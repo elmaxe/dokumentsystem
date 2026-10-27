@@ -26,13 +26,8 @@ public static class AuthSetup
         var oidc = OidcSettings.FromConfiguration(builder.Configuration);
         builder.Services.AddSingleton(oidc);
 
-        var acceptAccessTokens = AccessTokenAuthentication.IsEnabled(oidc, builder.Environment);
         var auth = builder
-            .Services.AddAuthentication(
-                acceptAccessTokens
-                    ? AccessTokenAuthentication.SessionOrAccessTokenScheme
-                    : SessionAuthentication.Scheme
-            )
+            .Services.AddAuthentication(SessionAuthentication.Scheme)
             .AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(
                 SessionAuthentication.Scheme,
                 null
@@ -44,11 +39,6 @@ public static class AuthSetup
                 OidcScheme,
                 options => ConfigureOidc(options, oidc, builder.Environment)
             );
-        }
-
-        if (acceptAccessTokens)
-        {
-            auth.AddAccessTokens(oidc);
         }
 
         builder
@@ -183,7 +173,7 @@ public static class AuthSetup
         context.HandleResponse();
     }
 
-    /// <summary>The person the IdP vouches for, from the claims of an ID token and userinfo, or of an access token.</summary>
+    /// <summary>The person the IdP vouches for, from the claims of its ID token and userinfo.</summary>
     internal static OidcIdentity IdentityFrom(
         ClaimsPrincipal principal,
         OidcSettings oidc,
@@ -204,7 +194,7 @@ public static class AuthSetup
         );
 
     /// <summary>The quota claim's value (§17.1). One that can't be read is logged and changes nothing.</summary>
-    private static ClaimedQuota ReadQuotaClaim(
+    internal static ClaimedQuota ReadQuotaClaim(
         ClaimsPrincipal principal,
         OidcSettings oidc,
         ILogger logger

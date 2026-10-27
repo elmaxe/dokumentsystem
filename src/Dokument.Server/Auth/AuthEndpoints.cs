@@ -25,6 +25,7 @@ public static class AuthEndpoints
             .WithDescription(
                 "Starts the OIDC login in the browser. Navigate here; don't fetch it."
             );
+        auth.MapTokenEndpoint();
         auth.MapGet("/session", GetSession).WithName("GetSession").RequireAuthorization();
         auth.MapPost("/logout", Logout).WithName("Logout").RequireAuthorization();
 

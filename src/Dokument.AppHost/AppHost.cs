@@ -3,7 +3,7 @@
 //
 // Sign in at http://localhost:5173 as alice/alice (admin), bob/bob (user) or carol/carol (no groups).
 // pgAdmin runs at http://localhost:5050, already connected to Postgres. The API reference (Scalar) is linked on the
-// web resource in the dashboard; its Authorize button signs in at Keycloak too.
+// web resource in the dashboard; its Authorize button signs in at Keycloak too (docs/design.md §5, token endpoint).
 //
 // Telemetry is on in development: Aspire gives every project OTEL_EXPORTER_OTLP_ENDPOINT and friends, so the server's
 // and worker's traces, metrics and logs show up in the dashboard. Outside Aspire it stays off until that variable is
@@ -51,8 +51,6 @@ var server = AddRole("server", launchProfile: "http")
     .WithEnvironment("OIDC_PROVIDER_NAME", "Keycloak (dev)")
     // bob gets 50GB from this claim; alice and carol fall back to the admin page (§17.1).
     .WithEnvironment("OIDC_QUOTA_CLAIM", "dokument_quota")
-    // Scalar's public client. Its access tokens are accepted in development only, so Scalar can call the API.
-    .WithEnvironment("OIDC_SCALAR_CLIENT_ID", "dokument-scalar")
     .WaitFor(keycloak);
 
 // The worker runs in the app's image by default, so exiftool, Tesseract and libvips are there on any machine, the same

@@ -1,6 +1,7 @@
 using Dokument.Server.Auth;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,9 +12,9 @@ using Scalar.AspNetCore;
 namespace Dokument.Server;
 
 /// <summary>
-/// The OpenAPI document, and in development the interactive API reference (Scalar) at <c>${PUBLIC_URL}/scalar</c>. When
-/// <c>OIDC_SCALAR_CLIENT_ID</c> is set, Scalar signs in at the IdP with OAuth (code + PKCE) and calls the API with the
-/// access token it gets (<see cref="AccessTokenAuthentication"/>).
+/// The OpenAPI document, and in development the interactive API reference (Scalar) at <c>${PUBLIC_URL}/scalar/</c>.
+/// Scalar signs in at the IdP with code + PKCE and redeems the code at our token endpoint, so it calls the API with
+/// one of our own bearer sessions (<see cref="TokenEndpoint"/>, docs/design.md §5).
 /// </summary>
 public static class ApiReference
 {
@@ -21,7 +22,7 @@ public static class ApiReference
 
     public static WebApplicationBuilder AddApiReference(this WebApplicationBuilder builder)
     {
-        var signIn = AccessTokenAuthentication.IsEnabled(
+        var signIn = SignsIn(
             OidcSettings.FromConfiguration(builder.Configuration),
             builder.Environment
         );
@@ -54,23 +55,20 @@ public static class ApiReference
         app.MapScalarApiReference(
             (options, context) =>
             {
-                if (!AccessTokenAuthentication.IsEnabled(oidc, app.Environment))
+                if (!SignsIn(oidc, app.Environment))
                 {
                     return;
                 }
 
-                // The IdP sends the browser back to this page at the public URL, which UsePublicUrl gave the request.
-                var request = context.Request;
                 options
                     .AddPreferredSecuritySchemes(SecurityScheme)
                     .AddAuthorizationCodeFlow(
                         SecurityScheme,
                         flow =>
-                            flow.WithClientId(oidc.ScalarClientId!)
+                            flow.WithClientId(oidc.ClientId!)
                                 .WithPkce(Pkce.Sha256)
-                                .WithRedirectUri(
-                                    $"{request.Scheme}://{request.Host}{request.PathBase}/scalar/"
-                                )
+                                .WithRedirectUri(RedirectUri(context.Request))
+                                .WithCredentialsLocation(CredentialsLocation.Body)
                                 .WithSelectedScopes(Scopes(oidc))
                     )
                     .EnablePersistentAuthentication();
@@ -79,34 +77,49 @@ public static class ApiReference
         return app;
     }
 
+    /// <summary>
+    /// Where the IdP sends Scalar's sign-in back to: this page at the public URL, which UsePublicUrl gave the request.
+    /// The token endpoint accepts it in development only.
+    /// </summary>
+    internal static string RedirectUri(HttpRequest request) =>
+        $"{request.Scheme}://{request.Host}{request.PathBase}/scalar/";
+
+    private static bool SignsIn(OidcSettings oidc, IHostEnvironment environment) =>
+        environment.IsDevelopment() && oidc.Enabled;
+
     private static string[] Scopes(OidcSettings oidc) =>
         oidc.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-    /// <summary>Describes the IdP's code flow, with the endpoints from its discovery document.</summary>
+    /// <summary>Describes the code flow: sign in at the IdP, then redeem the code at our token endpoint.</summary>
     private static async Task AddSecuritySchemeAsync(
         OpenApiDocument document,
         OpenApiDocumentTransformerContext context,
         CancellationToken ct
     )
     {
-        var oidc = context.ApplicationServices.GetRequiredService<OidcSettings>();
-        var jwt = context
-            .ApplicationServices.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
-            .Get(AccessTokenAuthentication.Scheme);
-        var idp = await jwt.ConfigurationManager!.GetConfigurationAsync(ct);
+        var services = context.ApplicationServices;
+        var oidc = services.GetRequiredService<OidcSettings>();
+        var idp = await services
+            .GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>()
+            .Get(AuthSetup.OidcScheme)
+            .ConfigurationManager!.GetConfigurationAsync(ct);
+        var request = services.GetRequiredService<IHttpContextAccessor>().HttpContext!.Request;
 
         document.Components ??= new OpenApiComponents();
         document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
         document.Components.SecuritySchemes[SecurityScheme] = new OpenApiSecurityScheme
         {
             Type = SecuritySchemeType.OAuth2,
-            Description = $"Sign in with {oidc.ProviderName ?? "the IdP"}. Development only.",
+            Description =
+                $"Sign in with {oidc.ProviderName ?? "the IdP"}. The code is redeemed for one of our bearer sessions.",
             Flows = new OpenApiOAuthFlows
             {
                 AuthorizationCode = new OpenApiOAuthFlow
                 {
                     AuthorizationUrl = new Uri(idp.AuthorizationEndpoint),
-                    TokenUrl = new Uri(idp.TokenEndpoint),
+                    TokenUrl = new Uri(
+                        $"{request.Scheme}://{request.Host}{request.PathBase}{TokenEndpoint.Path}"
+                    ),
                     Scopes = Scopes(oidc).ToDictionary(scope => scope, _ => ""),
                 },
             },

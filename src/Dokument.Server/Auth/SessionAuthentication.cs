@@ -52,28 +52,6 @@ public static class SessionAuthentication
             CookieOptions(context.Request, expires)
         );
 
-    /// <param name="sessionId">The session behind the request; <see cref="Guid.Empty"/> when there is none.</param>
-    internal static ClaimsPrincipal CreatePrincipal(
-        User user,
-        Guid sessionId,
-        string sessionKind,
-        string scheme
-    ) =>
-        new(
-            new ClaimsIdentity(
-                [
-                    new Claim(UserIdClaim, user.Id.ToString()),
-                    new Claim(SessionIdClaim, sessionId.ToString()),
-                    new Claim(SessionKindClaim, sessionKind),
-                    new Claim(RoleClaim, user.Role.ToString().ToLowerInvariant()),
-                    new Claim(ClaimTypes.Name, user.DisplayName),
-                ],
-                scheme,
-                nameType: ClaimTypes.Name,
-                roleType: RoleClaim
-            )
-        );
-
     public static void DeleteCookie(HttpContext context) =>
         context.Response.Cookies.Delete(CookieName, CookieOptions(context.Request, expires: null));
 }
@@ -128,16 +106,20 @@ public sealed class SessionAuthenticationHandler(
         }
 
         Context.Items[SessionAuthentication.TokenItem] = token;
+        var identity = new ClaimsIdentity(
+            [
+                new Claim(SessionAuthentication.UserIdClaim, user.Id.ToString()),
+                new Claim(SessionAuthentication.SessionIdClaim, session.Id.ToString()),
+                new Claim(SessionAuthentication.SessionKindClaim, session.Kind.ToString()),
+                new Claim(SessionAuthentication.RoleClaim, user.Role.ToString().ToLowerInvariant()),
+                new Claim(ClaimTypes.Name, user.DisplayName),
+            ],
+            SessionAuthentication.Scheme,
+            nameType: ClaimTypes.Name,
+            roleType: SessionAuthentication.RoleClaim
+        );
         return AuthenticateResult.Success(
-            new AuthenticationTicket(
-                SessionAuthentication.CreatePrincipal(
-                    user,
-                    session.Id,
-                    session.Kind.ToString(),
-                    SessionAuthentication.Scheme
-                ),
-                SessionAuthentication.Scheme
-            )
+            new AuthenticationTicket(new ClaimsPrincipal(identity), SessionAuthentication.Scheme)
         );
     }
 

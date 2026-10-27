@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using Dokument.Server.Auth;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -55,16 +54,11 @@ public sealed class DokumentApp(
         }
 
         builder.ConfigureTestServices(services =>
-        {
             services.Configure<OpenIdConnectOptions>(
                 AuthSetup.OidcScheme,
                 options => options.BackchannelHttpHandler = idp.Handler
-            );
-            services.Configure<JwtBearerOptions>(
-                AccessTokenAuthentication.Scheme,
-                options => options.BackchannelHttpHandler = idp.Handler
-            );
-        });
+            )
+        );
     }
 
     /// <summary>A browser: keeps cookies and doesn't follow redirects, so each hop can be checked.</summary>
