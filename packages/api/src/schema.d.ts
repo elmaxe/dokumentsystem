@@ -1718,7 +1718,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "tagRule" | "file" | "filingRule";
+        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "transcribe" | "tagRule" | "file" | "filingRule";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;

@@ -491,7 +491,7 @@ upload complete (or the backfill)
    │                    └─► filing rules (tag → move)         built (§13.6)
    ├─► transcode (video/audio browsers can't play)            built (M2)
    ├─► embed     (optional, ML)
-   └─► transcribe (optional, ML; audio/video → timed transcript pages, §11.1)  planned, after the M2 video work
+   └─► transcribe (optional, ML; audio/video → timed pages)  built (§11.1)
 ```
 
 The stages are independent jobs per blob, queued together when an upload finishes; each detects the format from the bytes itself. Transcode is the exception: the thumbnail stage probes video and audio anyway, so it queues the copy when one is needed.
