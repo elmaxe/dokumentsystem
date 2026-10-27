@@ -567,7 +567,7 @@
         "tags": [
           "Files"
         ],
-        "description": "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18).",
+        "description": "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18).",
         "operationId": "GetPreview",
         "parameters": [
           {
@@ -2357,6 +2357,86 @@
         }
       }
     },
+    "/api/v1/admin/settings/office": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutOfficeSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfficeSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficeSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/office/test": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminTestOffice",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestOfficeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/videos/copies": {
       "get": {
         "tags": [
@@ -2982,6 +3062,7 @@
           "scanner",
           "textRecognition",
           "videos",
+          "office",
           "transcription",
           "signIn"
         ],
@@ -3007,6 +3088,9 @@
           },
           "videos": {
             "$ref": "#/components/schemas/VideoSettingsDto"
+          },
+          "office": {
+            "$ref": "#/components/schemas/OfficeSettingsDto"
           },
           "transcription": {
             "$ref": "#/components/schemas/TranscriptionSettingsDto"
@@ -4490,7 +4574,8 @@
           "starred",
           "processing",
           "tags",
-          "media"
+          "media",
+          "shownAsPdf"
         ],
         "type": "object",
         "properties": {
@@ -4596,6 +4681,9 @@
                 "$ref": "#/components/schemas/MediaDto"
               }
             ]
+          },
+          "shownAsPdf": {
+            "type": "boolean"
           }
         }
       },
@@ -4619,6 +4707,38 @@
           "folder",
           "file"
         ]
+      },
+      "OfficeSettingsDto": {
+        "required": [
+          "gotenbergUrl",
+          "configured"
+        ],
+        "type": "object",
+        "properties": {
+          "gotenbergUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "configured": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OfficeSettingsRequest": {
+        "required": [
+          "gotenbergUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "gotenbergUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
       },
       "PageMatchDto": {
         "required": [
@@ -5593,6 +5713,17 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "TestOfficeRequest": {
+        "required": [
+          "url"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
           }
         }
       },

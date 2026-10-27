@@ -31,6 +31,14 @@ internal sealed partial class ThumbnailBackfill(
                 LogQueued(logger, queued);
             }
 
+            // An address in the configuration is never saved, so this is where documents from before it get previews.
+            if (scope.ServiceProvider.GetRequiredService<OfficeAddress>().Configured is not null)
+            {
+                await scope
+                    .ServiceProvider.GetRequiredService<PreviewService>()
+                    .EnqueueOfficeAsync(time.GetUtcNow(), stoppingToken);
+            }
+
             var videos = await scope
                 .ServiceProvider.GetRequiredService<SettingsStore>()
                 .GetAsync(SettingKeys.Videos, stoppingToken);

@@ -121,6 +121,12 @@ public sealed record VideoSettings(VideoCopies Copies, int MaxHeight)
         };
 }
 
+/// <summary>Office previews (§10.3, §14): Gotenberg's address, or null when they're off.</summary>
+public sealed record OfficeSettings(ServiceUrl? GotenbergUrl)
+{
+    public static readonly OfficeSettings Default = new((ServiceUrl?)null);
+}
+
 /// <summary>
 /// Speech to text (§11.1), done by the ML service: on by default, so adding an ML URL is all it takes. With no ML
 /// service set, nothing is queued.

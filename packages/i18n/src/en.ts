@@ -574,6 +574,7 @@ export const en = {
     unplayableTitle: "This file can't be played here",
     unplayableText: "Browsers can't play it as it is, and no copy that plays can be made. Download it to play it in another app.",
     cover: "Cover art",
+    shownAsPdf: "Shown as a PDF, so the layout may differ a little. Download the original to edit it.",
     failedTitle: "The preview couldn't be shown",
     failedText: "The file may be damaged or password-protected. You can still download it.",
     truncated: "Showing the first {{size}}. Download the file to see all of it.",
@@ -618,6 +619,8 @@ export const en = {
     model: "Model {{model}}",
     redo: "Transcribe again",
     redoStarted: "It will be transcribed again from the start",
+    redoTitle: "Transcribe again?",
+    redoText: "It's transcribed again from the start with the model set now. The current transcript stays until the new one starts.",
     silence: "No speech {{from}} to {{to}}",
     running: "Listening… at {{at}} of {{total}}. The rest shows up as it's done.",
     captions: "Captions from the transcript",
@@ -789,6 +792,7 @@ export const en = {
       textRecognition: "Search and text recognition",
       speech: "Speech to text",
       videos: "Video and audio",
+      office: "Office documents",
       versions: "Trash and versions",
       users: "Users and storage",
       storage: "Storage",
@@ -960,6 +964,9 @@ export const en = {
       offNote: "Recordings uploaded while it's off are transcribed when you turn it on.",
       redo: "Transcribe all again",
       redoStarted: "All recordings will be transcribed again in the background",
+      redoTitle: "Transcribe all recordings again?",
+      redoText:
+        "Every recording is transcribed again from the start, in the background, with the model set now. With many hours of sound that can take days. Today's transcripts stay searchable until each one is redone.",
     },
     textRecognition: {
       intro:
@@ -976,6 +983,17 @@ export const en = {
       offNote: "Scans and photos uploaded while this is off are read when you turn it on.",
       reread: "Read all files again",
       rereadStarted: "All files will be read again in the background",
+    },
+    office: {
+      intro:
+        "Word, Excel, PowerPoint and OpenDocument files are previewed as PDFs, made by Gotenberg in a separate container. Leave the address empty to keep these previews off.",
+      address: "Gotenberg address",
+      addressHint: "Such as http://gotenberg:3000. Leave empty to keep Office previews off.",
+      configured: "Set by GOTENBERG_URL in the server's configuration, so it can't be changed here.",
+      connected: "Connected · {{version}}",
+      failed: "Can't reach Gotenberg: {{error}}",
+      off: "Office previews are off. Documents show their type icon and can be downloaded.",
+      backfill: "Documents uploaded while previews were off get them in the background once you save.",
     },
     videos: {
       intro:

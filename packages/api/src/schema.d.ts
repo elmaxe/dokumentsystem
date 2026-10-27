@@ -322,7 +322,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18). */
+        /** @description What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18). */
         get: operations["GetPreview"];
         put?: never;
         post?: never;
@@ -1168,6 +1168,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/settings/office": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["AdminPutOfficeSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/office/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminTestOffice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/videos/copies": {
         parameters: {
             query?: never;
@@ -1452,6 +1484,7 @@ export interface components {
             scanner: components["schemas"]["ScannerSettingsDto"];
             textRecognition: components["schemas"]["TextRecognitionDto"];
             videos: components["schemas"]["VideoSettingsDto"];
+            office: components["schemas"]["OfficeSettingsDto"];
             transcription: components["schemas"]["TranscriptionSettingsDto"];
             signIn: components["schemas"]["SignInInfo"];
         };
@@ -1850,12 +1883,20 @@ export interface components {
             processing: components["schemas"]["ActiveStepDto"][];
             tags: components["schemas"]["TagDto"][];
             media: null | components["schemas"]["MediaDto"];
+            shownAsPdf: boolean;
         };
         NodeIdsRequest: {
             ids: string[];
         };
         /** @enum {unknown} */
         NodeKind: "folder" | "file";
+        OfficeSettingsDto: {
+            gotenbergUrl: null | string;
+            configured: boolean;
+        };
+        OfficeSettingsRequest: {
+            gotenbergUrl: null | string;
+        };
         PageMatchDto: {
             /** Format: int32 */
             pageNo: number;
@@ -2102,6 +2143,9 @@ export interface components {
         TestMlRequest: {
             url: string;
             apiKey: null | string;
+        };
+        TestOfficeRequest: {
+            url: string;
         };
         TestScannerRequest: {
             address: string;
@@ -4029,6 +4073,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoSettingsDto"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminPutOfficeSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfficeSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfficeSettingsDto"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminTestOffice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestOfficeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeResult"];
                 };
             };
             /** @description Bad Request */

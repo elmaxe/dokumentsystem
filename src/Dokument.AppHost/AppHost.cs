@@ -1,5 +1,5 @@
 // Local development: `dotnet run --project src/Dokument.AppHost` starts Postgres (our image), Keycloak as a test IdP,
-// the server, a worker and the Vite dev server, and opens the Aspire dashboard. See docs/design.md §3.2.
+// Gotenberg for Office previews, the server, a worker and the Vite dev server, and opens the Aspire dashboard. See docs/design.md §3.2.
 //
 // Sign in at http://localhost:5173 as alice/alice (admin), bob/bob (user) or carol/carol (no groups).
 // pgAdmin runs at http://localhost:5050, already connected to Postgres. The API reference (Scalar) is linked on the
@@ -27,6 +27,15 @@ var database = postgres.AddDatabase("Dokument", databaseName: "dokument");
 
 // The realm, client and test users are imported on every start, so the dev IdP needs no setup or volume.
 var keycloak = builder.AddKeycloak("keycloak", port: 8180).WithRealmImport("keycloak");
+
+// Office previews (docs/design.md §14). Each role gets the address it reaches Gotenberg at as GOTENBERG_URL, which wins
+// over the admin setting. Long documents take a while; the worker waits up to 3 minutes.
+var gotenberg = builder
+    .AddContainer("gotenberg", "gotenberg/gotenberg", "8")
+    .WithArgs("gotenberg", "--api-timeout=180s")
+    .WithHttpEndpoint(targetPort: 3000)
+    .WithHttpHealthCheck("/health");
+var gotenbergUrl = gotenberg.GetEndpoint("http");
 
 // The ML service for speech to text (§11.1), built from ml/. Its models download into the volume the first time they're
 // used. The server on the host and the worker in a container reach it at different addresses, so it comes to both
@@ -62,6 +71,7 @@ var server = AddRole("server", launchProfile: "http")
     .WithEnvironment("OIDC_PROVIDER_NAME", "Keycloak (dev)")
     // bob gets 50GB from this claim; alice and carol fall back to the admin page (§17.1).
     .WithEnvironment("OIDC_QUOTA_CLAIM", "dokument_quota")
+    .WithEnvironment("GOTENBERG_URL", gotenbergUrl)
     .WaitFor(keycloak);
 if (ml is not null)
 {
@@ -84,6 +94,8 @@ if (builder.Configuration.GetValue<bool>("WorkerOnHost"))
         .WithEnvironment("Serilog__MinimumLevel__Override__Dokument.Worker", "Debug")
         .WithHttpEndpoint(env: "HTTP_PORTS")
         .WithHttpHealthCheck("/health/ready")
+        .WithEnvironment("GOTENBERG_URL", gotenbergUrl)
+        .WaitFor(gotenberg)
         .WaitFor(server);
     if (ml is not null)
     {
@@ -106,6 +118,8 @@ else
         .WithOtlpExporter()
         .WithHttpEndpoint(targetPort: 8080)
         .WithHttpHealthCheck("/health/ready")
+        .WithEnvironment("GOTENBERG_URL", gotenbergUrl)
+        .WaitFor(gotenberg)
         .WaitFor(server);
 
     if (ml is not null)

@@ -2,6 +2,7 @@ using Dokument.Domain.Jobs;
 using Dokument.Worker.Filing;
 using Dokument.Worker.Jobs;
 using Dokument.Worker.Media;
+using Dokument.Worker.Office;
 using Dokument.Worker.Previews;
 using Dokument.Worker.Search;
 using Microsoft.Extensions.Configuration;
@@ -67,6 +68,9 @@ public static class WorkerRole
         );
 
         services.AddSingleton<FFmpeg>();
+        services.AddHttpClient<Gotenberg>(http =>
+            http.Timeout = Gotenberg.Timeout + TimeSpan.FromSeconds(10)
+        );
         services.AddScoped<TranscodeHandler>();
         services.AddSingleton(
             new JobHandlerRegistration(

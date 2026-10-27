@@ -4,6 +4,7 @@ import {
   Button,
   EmptyState,
   FileViewer,
+  kindOf,
   leadInMs,
   previewTypeOf,
   sortItems,
@@ -50,8 +51,10 @@ function viewTypeOf(node: NodeDto) {
 }
 
 function previewOf(node: NodeDto, versionId: string | null | undefined, refused: boolean): PreviewSource {
+  // Office documents are shown as the PDF the worker had Gotenberg make of them (§14).
+  if (node.shownAsPdf) return { type: "pdf", src: previewUrl(node.id, versionId) };
   const type = viewTypeOf(node);
-  if (type === "none") return { type };
+  if (type === "none") return isOffice(node) && node.thumbnail === "pending" ? { type: "preparing" } : { type };
   if (type === "image" && !webImage.test(node.mimeType ?? "") && node.thumbnail === "pending") return { type: "preparing" };
   const src = previewUrl(node.id, versionId);
   // What the worker found applies to the current version; an older one just gets what the server has for it.
@@ -67,6 +70,8 @@ function previewOf(node: NodeDto, versionId: string | null | undefined, refused:
   if (media.copy === "failed" || refused) return { type: "unplayable" };
   return { type: "converting", waiting: media.copy !== "making", progress: media.progress ?? undefined };
 }
+
+const isOffice = (node: NodeDto) => ["doc", "sheet", "slides"].includes(kindOf(node.name, node.mimeType));
 
 /**
  * Whether this browser says it plays the original even though most don't, so it gets the full quality instead of the
@@ -269,6 +274,8 @@ export function ViewerPage({
             >
               {t("live.newerVersion", { date: format.date(item.modified, { inSentence: true }) })}
             </Banner>
+          ) : details.data.node.shownAsPdf ? (
+            <Banner icon="picture_as_pdf">{t("viewer.shownAsPdf")}</Banner>
           ) : undefined
         }
         menuActions={[

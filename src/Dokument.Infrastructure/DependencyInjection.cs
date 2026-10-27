@@ -66,6 +66,7 @@ public static class DependencyInjection
         services.AddScoped<Filing.Filer>();
         services.AddScoped<Filing.FilingService>();
         services.AddScoped<SettingsStore>();
+        services.AddSingleton<OfficeAddress>();
         services.AddHttpClient<ServiceProbe>();
         services.Configure<MlOptions>(configuration.GetSection(MlOptions.SectionName));
         services.AddSingleton<MlHealth>();
