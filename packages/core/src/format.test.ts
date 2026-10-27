@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes } from "./format";
+import { formatBytes, formatDuration } from "./format";
 
 const nbsp = " ";
 
@@ -19,5 +19,17 @@ describe("formatBytes", () => {
 
   it("rejects negative sizes", () => {
     expect(() => formatBytes(-1, "en")).toThrow(RangeError);
+  });
+});
+
+describe("formatDuration", () => {
+  it.each([
+    [0, "0:00"],
+    [7.9, "0:07"],
+    [222, "3:42"],
+    [3600, "1:00:00"],
+    [3725, "1:02:05"],
+  ])("formats %d seconds", (seconds, expected) => {
+    expect(formatDuration(seconds)).toBe(expected);
   });
 });

@@ -322,10 +322,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description What the viewer shows: a WebP for images browsers can't display or that are huge, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18). */
+        /** @description What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18). */
         get: operations["GetPreview"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/playable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Asks for a playable copy of a video or audio file browsers can't play, ahead of other work. 409 when copies are turned off or the file can't be converted; see NodeDto.media. */
+        post: operations["RequestPlayableCopy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1084,6 +1101,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/settings/videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["AdminPutVideoSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/videos/copies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description How many playable copies of videos exist, the disk they take, and how many are still to make. */
+        get: operations["AdminGetVideoCopies"];
+        put?: never;
+        post?: never;
+        /** @description Deletes every playable copy. The originals are untouched; copies are made again as the setting says. */
+        delete: operations["AdminDeleteVideoCopies"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/storage": {
         parameters: {
             query?: never;
@@ -1299,6 +1350,7 @@ export interface components {
             ml: components["schemas"]["MlSettingsDto"];
             scanner: components["schemas"]["ScannerSettingsDto"];
             textRecognition: components["schemas"]["TextRecognitionDto"];
+            videos: components["schemas"]["VideoSettingsDto"];
             signIn: components["schemas"]["SignInInfo"];
         };
         AdminUser: {
@@ -1334,6 +1386,18 @@ export interface components {
             /** Format: date-time */
             clientModifiedAt: null | string;
             onConflict?: components["schemas"]["NameConflictPolicy"];
+        };
+        /** @enum {unknown} */
+        CopyState: "notNeeded" | "none" | "waiting" | "making" | "ready" | "failed";
+        CopyStats: {
+            /** Format: int32 */
+            count: number;
+            /** Format: int64 */
+            bytes: number;
+            /** Format: int32 */
+            waiting: number;
+            /** Format: int32 */
+            failed: number;
         };
         CreateFolderRequest: {
             /** Format: uuid */
@@ -1434,7 +1498,7 @@ export interface components {
             steps: components["schemas"]["ProcessingStepDto"][];
         };
         /** @enum {unknown} */
-        FileStep: "thumbnail" | "metadata" | "text";
+        FileStep: "thumbnail" | "metadata" | "text" | "transcode";
         FileTags: {
             tags: components["schemas"]["TagDto"][];
             removed: string[];
@@ -1586,7 +1650,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text" | "tagRule" | "file" | "filingRule";
+        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "tagRule" | "file" | "filingRule";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;
@@ -1616,6 +1680,16 @@ export interface components {
         };
         /** @enum {unknown} */
         MatchSource: "name" | "text" | "ocr" | "metadata" | "tag";
+        MediaDto: {
+            /** Format: double */
+            durationSeconds: null | number;
+            hasVideo: boolean;
+            hasAudio: boolean;
+            videoCodec: null | string;
+            copy: components["schemas"]["CopyState"];
+            /** Format: int32 */
+            progress: null | number;
+        };
         MlEndpointDto: {
             url: string;
             hasApiKey: boolean;
@@ -1672,6 +1746,7 @@ export interface components {
             starred: boolean;
             processing: components["schemas"]["ActiveStepDto"][];
             tags: components["schemas"]["TagDto"][];
+            media: null | components["schemas"]["MediaDto"];
         };
         NodeIdsRequest: {
             ids: string[];
@@ -1712,6 +1787,8 @@ export interface components {
             at: null | string;
             /** Format: int32 */
             ahead: null | number;
+            /** Format: int32 */
+            progress: null | number;
             /** Format: uuid */
             jobId: null | string;
             /** Format: int32 */
@@ -1819,7 +1896,7 @@ export interface components {
             items: components["schemas"]["StarredItem"][];
         };
         /** @enum {unknown} */
-        StepState: "notStarted" | "waiting" | "paused" | "running" | "done" | "nothingFound" | "skipped" | "unsupported" | "unreadable" | "failed";
+        StepState: "notStarted" | "waiting" | "paused" | "running" | "done" | "nothingFound" | "skipped" | "unsupported" | "unreadable" | "failed" | "onOpen" | "off";
         StorageReport: {
             /** Format: int64 */
             filesBytes: number;
@@ -2032,6 +2109,13 @@ export interface components {
             keepDays: number;
             /** Format: int32 */
             maxVersions: number;
+        };
+        /** @enum {unknown} */
+        VideoCopies: "background" | "onOpen" | "never";
+        VideoSettingsDto: {
+            copies: components["schemas"]["VideoCopies"];
+            /** Format: int32 */
+            maxHeight: number;
         };
         VolumeUsage: {
             holds: string[];
@@ -2493,6 +2577,7 @@ export interface operations {
         parameters: {
             query?: {
                 versionId?: string;
+                original?: boolean;
             };
             header?: never;
             path: {
@@ -2508,6 +2593,28 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    RequestPlayableCopy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDto"];
+                };
             };
         };
     };
@@ -3686,6 +3793,79 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminPutVideoSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoSettingsDto"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoSettingsDto"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminGetVideoCopies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyStats"];
+                };
+            };
+        };
+    };
+    AdminDeleteVideoCopies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyStats"];
                 };
             };
         };

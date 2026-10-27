@@ -12,12 +12,13 @@ namespace Dokument.Server.Files;
 
 /// <summary>
 /// Turns nodes into <see cref="NodeDto"/>s, looking up owner names, thumbnail states, unfinished processing steps,
-/// folder sizes, tags and the signed-in person's stars for the whole batch at once.
+/// media, folder sizes, tags and the signed-in person's stars for the whole batch at once.
 /// </summary>
 public sealed class NodeDtoMapper(
     DokumentDbContext db,
     PreviewService previews,
     JobMonitor jobs,
+    MediaService mediaService,
     DriveService drive,
     StarService stars,
     TagService tags,
@@ -33,6 +34,7 @@ public sealed class NodeDtoMapper(
         var hashes = nodes.Select(n => n.CurrentVersion?.BlobHash).OfType<ContentHash>().ToList();
         var thumbnails = await previews.ThumbnailStatesAsync(hashes, ct);
         var processing = await jobs.ActiveAsync(hashes, ct);
+        var media = await mediaService.StatesAsync(hashes, ct);
         var folders = await drive.FolderContentsAsync(nodes, ct);
         var starred =
             http.HttpContext?.User.Identity?.IsAuthenticated == true
@@ -44,7 +46,9 @@ public sealed class NodeDtoMapper(
                 : [];
         var tagged = await tags.ForNodesAsync(nodes.Select(n => n.Id).ToList(), ct);
         return nodes
-            .Select(n => NodeDto.From(n, owners, thumbnails, folders, starred, processing, tagged))
+            .Select(n =>
+                NodeDto.From(n, owners, thumbnails, folders, starred, processing, tagged, media)
+            )
             .ToList();
     }
 

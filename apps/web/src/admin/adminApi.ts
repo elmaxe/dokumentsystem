@@ -1,4 +1,4 @@
-import type { AdminSettings, AdminUser, MlEndpointStatus, StorageReport, TagRule, TagRulePreview, TextProgress } from "@dokument/api";
+import type { AdminSettings, AdminUser, CopyStats, MlEndpointStatus, StorageReport, TagRule, TagRulePreview, TextProgress } from "@dokument/api";
 import { queryOptions } from "@tanstack/react-query";
 import { api } from "../api";
 import { send, unwrap } from "../files/drive";
@@ -42,6 +42,13 @@ export const tagRulesQuery = queryOptions({
 /** Files per page in the rule preview. */
 export const tagRulePreviewPage = 50;
 
+/** Playable copies of videos, refreshed while some are still to make. */
+export const videoCopiesQuery = queryOptions({
+  queryKey: ["admin", "video-copies"],
+  queryFn: (): Promise<CopyStats> => unwrap(api.GET("/api/v1/admin/videos/copies")),
+  refetchInterval: (query) => ((query.state.data?.waiting ?? 0) > 0 ? 10_000 : false),
+});
+
 export const admin = {
   createTagRule: (tag: string, words: string, enabled: boolean) =>
     unwrap(api.POST("/api/v1/admin/tag-rules", { body: { tag, words, enabled } })),
@@ -64,6 +71,8 @@ export const admin = {
   putTextRecognition: (enabled: boolean) =>
     unwrap(api.PUT("/api/v1/admin/settings/text-recognition", { body: { enabled } })),
   rereadText: () => unwrap(api.POST("/api/v1/admin/text-recognition/reread")),
+  putVideos: (videos: AdminSettings["videos"]) => unwrap(api.PUT("/api/v1/admin/settings/videos", { body: videos })),
+  deleteVideoCopies: () => unwrap(api.DELETE("/api/v1/admin/videos/copies")),
   putScanner: (address: string | null) => unwrap(api.PUT("/api/v1/admin/settings/scanner", { body: { address } })),
   testMl: (url: string, apiKey: string | null) => unwrap(api.POST("/api/v1/admin/ml/test", { body: { url, apiKey } })),
   testScanner: (address: string) => unwrap(api.POST("/api/v1/admin/scanner/test", { body: { address } })),

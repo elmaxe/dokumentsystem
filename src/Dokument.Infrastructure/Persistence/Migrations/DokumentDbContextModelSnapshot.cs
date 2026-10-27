@@ -680,6 +680,72 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("jobs", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Previews.BlobMedia", b =>
+                {
+                    b.Property<byte[]>("BlobHash")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob_hash");
+
+                    b.Property<string>("AudioCodec")
+                        .HasColumnType("text")
+                        .HasColumnName("audio_codec");
+
+                    b.Property<string>("Container")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("container");
+
+                    b.Property<string>("CopyError")
+                        .HasColumnType("text")
+                        .HasColumnName("copy_error");
+
+                    b.Property<int?>("CopyProgress")
+                        .HasColumnType("integer")
+                        .HasColumnName("copy_progress");
+
+                    b.Property<string>("CopyStatus")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("copy_status");
+
+                    b.Property<double?>("DurationSeconds")
+                        .HasColumnType("double precision")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("HasAudio")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_audio");
+
+                    b.Property<bool>("HasVideo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_video");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer")
+                        .HasColumnName("height");
+
+                    b.Property<string>("Plan")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("plan");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("VideoCodec")
+                        .HasColumnType("text")
+                        .HasColumnName("video_codec");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.HasKey("BlobHash");
+
+                    b.ToTable("blob_media", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Domain.Previews.BlobPreview", b =>
                 {
                     b.Property<byte[]>("BlobHash")

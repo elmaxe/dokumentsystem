@@ -1,6 +1,7 @@
 using Dokument.Domain.Jobs;
 using Dokument.Worker.Filing;
 using Dokument.Worker.Jobs;
+using Dokument.Worker.Media;
 using Dokument.Worker.Previews;
 using Dokument.Worker.Search;
 using Microsoft.Extensions.Configuration;
@@ -63,6 +64,17 @@ public static class WorkerRole
         services.AddScoped<FilingRuleHandler>();
         services.AddSingleton(
             new JobHandlerRegistration(JobType.FilingRule, typeof(FilingRuleHandler), 1)
+        );
+
+        services.AddSingleton<FFmpeg>();
+        services.AddScoped<TranscodeHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(
+                JobType.Transcode,
+                typeof(TranscodeHandler),
+                worker.TranscodeConcurrency,
+                worker.TranscodeJobTimeout
+            )
         );
 
         services.AddHostedService<JobRunner>();

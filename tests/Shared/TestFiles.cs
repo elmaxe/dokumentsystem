@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
 using NetVips;
@@ -186,5 +187,51 @@ internal static class TestFiles
         }
 
         return buffer.ToArray();
+    }
+
+    /// <summary>
+    /// Two seconds of ffmpeg's test pattern and a tone, encoded with <paramref name="encode"/> into a file named like
+    /// <paramref name="name"/>, whose extension picks the container. Needs ffmpeg on PATH, as the worker does.
+    /// </summary>
+    public static byte[] Video(string name, params string[] encode)
+    {
+        var dir = Directory.CreateTempSubdirectory("dokument-video-").FullName;
+        try
+        {
+            var path = Path.Combine(dir, name);
+            var start = new ProcessStartInfo("ffmpeg") { RedirectStandardError = true };
+            foreach (
+                var argument in (string[])
+                    [
+                        "-v",
+                        "error",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "testsrc=size=320x240:rate=25:duration=2",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "sine=frequency=440:duration=2",
+                        .. encode,
+                        "-y",
+                        path,
+                    ]
+            )
+            {
+                start.ArgumentList.Add(argument);
+            }
+
+            using var process = Process.Start(start)!;
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            return process.ExitCode == 0
+                ? File.ReadAllBytes(path)
+                : throw new InvalidOperationException($"ffmpeg couldn't make {name}: {error}");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 }

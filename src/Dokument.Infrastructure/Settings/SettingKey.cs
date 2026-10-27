@@ -111,4 +111,20 @@ public static class SettingKeys
                 .ToHashSet()
         )
     );
+
+    public static readonly SettingKey<VideoSettings> Videos = new(
+        "videos",
+        VideoSettings.Default,
+        s => new JsonObject
+        {
+            ["copies"] = s.Copies.ToString().ToLowerInvariant(),
+            ["maxHeight"] = s.MaxHeight,
+        },
+        json => new VideoSettings(
+            Enum.TryParse<VideoCopies>(json.GetProperty("copies").GetString(), true, out var copies)
+                ? copies
+                : throw new FormatException("Unknown video copies setting."),
+            json.GetProperty("maxHeight").GetInt32()
+        )
+    );
 }

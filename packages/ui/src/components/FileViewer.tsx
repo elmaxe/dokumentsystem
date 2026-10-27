@@ -16,9 +16,15 @@ const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 
 /** What the viewer body shows (docs/design.md §14). `src` is the server's preview URL, which is not audited. */
 export type PreviewSource =
-  | { type: "image" | "pdf" | "text" | "markdown" | "video" | "audio"; src: string }
+  | { type: "image" | "pdf" | "text" | "markdown"; src: string }
+  /** `fallbacks` are tried in turn if the browser can't play `src`, e.g. the playable copy after the HEVC original. */
+  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string }
   /** The worker is still making the rendition the viewer needs, e.g. for a HEIC photo. */
   | { type: "preparing" }
+  /** A video or audio file browsers can't play, while the worker makes a copy that plays. `progress` is 0–100. */
+  | { type: "converting"; waiting: boolean; progress?: number }
+  /** A video or audio file browsers can't play and no copy can be made of: copies are off, or the file is damaged. */
+  | { type: "unplayable" }
   | { type: "none" };
 
 /** A hit's box on a page, as `[x, y, width, height]` fractions of the page. */
@@ -225,10 +231,50 @@ export function FileViewer({
               terms={marks?.terms}
               fallback={noPreview(true)}
             />
-          ) : preview.type === "video" ? (
-            <MediaPreview key={preview.src} type="video" src={preview.src} fallback={noPreview(true)} />
-          ) : preview.type === "audio" ? (
-            <MediaPreview key={preview.src} type="audio" src={preview.src} item={item} fallback={noPreview(true)} />
+          ) : preview.type === "video" || preview.type === "audio" ? (
+            <MediaPreview
+              key={preview.src}
+              type={preview.type}
+              sources={[preview.src, ...(preview.fallbacks ?? [])]}
+              poster={preview.poster}
+              item={item}
+              fallback={noPreview(true)}
+            />
+          ) : preview.type === "converting" ? (
+            <Centered>
+              <EmptyState
+                icon={item.kind === "audio" ? "music_note" : "movie"}
+                title={t("viewer.convertingTitle")}
+                text={preview.waiting ? t("viewer.convertingWaiting") : t("viewer.convertingText")}
+                action={
+                  <div className="mt-2 flex w-full flex-col items-center gap-6">
+                    <Progress
+                      value={preview.waiting ? undefined : preview.progress}
+                      label={t("viewer.convertingTitle")}
+                      className="w-full max-w-64"
+                    />
+                    <Button variant="outlined" icon="download" onClick={onDownload}>
+                      {t("actions.download")}
+                    </Button>
+                  </div>
+                }
+                className="m-4 max-w-md bg-surface-container-low"
+              />
+            </Centered>
+          ) : preview.type === "unplayable" ? (
+            <Centered>
+              <EmptyState
+                icon="videocam_off"
+                title={t("viewer.unplayableTitle")}
+                text={t("viewer.unplayableText")}
+                action={
+                  <Button icon="download" onClick={onDownload}>
+                    {t("actions.download")}
+                  </Button>
+                }
+                className="m-4 max-w-md bg-surface-container-low"
+              />
+            </Centered>
           ) : preview.type === "preparing" ? (
             <Centered>
               <EmptyState
@@ -543,27 +589,56 @@ function useStoredFlag(key: string) {
   return [value, set] as const;
 }
 
-function MediaPreview({ type, src, item, fallback }: { type: "video" | "audio"; src: string; item?: FileItem; fallback: ReactNode }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return <Centered>{fallback}</Centered>;
+/** Plays the first of `sources` the browser can, e.g. the original HEVC in Safari and the H.264 copy elsewhere. */
+function MediaPreview({
+  type,
+  sources,
+  poster,
+  item,
+  fallback,
+}: {
+  type: "video" | "audio";
+  sources: string[];
+  poster?: string;
+  item: FileItem;
+  fallback: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const [index, setIndex] = useState(0);
+  const [coverFailed, setCoverFailed] = useState(false);
+  if (index >= sources.length) return <Centered>{fallback}</Centered>;
+  const src = sources[index];
+  const next = () => setIndex((i) => i + 1);
   return (
     <Centered>
       {type === "video" ? (
         <video
+          key={src}
           src={src}
+          poster={poster}
           controls
           autoPlay
+          playsInline
           preload="metadata"
-          onError={() => setFailed(true)}
+          onError={next}
           className="max-h-full max-w-full bg-black shadow-elevation-2 sm:rounded-sm"
         />
       ) : (
         <div className="m-4 flex w-full max-w-md flex-col items-center gap-6 rounded-lg bg-surface-container-low p-8 shadow-elevation-1">
-          <span className="flex size-32 items-center justify-center rounded-lg bg-surface-container-high text-file-audio">
-            <Icon name="music_note" filled size={64} />
-          </span>
-          {item && <p className="m-0 max-w-full truncate text-title-md">{item.name}</p>}
-          <audio src={src} controls autoPlay preload="metadata" onError={() => setFailed(true)} className="w-full" />
+          {item.thumbnail && !coverFailed ? (
+            <img
+              src={item.thumbnail}
+              alt={t("viewer.cover")}
+              onError={() => setCoverFailed(true)}
+              className="size-48 rounded-lg object-cover shadow-elevation-1"
+            />
+          ) : (
+            <span className="flex size-32 items-center justify-center rounded-lg bg-surface-container-high text-file-audio">
+              <Icon name="music_note" filled size={64} />
+            </span>
+          )}
+          <p className="m-0 max-w-full truncate text-title-md">{item.name}</p>
+          <audio key={src} src={src} controls autoPlay preload="metadata" onError={next} className="w-full" />
         </div>
       )}
     </Centered>
