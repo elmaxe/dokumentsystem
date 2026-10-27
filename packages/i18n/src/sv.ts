@@ -640,7 +640,7 @@ export const sv: Strings = {
     tag: "När en av mina filer får taggen",
     folder: "Flytta den till den här mappen i Mina filer",
     folderPlaceholder: "Kvitton/{year}",
-    folderHint: "Skilj mappar åt med /. Mappar som saknas skapas. År och månad tas från filens datum: när fotot togs, annars när filen senast ändrades, annars när den laddades upp.",
+    folderHint: "Skilj mappar åt med /. Mappar som saknas skapas. År och månad tas från filens datum: datumet i dess detaljer, annars när fotot togs, annars när filen senast ändrades, annars när den laddades upp.",
     insert: "Infoga",
     badPlaceholder: "Bara {year} och {month} kan fyllas i.",
     emptyFolder: "Ange en mapp att flytta filerna till.",

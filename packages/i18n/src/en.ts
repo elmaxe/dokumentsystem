@@ -635,7 +635,7 @@ export const en = {
     tag: "When a file of mine gets the tag",
     folder: "Move it to this folder in My files",
     folderPlaceholder: "Kvitton/{year}",
-    folderHint: "Separate folders with /. Missing folders are made. The year and month are the file's date: when the photo was taken, else when it was last changed, else when it was uploaded.",
+    folderHint: "Separate folders with /. Missing folders are made. The year and month are the file's date: the date in its details, else when the photo was taken, else when it was last changed, else when it was uploaded.",
     insert: "Insert",
     badPlaceholder: "Only {year} and {month} can be filled in.",
     emptyFolder: "Name a folder to move files to.",
