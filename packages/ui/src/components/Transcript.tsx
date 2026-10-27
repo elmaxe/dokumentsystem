@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
 import { formatMs } from "../lib/media";
-import { IconButton } from "./Button";
+import { Button, IconButton } from "./Button";
+import { Dialog } from "./Dialog";
 import { Highlighted } from "./Highlighted";
 import { Icon } from "./Icon";
 import { Switch } from "./Switch";
@@ -48,6 +49,7 @@ export function TranscriptPanel({ transcript, currentMs, terms = [], onSeek, onR
   const { t } = useTranslation();
   const [follow, setFollow] = useState(true);
   const [find, setFind] = useState("");
+  const [confirmRedo, setConfirmRedo] = useState(false);
   const list = useRef<HTMLOListElement>(null);
   const { lines, state } = transcript;
   const findTerms = find.trim() ? find.trim().split(/\s+/) : [];
@@ -78,10 +80,34 @@ export function TranscriptPanel({ transcript, currentMs, terms = [], onSeek, onR
           </label>
         )}
         {onRedo && state !== "waiting" && state !== "running" && (
-          <IconButton icon="refresh" label={t("transcript.redo")} size="sm" onClick={onRedo} />
+          <IconButton icon="refresh" label={t("transcript.redo")} size="sm" onClick={() => setConfirmRedo(true)} />
         )}
         <IconButton icon="close" label={t("transcript.hide")} size="sm" onClick={onClose} />
       </div>
+      {onRedo && (
+        <Dialog
+          open={confirmRedo}
+          onOpenChange={setConfirmRedo}
+          title={t("transcript.redoTitle")}
+          description={t("transcript.redoText")}
+          width="sm"
+          footer={
+            <>
+              <Button variant="text" onClick={() => setConfirmRedo(false)}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                onClick={() => {
+                  setConfirmRedo(false);
+                  onRedo();
+                }}
+              >
+                {t("transcript.redo")}
+              </Button>
+            </>
+          }
+        />
+      )}
       {lines.length > 0 && (
         <div className="flex shrink-0 flex-col gap-2 px-4 pb-2">
           <label className="flex h-10 items-center gap-2 rounded-xl bg-surface-container-high px-3 text-body-md">

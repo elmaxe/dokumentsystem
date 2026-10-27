@@ -703,8 +703,10 @@ function SpeechSection({ settings }: { settings: AdminSettings }) {
   const stats = progress.data;
   const toast = useSnackbar();
   const queryClient = useQueryClient();
+  const [confirmRedo, setConfirmRedo] = useState(false);
 
   const redo = async () => {
+    setConfirmRedo(false);
     try {
       queryClient.setQueryData(transcriptionProgressQuery.queryKey, await admin.redoTranscripts());
       toast(t("admin.speech.redoStarted"));
@@ -787,11 +789,26 @@ function SpeechSection({ settings }: { settings: AdminSettings }) {
       )}
       {hasMl && current.enabled && (
         <div className="flex justify-end">
-          <Button variant="outlined" icon="refresh" onClick={() => void redo()}>
+          <Button variant="outlined" icon="refresh" onClick={() => setConfirmRedo(true)}>
             {t("admin.speech.redo")}
           </Button>
         </div>
       )}
+      <Dialog
+        open={confirmRedo}
+        onOpenChange={setConfirmRedo}
+        title={t("admin.speech.redoTitle")}
+        description={t("admin.speech.redoText")}
+        width="sm"
+        footer={
+          <>
+            <Button variant="text" onClick={() => setConfirmRedo(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={() => void redo()}>{t("admin.speech.redo")}</Button>
+          </>
+        }
+      />
     </Section>
   );
 }

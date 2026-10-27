@@ -624,6 +624,8 @@ export const sv: Strings = {
     model: "Modell {{model}}",
     redo: "Transkribera igen",
     redoStarted: "Den transkriberas igen från början",
+    redoTitle: "Transkribera igen?",
+    redoText: "Den transkriberas om från början med den modell som är vald nu. Den nuvarande transkriptionen finns kvar tills den nya börjar.",
     silence: "Inget tal {{from}} till {{to}}",
     running: "Lyssnar… vid {{at}} av {{total}}. Resten visas när det är klart.",
     captions: "Undertexter från transkriptionen",
@@ -967,6 +969,9 @@ export const sv: Strings = {
       offNote: "Inspelningar som laddas upp medan det är avstängt transkriberas när du slår på det.",
       redo: "Transkribera alla igen",
       redoStarted: "Alla inspelningar transkriberas igen i bakgrunden",
+      redoTitle: "Transkribera alla inspelningar igen?",
+      redoText:
+        "Varje inspelning transkriberas om från början, i bakgrunden, med den modell som är vald nu. Med många timmar ljud kan det ta dagar. Dagens transkriptioner går att söka i tills var och en är klar.",
     },
     textRecognition: {
       intro:

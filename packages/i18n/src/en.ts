@@ -619,6 +619,8 @@ export const en = {
     model: "Model {{model}}",
     redo: "Transcribe again",
     redoStarted: "It will be transcribed again from the start",
+    redoTitle: "Transcribe again?",
+    redoText: "It's transcribed again from the start with the model set now. The current transcript stays until the new one starts.",
     silence: "No speech {{from}} to {{to}}",
     running: "Listening… at {{at}} of {{total}}. The rest shows up as it's done.",
     captions: "Captions from the transcript",
@@ -962,6 +964,9 @@ export const en = {
       offNote: "Recordings uploaded while it's off are transcribed when you turn it on.",
       redo: "Transcribe all again",
       redoStarted: "All recordings will be transcribed again in the background",
+      redoTitle: "Transcribe all recordings again?",
+      redoText:
+        "Every recording is transcribed again from the start, in the background, with the model set now. With many hours of sound that can take days. Today's transcripts stay searchable until each one is redone.",
     },
     textRecognition: {
       intro:
