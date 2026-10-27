@@ -35,6 +35,7 @@ public sealed class NodeDtoMapper(
         var thumbnails = await previews.ThumbnailStatesAsync(hashes, ct);
         var processing = await jobs.ActiveAsync(hashes, ct);
         var media = await mediaService.StatesAsync(hashes, ct);
+        var documents = await previews.DocumentsAsync(hashes, ct);
         var folders = await drive.FolderContentsAsync(nodes, ct);
         var starred =
             http.HttpContext?.User.Identity?.IsAuthenticated == true
@@ -47,7 +48,17 @@ public sealed class NodeDtoMapper(
         var tagged = await tags.ForNodesAsync(nodes.Select(n => n.Id).ToList(), ct);
         return nodes
             .Select(n =>
-                NodeDto.From(n, owners, thumbnails, folders, starred, processing, tagged, media)
+                NodeDto.From(
+                    n,
+                    owners,
+                    thumbnails,
+                    folders,
+                    starred,
+                    processing,
+                    tagged,
+                    media,
+                    documents
+                )
             )
             .ToList();
     }

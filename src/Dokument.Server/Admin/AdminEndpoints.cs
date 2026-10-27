@@ -57,6 +57,8 @@ public static class AdminEndpoints
         admin.MapPost("/ml/test", TestMl).WithName("AdminTestMl");
         admin.MapPost("/scanner/test", TestScanner).WithName("AdminTestScanner");
         admin.MapPut("/settings/videos", PutVideos).WithName("AdminPutVideoSettings");
+        admin.MapPut("/settings/office", PutOffice).WithName("AdminPutOfficeSettings");
+        admin.MapPost("/office/test", TestOffice).WithName("AdminTestOffice");
         admin
             .MapGet("/videos/copies", GetVideoCopies)
             .WithName("AdminGetVideoCopies")
@@ -79,6 +81,7 @@ public static class AdminEndpoints
     private static async Task<Ok<AdminSettingsDto>> GetSettings(
         SettingsStore settings,
         OidcSettings oidc,
+        OfficeAddress officeAddress,
         CancellationToken ct
     )
     {
@@ -89,6 +92,7 @@ public static class AdminEndpoints
         var scanner = await settings.GetAsync(SettingKeys.Scanner, ct);
         var textRecognition = await settings.GetAsync(SettingKeys.TextRecognition, ct);
         var videos = await settings.GetAsync(SettingKeys.Videos, ct);
+        var office = await officeAddress.GetAsync(settings, ct);
         return TypedResults.Ok(
             new AdminSettingsDto(
                 new StorageSettingsDto(storage.DefaultQuota.Bytes),
@@ -98,6 +102,10 @@ public static class AdminEndpoints
                 new ScannerSettingsDto(scanner.Address?.ToString()),
                 new TextRecognitionDto(textRecognition.Enabled),
                 new VideoSettingsDto(videos.Copies, videos.MaxHeight),
+                new OfficeSettingsDto(
+                    office.GotenbergUrl?.Value,
+                    officeAddress.Configured is not null
+                ),
                 new SignInInfo(
                     oidc.Enabled,
                     oidc.ProviderName,
@@ -220,6 +228,54 @@ public static class AdminEndpoints
 
         return TypedResults.Ok(request);
     }
+
+    private static async Task<Results<Ok<OfficeSettingsDto>, ValidationProblem>> PutOffice(
+        OfficeSettingsRequest request,
+        HttpContext context,
+        SettingsStore settings,
+        PreviewService previews,
+        OfficeAddress officeAddress,
+        TimeProvider time,
+        CancellationToken ct
+    )
+    {
+        if (officeAddress.Configured is not null)
+        {
+            return Invalid(
+                "gotenbergUrl",
+                $"The address is set by {OfficeAddress.ConfigKey} in the server's configuration."
+            );
+        }
+
+        ServiceUrl? url = null;
+        if (!string.IsNullOrWhiteSpace(request.GotenbergUrl))
+        {
+            url = ServiceUrl.TryParse(request.GotenbergUrl, out var error);
+            if (url is null)
+            {
+                return Invalid("gotenbergUrl", error!);
+            }
+        }
+
+        var was = await settings.GetAsync(SettingKeys.Office, ct);
+        await settings.SetAsync(SettingKeys.Office, new OfficeSettings(url), context.Actor(), ct);
+        if (url is not null && was.GotenbergUrl is null)
+        {
+            // Documents uploaded while previews were off get them now.
+            await previews.EnqueueOfficeAsync(time.GetUtcNow(), ct);
+        }
+
+        return TypedResults.Ok(new OfficeSettingsDto(url?.Value, false));
+    }
+
+    private static async Task<Results<Ok<ProbeResult>, ValidationProblem>> TestOffice(
+        TestOfficeRequest request,
+        ServiceProbe probe,
+        CancellationToken ct
+    ) =>
+        ServiceUrl.TryParse(request.Url, out var error) is { } url
+            ? TypedResults.Ok(await probe.CheckGotenbergAsync(url, ct))
+            : Invalid("url", error!);
 
     private static async Task<Ok<CopyStats>> GetVideoCopies(
         MediaService media,

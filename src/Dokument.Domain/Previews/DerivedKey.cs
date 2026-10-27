@@ -4,7 +4,8 @@ namespace Dokument.Domain.Previews;
 
 /// <summary>
 /// Where a rendition lives, relative to the derived volume (docs/design.md §7): images at
-/// <c>thumbs/ab/abcd…/thumb_m.webp</c>, playable copies of video and audio at <c>previews/ab/abcd…/playable.mp4</c>.
+/// <c>thumbs/ab/abcd…/thumb_m.webp</c>, playable copies of video and audio at <c>previews/ab/abcd…/playable.mp4</c>, PDFs of Office files at
+/// <c>previews/ab/abcd…/document.pdf</c>.
 /// Renditions belong to a blob, not a version, so a copy or a restored version reuses them.
 /// </summary>
 public sealed record DerivedKey
@@ -16,9 +17,12 @@ public sealed record DerivedKey
     public static DerivedKey For(ContentHash hash, RenditionKind kind)
     {
         var hex = hash.Hex;
-        return kind == RenditionKind.Playable
-            ? new DerivedKey($"previews/{hex[..2]}/{hex}/{kind.Key()}.mp4")
-            : new DerivedKey($"thumbs/{hex[..2]}/{hex}/{kind.Key()}.webp");
+        return kind switch
+        {
+            RenditionKind.Playable => new DerivedKey($"previews/{hex[..2]}/{hex}/{kind.Key()}.mp4"),
+            RenditionKind.Document => new DerivedKey($"previews/{hex[..2]}/{hex}/{kind.Key()}.pdf"),
+            _ => new DerivedKey($"thumbs/{hex[..2]}/{hex}/{kind.Key()}.webp"),
+        };
     }
 
     /// <summary>For values read back from the database.</summary>

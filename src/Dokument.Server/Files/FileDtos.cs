@@ -19,6 +19,7 @@ namespace Dokument.Server.Files;
 /// </param>
 /// <param name="Tags">The file's tags, by name: the ones people added and the automatic ones nobody removed (§13.4).</param>
 /// <param name="Media">For video and audio files, once the worker has looked at them. Null for everything else.</param>
+/// <param name="ShownAsPdf">Whether <c>/nodes/{id}/preview</c> serves a PDF made of the file, for Office documents.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -38,7 +39,8 @@ public sealed record NodeDto(
     bool Starred,
     List<ActiveStepDto> Processing,
     List<TagDto> Tags,
-    MediaDto? Media
+    MediaDto? Media,
+    bool ShownAsPdf
 )
 {
     public static NodeDto From(
@@ -49,7 +51,8 @@ public sealed record NodeDto(
         IReadOnlySet<Guid> starred,
         IReadOnlyDictionary<ContentHash, List<ActiveStep>> processing,
         IReadOnlyDictionary<Guid, List<TagView>> tags,
-        IReadOnlyDictionary<ContentHash, MediaState> media
+        IReadOnlyDictionary<ContentHash, MediaState> media,
+        IReadOnlySet<ContentHash> documents
     ) =>
         new(
             node.Id,
@@ -88,7 +91,8 @@ public sealed record NodeDto(
                     m.Copy,
                     m.Progress
                 )
-                : null
+                : null,
+            node.CurrentVersion is { } converted && documents.Contains(converted.BlobHash)
         );
 }
 

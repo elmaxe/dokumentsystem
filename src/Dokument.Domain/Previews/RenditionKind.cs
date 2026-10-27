@@ -1,6 +1,6 @@
 namespace Dokument.Domain.Previews;
 
-/// <summary>The images the worker makes from a file (docs/design.md §10.3). All are WebP.</summary>
+/// <summary>What the worker makes from a file (docs/design.md §10.3): WebP images, and copies the viewer can show.</summary>
 public enum RenditionKind
 {
     /// <summary>For list rows and small tiles: at most 256 px on the long edge.</summary>
@@ -20,6 +20,9 @@ public enum RenditionKind
     /// image, so it has no <see cref="RenditionKinds.MaxEdge"/>.
     /// </summary>
     Playable,
+
+    /// <summary>A PDF of an Office or OpenDocument file, made by Gotenberg, that the viewer shows with pdf.js.</summary>
+    Document,
 }
 
 public static class RenditionKinds
@@ -34,7 +37,7 @@ public static class RenditionKinds
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
-    /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>, <c>playable</c>.</summary>
+    /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>, <c>playable</c>, <c>document</c>.</summary>
     public static string Key(this RenditionKind kind) =>
         kind switch
         {
@@ -42,6 +45,7 @@ public static class RenditionKinds
             RenditionKind.ThumbMedium => "thumb_m",
             RenditionKind.Preview => "preview",
             RenditionKind.Playable => "playable",
+            RenditionKind.Document => "document",
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
@@ -52,6 +56,7 @@ public static class RenditionKinds
             "thumb_m" => RenditionKind.ThumbMedium,
             "preview" => RenditionKind.Preview,
             "playable" => RenditionKind.Playable,
+            "document" => RenditionKind.Document,
             _ => throw new ArgumentException($"\"{key}\" isn't a rendition kind.", nameof(key)),
         };
 }

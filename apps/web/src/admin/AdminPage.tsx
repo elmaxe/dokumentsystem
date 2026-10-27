@@ -21,6 +21,7 @@ const sections = [
   { id: "people", icon: "group" },
   { id: "textRecognition", icon: "document_scanner" },
   { id: "videos", icon: "movie" },
+  { id: "office", icon: "description" },
   { id: "ml", icon: "neurology" },
   { id: "scanning", icon: "shield" },
   { id: "versions", icon: "history" },
@@ -56,6 +57,7 @@ export function AdminSettingsPage() {
         <>
           <TextRecognitionSection settings={settings.data} />
           <VideosSection key={`p${settings.dataUpdatedAt}`} settings={settings.data} />
+          <OfficeSection key={`o${settings.dataUpdatedAt}`} settings={settings.data} />
           <MlSection key={`m${settings.dataUpdatedAt}`} settings={settings.data} />
           <ScannerSection key={`c${settings.dataUpdatedAt}`} settings={settings.data} />
           <VersionsSection key={`v${settings.dataUpdatedAt}`} settings={settings.data} />
@@ -767,6 +769,58 @@ function VideosSection({ settings }: { settings: AdminSettings }) {
             {t("admin.videos.delete")}
           </Button>
         </div>
+      )}
+    </Section>
+  );
+}
+
+/** Office previews (§10.3, §14): where Gotenberg runs, checked before saving. */
+function OfficeSection({ settings }: { settings: AdminSettings }) {
+  const { t } = useTranslation();
+  const initial = settings.office.gotenbergUrl ?? "";
+  const configured = settings.office.configured;
+  const [url, setUrl] = useState(initial);
+  const [test, setTest] = useState<ProbeResult | "testing" | null>(null);
+  const { busy, save } = useSave();
+
+  const runTest = async () => {
+    setTest("testing");
+    try {
+      setTest(await admin.testOffice(url.trim()));
+    } catch {
+      setTest({ reachable: false, version: null, error: t("errors.generic") });
+    }
+  };
+
+  return (
+    <Section id="office" intro={t("admin.office.intro")}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <TextField
+          label={t("admin.office.address")}
+          value={url}
+          onChange={(event) => {
+            setUrl(event.target.value);
+            setTest(null);
+          }}
+          placeholder="http://gotenberg:3000"
+          hint={configured ? t("admin.office.configured") : t("admin.office.addressHint")}
+          readOnly={configured}
+          mono
+          className="flex-1"
+        />
+        <Button variant="outlined" icon="network_check" disabled={!url.trim() || test === "testing"} onClick={() => void runTest()} className="sm:mt-6">
+          {t("admin.ml.test")}
+        </Button>
+      </div>
+      <ProbeBanner
+        result={test}
+        okText={(p) => t("admin.office.connected", { version: p.version })}
+        failText={(e) => t("admin.office.failed", { error: e })}
+      />
+      {!initial && !url.trim() && <Banner tone="info">{t("admin.office.off")}</Banner>}
+      {!initial && url.trim() && <Banner tone="info">{t("admin.office.backfill")}</Banner>}
+      {!configured && (
+        <SaveButton disabled={busy || url.trim() === initial} onClick={() => void save(() => admin.putOffice(url.trim() || null))} />
       )}
     </Section>
   );

@@ -97,6 +97,9 @@ services:
     profiles: [office]
     image: gotenberg/gotenberg:8
     restart: unless-stopped
+    # Long documents take a while; the worker waits up to 3 minutes. Set its address under Admin › Settings, or give
+    # the app GOTENBERG_URL=http://gotenberg:3000, which wins over the setting.
+    command: [gotenberg, --api-timeout=180s]
 
   # Virus scanning (docs/design.md §21). Not used in v1; needs about 3–4 GB of RAM.
   clamav:

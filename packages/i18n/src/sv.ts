@@ -576,6 +576,7 @@ export const sv: Strings = {
     unplayableTitle: "Filen kan inte spelas här",
     unplayableText: "Webbläsare kan inte spela den som den är, och ingen kopia som går att spela kan göras. Ladda ned den för att spela den i en annan app.",
     cover: "Omslagsbild",
+    shownAsPdf: "Visas som PDF, så layouten kan skilja sig lite. Ladda ned originalet för att redigera det.",
     failedTitle: "Förhandsvisningen kunde inte visas",
     failedText: "Filen kan vara skadad eller lösenordsskyddad. Du kan fortfarande ladda ned den.",
     truncated: "Visar de första {{size}}. Ladda ned filen för att se allt.",
@@ -746,6 +747,7 @@ export const sv: Strings = {
       scanning: "Virussökning",
       textRecognition: "Sökning och textigenkänning",
       videos: "Video och ljud",
+      office: "Office-dokument",
       versions: "Papperskorg och versioner",
       users: "Användare och lagring",
       storage: "Lagring",
@@ -907,6 +909,17 @@ export const sv: Strings = {
       offNote: "Skanningar och foton som laddas upp medan det är avstängt läses när du slår på det.",
       reread: "Läs alla filer igen",
       rereadStarted: "Alla filer läses igen i bakgrunden",
+    },
+    office: {
+      intro:
+        "Word-, Excel-, PowerPoint- och OpenDocument-filer förhandsgranskas som PDF, som Gotenberg gör i en separat container. Lämna adressen tom för att hålla förhandsgranskningen avstängd.",
+      address: "Gotenbergs adress",
+      addressHint: "Till exempel http://gotenberg:3000. Lämna tom för att hålla förhandsgranskning av Office-filer avstängd.",
+      configured: "Anges av GOTENBERG_URL i serverns konfiguration och kan inte ändras här.",
+      connected: "Ansluten · {{version}}",
+      failed: "Når inte Gotenberg: {{error}}",
+      off: "Förhandsgranskning av Office-filer är avstängd. Dokumenten visas med sin typikon och kan laddas ned.",
+      backfill: "Dokument som laddades upp medan den var avstängd förhandsgranskas i bakgrunden när du sparar.",
     },
     videos: {
       intro:

@@ -72,6 +72,8 @@ export const admin = {
     unwrap(api.PUT("/api/v1/admin/settings/text-recognition", { body: { enabled } })),
   rereadText: () => unwrap(api.POST("/api/v1/admin/text-recognition/reread")),
   putVideos: (videos: AdminSettings["videos"]) => unwrap(api.PUT("/api/v1/admin/settings/videos", { body: videos })),
+  putOffice: (gotenbergUrl: string | null) => unwrap(api.PUT("/api/v1/admin/settings/office", { body: { gotenbergUrl } })),
+  testOffice: (url: string) => unwrap(api.POST("/api/v1/admin/office/test", { body: { url } })),
   deleteVideoCopies: () => unwrap(api.DELETE("/api/v1/admin/videos/copies")),
   putScanner: (address: string | null) => unwrap(api.PUT("/api/v1/admin/settings/scanner", { body: { address } })),
   testMl: (url: string, apiKey: string | null) => unwrap(api.POST("/api/v1/admin/ml/test", { body: { url, apiKey } })),
