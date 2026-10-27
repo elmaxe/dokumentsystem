@@ -1832,6 +1832,38 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/transcript/redo": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Transcribes the file again from the start, ahead of the background work, e.g. after the admin picked another model. The old transcript stays until the new run starts. 409 when the file isn't transcribed (no sound, speech to text off, or no ML service).",
+        "operationId": "RedoTranscript",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/captions.vtt": {
       "get": {
         "tags": [
@@ -2412,6 +2444,27 @@
           "Admin"
         ],
         "operationId": "AdminGetTranscriptionProgress",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionProgress"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/transcription/redo": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Transcribes every stored recording again, in the background, e.g. after picking another model. Old transcripts stay searchable until each is redone.",
+        "operationId": "AdminRedoAllTranscripts",
         "responses": {
           "200": {
             "description": "OK",

@@ -15,6 +15,8 @@ export type TranscriptView = {
   state: "waiting" | "running" | "ready" | "noSpeech" | "failed";
   /** `sv` or `en`, as recognized. */
   language?: string | null;
+  /** The Whisper model that made it, e.g. `small` or `kb-whisper-small`. */
+  model?: string | null;
   lines: readonly TranscriptLineView[];
   durationMs?: number | null;
   /** While running: how far it has got. */
@@ -32,6 +34,8 @@ export type TranscriptPanelProps = {
   /** The search terms to mark, when the file was opened from a hit. */
   terms?: readonly string[];
   onSeek: (ms: number) => void;
+  /** Transcribes it again from the start; offered once it's done, speech found or not. */
+  onRedo?: () => void;
   onClose: () => void;
   className?: string;
 };
@@ -40,7 +44,7 @@ export type TranscriptPanelProps = {
  * The transcript beside the player (§11.1): every line with its time, the one being said marked and kept in view
  * while "Follow along" is on, a click plays from a line, and a find box marks other words.
  */
-export function TranscriptPanel({ transcript, currentMs, terms = [], onSeek, onClose, className }: TranscriptPanelProps) {
+export function TranscriptPanel({ transcript, currentMs, terms = [], onSeek, onRedo, onClose, className }: TranscriptPanelProps) {
   const { t } = useTranslation();
   const [follow, setFollow] = useState(true);
   const [find, setFind] = useState("");
@@ -73,6 +77,9 @@ export function TranscriptPanel({ transcript, currentMs, terms = [], onSeek, onC
             <Switch checked={follow} onCheckedChange={setFollow} label={t("transcript.follow")} />
           </label>
         )}
+        {onRedo && state !== "waiting" && state !== "running" && (
+          <IconButton icon="refresh" label={t("transcript.redo")} size="sm" onClick={onRedo} />
+        )}
         <IconButton icon="close" label={t("transcript.hide")} size="sm" onClick={onClose} />
       </div>
       {lines.length > 0 && (
@@ -90,7 +97,13 @@ export function TranscriptPanel({ transcript, currentMs, terms = [], onSeek, onC
             {found !== null && <span className="tabular text-label-md text-on-surface-variant">{t("transcript.found", { count: found })}</span>}
           </label>
           <p className="m-0 text-body-sm text-on-surface-variant">
-            {[language && t("transcript.recognized", { language }), t("transcript.misheard")].filter(Boolean).join(" · ")}
+            {[
+              language && t("transcript.recognized", { language }),
+              transcript.model && t("transcript.model", { model: transcript.model }),
+              t("transcript.misheard"),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </div>
       )}

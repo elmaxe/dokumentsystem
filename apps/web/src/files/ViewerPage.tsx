@@ -159,6 +159,15 @@ export function ViewerPage({
       .catch(() => setRefused(fileId));
   }, [needsCopy, fileId, queryClient]);
 
+  const redoTranscript = async () => {
+    try {
+      queryClient.setQueryData(transcriptQuery(fileId).queryKey, await drive.redoTranscript(fileId));
+      toast(t("transcript.redoStarted"));
+    } catch (error) {
+      toast(errorMessage(t, error));
+    }
+  };
+
   const close = () =>
     void (from === "search"
       ? navigate({ to: "/search", search: results?.params ?? { q } })
@@ -270,6 +279,7 @@ export function ViewerPage({
         onAction={(id) => void setStar(id === "star")}
         marks={marks}
         transcript={spoken}
+        onTranscriptRedo={() => void redoTranscript()}
         captions={
           item.kind === "video" && transcript.data?.lines.length && shownVersion === current ? captionsUrl(item.id) : undefined
         }

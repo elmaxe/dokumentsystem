@@ -90,6 +90,7 @@ export const admin = {
   putTranscription: (enabled: boolean, model: string, videos: boolean) =>
     unwrap(api.PUT("/api/v1/admin/settings/transcription", { body: { enabled, model, videos } })),
   rereadText: () => unwrap(api.POST("/api/v1/admin/text-recognition/reread")),
+  redoTranscripts: () => unwrap(api.POST("/api/v1/admin/transcription/redo")),
   putVideos: (videos: AdminSettings["videos"]) => unwrap(api.PUT("/api/v1/admin/settings/videos", { body: videos })),
   deleteVideoCopies: () => unwrap(api.DELETE("/api/v1/admin/videos/copies")),
   putScanner: (address: string | null) => unwrap(api.PUT("/api/v1/admin/settings/scanner", { body: { address } })),

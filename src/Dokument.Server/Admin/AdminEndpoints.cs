@@ -79,6 +79,12 @@ public static class AdminEndpoints
         admin
             .MapGet("/transcription/progress", GetTranscriptionProgress)
             .WithName("AdminGetTranscriptionProgress");
+        admin
+            .MapPost("/transcription/redo", RedoAllTranscripts)
+            .WithName("AdminRedoAllTranscripts")
+            .WithDescription(
+                "Transcribes every stored recording again, in the background, e.g. after picking another model. Old transcripts stay searchable until each is redone."
+            );
         admin.MapGet("/storage", GetStorageReport).WithName("AdminGetStorage");
         admin.MapGet("/users", ListUsers).WithName("AdminListUsers");
         admin.MapPut("/users/{id:guid}/quota", PutUserQuota).WithName("AdminPutUserQuota");
@@ -263,6 +269,16 @@ public static class AdminEndpoints
         TranscriptService transcripts,
         CancellationToken ct
     ) => TypedResults.Ok(await transcripts.ProgressAsync(ct));
+
+    private static async Task<Ok<TranscriptionProgress>> RedoAllTranscripts(
+        TranscriptService transcripts,
+        TimeProvider time,
+        CancellationToken ct
+    )
+    {
+        await transcripts.RedoAllAsync(time.GetUtcNow(), ct);
+        return TypedResults.Ok(await transcripts.ProgressAsync(ct));
+    }
 
     private static TranscriptionSettingsDto TranscriptionDto(TranscriptionSettings value) =>
         new(value.Enabled, value.Model, value.Videos, [.. TranscriptionSettings.Models]);

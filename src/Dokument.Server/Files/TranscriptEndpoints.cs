@@ -1,11 +1,14 @@
+using Dokument.Domain.Files;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Search;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Search;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 
 namespace Dokument.Server.Files;
 
@@ -48,6 +51,12 @@ public static class TranscriptEndpoints
             .WithName("GetTranscript")
             .WithDescription("What's said in a video or audio file, line by line with times.");
         group
+            .MapPost("/nodes/{id:guid}/transcript/redo", RedoTranscript)
+            .WithName("RedoTranscript")
+            .WithDescription(
+                "Transcribes the file again from the start, ahead of the background work, e.g. after the admin picked another model. The old transcript stays until the new run starts. 409 when the file isn't transcribed (no sound, speech to text off, or no ML service)."
+            );
+        group
             .MapGet("/nodes/{id:guid}/captions.vtt", GetCaptions)
             .WithName("GetCaptions")
             .WithDescription(
@@ -72,8 +81,44 @@ public static class TranscriptEndpoints
             );
         }
 
-        var transcript = await transcripts.ReadAsync(version.BlobHash, ct);
-        var job = await transcripts.JobStatusAsync(version.BlobHash, ct);
+        return TypedResults.Ok(await DtoAsync(transcripts, version.BlobHash, ct));
+    }
+
+    private static async Task<Results<Ok<TranscriptDto>, ProblemHttpResult>> RedoTranscript(
+        Guid id,
+        HttpContext context,
+        DriveService drive,
+        TranscriptService transcripts,
+        DokumentDbContext db,
+        CancellationToken ct
+    )
+    {
+        var file = await drive.GetFileAsync(context.Actor(), id, ct);
+        if (
+            file.CurrentVersion is not { } version
+            || await db.BlobMedia.SingleOrDefaultAsync(m => m.BlobHash == version.BlobHash, ct)
+                is not { } media
+            || !await transcripts.RedoAsync(media, JobPriority.Interactive, ct)
+        )
+        {
+            return TypedResults.Problem(
+                "This file isn't transcribed.",
+                statusCode: StatusCodes.Status409Conflict
+            );
+        }
+
+        await db.SaveChangesAsync(ct);
+        return TypedResults.Ok(await DtoAsync(transcripts, version.BlobHash, ct));
+    }
+
+    private static async Task<TranscriptDto> DtoAsync(
+        TranscriptService transcripts,
+        ContentHash hash,
+        CancellationToken ct
+    )
+    {
+        var transcript = await transcripts.ReadAsync(hash, ct);
+        var job = await transcripts.JobStatusAsync(hash, ct);
         var state = transcript?.Info.Status switch
         {
             TranscriptStatus.Ready => TranscriptState.Ready,
@@ -83,18 +128,16 @@ public static class TranscriptEndpoints
             _ when job == JobStatus.Queued => TranscriptState.Waiting,
             _ => TranscriptState.None,
         };
-        return TypedResults.Ok(
-            new TranscriptDto(
-                state,
-                transcript?.Info.Language,
-                transcript?.Info.Model,
-                transcript?.Info.DurationMs,
-                state == TranscriptState.Running ? transcript?.Info.DoneMs : null,
-                transcript
-                    ?.Lines.Select(l => new TranscriptLineDto(l.StartMs, l.EndMs, l.Text))
-                    .ToList()
-                    ?? []
-            )
+        return new TranscriptDto(
+            state,
+            transcript?.Info.Language,
+            transcript?.Info.Model,
+            transcript?.Info.DurationMs,
+            state == TranscriptState.Running ? transcript?.Info.DoneMs : null,
+            transcript
+                ?.Lines.Select(l => new TranscriptLineDto(l.StartMs, l.EndMs, l.Text))
+                .ToList()
+                ?? []
         );
     }
 

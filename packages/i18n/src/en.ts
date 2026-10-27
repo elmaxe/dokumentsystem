@@ -600,6 +600,9 @@ export const en = {
     found_other: "{{count}} lines",
     recognized: "{{language}}, recognized automatically",
     misheard: "Words may be misheard",
+    model: "Model {{model}}",
+    redo: "Transcribe again",
+    redoStarted: "It will be transcribed again from the start",
     silence: "No speech {{from}} to {{to}}",
     running: "Listening… at {{at}} of {{total}}. The rest shows up as it's done.",
     captions: "Captions from the transcript",
@@ -929,7 +932,7 @@ export const en = {
       videosHint: "Transcribe the sound in videos too",
       model: "Model",
       modelHint:
-        "Bigger models hear better and take longer. Automatic picks the best the service can run: large-v3-turbo on a GPU, small on a CPU. Changing it applies to recordings transcribed from now on.",
+        "Bigger models hear better and take longer. Automatic picks the best the service can run: large-v3-turbo on a GPU, small on a CPU. Changing it applies to recordings transcribed from now on; use Transcribe all again to redo the rest.",
       auto: "Automatic",
       kbWhisper: "KB-Whisper {{size}} (better Swedish)",
       done_one: "{{count}} recording transcribed",
@@ -940,6 +943,8 @@ export const en = {
       engine:
         "Transcribed with faster-whisper on the machine learning service, one recording at a time. Music and silence are skipped.",
       offNote: "Recordings uploaded while it's off are transcribed when you turn it on.",
+      redo: "Transcribe all again",
+      redoStarted: "All recordings will be transcribed again in the background",
     },
     textRecognition: {
       intro:

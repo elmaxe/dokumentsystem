@@ -906,6 +906,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/transcript/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Transcribes the file again from the start, ahead of the background work, e.g. after the admin picked another model. The old transcript stays until the new run starts. 409 when the file isn't transcribed (no sound, speech to text off, or no ML service). */
+        post: operations["RedoTranscript"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/captions.vtt": {
         parameters: {
             query?: never;
@@ -1196,6 +1213,23 @@ export interface paths {
         get: operations["AdminGetTranscriptionProgress"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/transcription/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Transcribes every stored recording again, in the background, e.g. after picking another model. Old transcripts stay searchable until each is redone. */
+        post: operations["AdminRedoAllTranscripts"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3576,6 +3610,28 @@ export interface operations {
             };
         };
     };
+    RedoTranscript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptDto"];
+                };
+            };
+        };
+    };
     GetCaptions: {
         parameters: {
             query?: never;
@@ -4060,6 +4116,26 @@ export interface operations {
         };
     };
     AdminGetTranscriptionProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionProgress"];
+                };
+            };
+        };
+    };
+    AdminRedoAllTranscripts: {
         parameters: {
             query?: never;
             header?: never;

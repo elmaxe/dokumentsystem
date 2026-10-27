@@ -699,6 +699,17 @@ function SpeechSection({ settings }: { settings: AdminSettings }) {
     if (!busy) void save(() => admin.putTranscription(next.enabled, next.model, next.videos));
   };
   const stats = progress.data;
+  const toast = useSnackbar();
+  const queryClient = useQueryClient();
+
+  const redo = async () => {
+    try {
+      queryClient.setQueryData(transcriptionProgressQuery.queryKey, await admin.redoTranscripts());
+      toast(t("admin.speech.redoStarted"));
+    } catch {
+      toast(t("errors.generic"));
+    }
+  };
 
   return (
     <Section id="speech" intro={t("admin.speech.intro")}>
@@ -770,6 +781,13 @@ function SpeechSection({ settings }: { settings: AdminSettings }) {
             <Icon name="info" size={20} />
             {current.enabled ? t("admin.speech.engine") : t("admin.speech.offNote")}
           </span>
+        </div>
+      )}
+      {hasMl && current.enabled && (
+        <div className="flex justify-end">
+          <Button variant="outlined" icon="refresh" onClick={() => void redo()}>
+            {t("admin.speech.redo")}
+          </Button>
         </div>
       )}
     </Section>
