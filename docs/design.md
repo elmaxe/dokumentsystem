@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.29** · Last updated: 2026-10-27
+> Status: **Draft v0.31** · Last updated: 2026-10-27
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -586,6 +586,19 @@ Modeled on Immich's `immich-machine-learning`.
 - **Results are stored with `engine` + `model` + `version`**, so changing the model triggers re-processing.
 - **No-ML fallback:** the worker image includes **Tesseract** (`swe` + `eng`) for basic OCR, built in M3 (§10.3). A server without an ML service still gets searchable scans.
 
+### 11.2 Understanding pictures: smart search and picture tags
+
+Planned for M7 (decision 35), as the ML image's next piece after transcription. Immich does this with CLIP ("smart search") and face recognition; it dropped its older fixed-label image classification in favour of CLIP. We follow the same path.
+
+- **One model, two uses.** A multilingual CLIP-style model (for example the ONNX SigLIP/NLLB-CLIP exports Immich ships) puts pictures and text in the same vector space. That gives semantic search ("strand solnedgång", "beach sunset", "whiteboard") and zero-shot tagging from the same stored vectors. Multilingual is required, since people search in Swedish. No fixed-label classifier (ImageNet or YOLO classes): its labels are English, odd ("tabby cat", "web site") and not what people file by.
+- **What gets embedded:** photos and images (from the 640 px thumbnail, never the original), a video's poster, and a few frames of longer videos (one vector each, `page_no` as the frame). Scans and PDFs are read with OCR as now; picture vectors add little there. Text embeddings for documents are a separate, later part of hybrid search (§13.3).
+- **The stage:** an `embed-image` job after the thumbnail stage, at background priority, on the ML URL list (§11). Like transcription, no ML URL means no jobs are queued and adding one backfills; URLs that are down make jobs wait. Concurrency is an admin setting, for the bulk import case. The Jobs page gets a "Picture search" queue and the file's Processing section a row for it.
+- **Storage:** `embeddings` (§6), keyed by blob hash and model, like everything read from the bytes. One model is active at a time. Changing it rebuilds the VectorChord index at the new size and re-embeds in the background; until that finishes, search falls back to words only.
+- **Smart search:** the server embeds the query through `POST /embed/text` (cached briefly), finds the nearest pictures among the files the person can see (the same `NodeAccess` join), and merges them with BM25 by reciprocal rank fusion (§13.3). CLIP always returns *something* nearest, so a similarity floor drops weak matches, and picture matches only rank images and videos. A hit says "Matched what's in the picture" instead of a snippet; there is nothing to mark in the viewer. If no ML service is reachable when someone searches, search is words only and the page says so.
+- **Picture tags (the "classification"):** a new kind of tag rule beside keyword rules (§13.4). A picture rule is a tag plus a few descriptions, such as `receipt` ← "a photo of a receipt", "ett kvitto". The descriptions are embedded once; matching is a vector comparison in Postgres, so changing a rule never sends pictures to the ML service again. Each rule has a sensitivity, and the edit dialog previews which files would get the tag, as keyword rules do, since zero-shot scores need tuning per tag. Matches become `blob_tags` with source `ml` and the rule's id, so they look automatic, are shared like all tags, can be removed per file, and feed filing rules (§13.6): a photographed receipt can be tagged receipt and filed under Kvitton/{year}.
+- **Starter rules:** a handful of suggested picture rules (receipt, document, screenshot, whiteboard, ID card, food, pet), off until an admin turns them on, so nothing is tagged by surprise.
+- **Not in M7:** faces and people. Face recognition stores biometric data about people who never agreed to it, which needs its own design (per-person opt-in, who sees named people in shared folders). It stays under Later and §26. Object boxes ("where is the dog") are also later.
+
 ---
 
 ## 12. Trash and retention
@@ -1079,8 +1092,8 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
-| **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback, transcription of audio and video into searchable, timed text |
-| **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders), PDF split and merge through Gotenberg (§10.3) |
+| **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback, transcription of audio and video into searchable, timed text. Order: transcription first, then picture embeddings with smart search, then picture tag rules (§11.2), then OCR+ and text embeddings for documents |
+| **Later** | Faces and people (§11.2), WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders), PDF split and merge through Gotenberg (§10.3) |
 
 ---
 
@@ -1121,7 +1134,9 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 31 | Text and Markdown viewers | 2026-10-25: text opens in a lazy, read-only CodeMirror 6 with the language from the file name, folding, find and a remembered wrap toggle; Markdown opens formatted (GFM via react-markdown, raw HTML as text) with a Formatted / Source toggle; web images load only after "Load images", with no referrer; relative links and images show as text for now; syntax colours are new `code-*` tokens. |
 | 32 | Video and audio | 2026-10-25: ffprobe in the thumbnail stage stores `blob_media` per blob and plans playback by what every current browser plays (direct / remux / transcode); posters from the most typical frame 10 % in, cover art for audio; one MP4 copy per blob only when needed, streams copied when they play, otherwise H.264/AAC at CRF 23 fitted to 1080p (admin: 720p, 1080p or original), HDR tone-mapped, `+faststart`, no HLS; copies made in the background by default, or when opened, or never; failures not retried; HEVC-capable browsers get the original first; progress polled, not pushed (§10.3, §14) |
 | 33 | Office previews | 2026-10-25: Gotenberg is optional, its URL an admin setting with a Test button (empty = off); the thumbnail stage converts Office and OpenDocument files by MIME type with the bytes checked, one page per sheet, and keeps one PDF per blob that the viewer shows with pdf.js and a "shown as PDF" note; page 1 makes the thumbnails; refused files fail without retries, an unreachable Gotenberg retries; turning it on queues documents uploaded while it was off; .doc/.xls/.ppt text comes from the PDF (§10.3, §14) |
+| 35 | Understanding pictures | 2026-10-27: planned for M7 after transcription; one multilingual CLIP-style model in the ML image gives both smart search and picture tags; images, video posters and a few frames are embedded from thumbnails, keyed by blob and model, one active model; query vectors merged with BM25 by RRF with a similarity floor; picture tag rules (tag + descriptions, sensitivity, preview) matched in Postgres, giving `ml` blob tags that filing rules can use; starter rules off by default; no fixed-label classifier; faces later (§11.2) |
 
 ## 26. Open questions
 
 1. ~~**Video:** transcode to MP4 once, or generate HLS for large files?~~ MP4 once, only when needed (decision 32).
+2. **Faces and people:** if face recognition comes (§11.2), is it opt-in per person, and who sees named people in shared folders?
