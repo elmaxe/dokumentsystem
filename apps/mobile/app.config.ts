@@ -9,7 +9,6 @@ const config: ExpoConfig = {
   version: "0.0.0",
   orientation: "default",
   userInterfaceStyle: "automatic",
-  newArchEnabled: true,
   ios: {
     bundleIdentifier: "io.github.elmaxe.dokumentsystem",
     supportsTablet: true,
@@ -21,7 +20,6 @@ const config: ExpoConfig = {
   },
   android: {
     package: "io.github.elmaxe.dokumentsystem",
-    edgeToEdgeEnabled: true,
   },
   web: { bundler: "metro", output: "single" },
   plugins: [

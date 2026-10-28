@@ -51,15 +51,19 @@ export function SheetAction({
   label,
   onPress,
   danger,
+  selected,
 }: {
   icon: ReactNode;
   label: string;
   onPress: () => void;
   danger?: boolean;
+  /** For a choice among several, such as the sort order. */
+  selected?: boolean;
 }) {
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={selected === undefined ? "button" : "radio"}
+      accessibilityState={selected === undefined ? undefined : { checked: selected }}
       onPress={onPress}
       className="min-h-touch flex-row items-center gap-4 px-5 active:bg-surface-container-highest"
     >

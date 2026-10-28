@@ -23,8 +23,11 @@ export function Button({
   disabled,
   busy,
   className,
+  accessibilityLabel,
 }: {
   label: string;
+  /** When the visible label needs more to make sense on its own, such as which device "Sign out" is for. */
+  accessibilityLabel?: string;
   onPress?: () => void;
   variant?: Variant;
   icon?: IconName;
@@ -37,6 +40,7 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: !!disabled || !!busy, busy: !!busy }}
       disabled={disabled || busy}
       onPress={onPress}
