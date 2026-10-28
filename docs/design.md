@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.32** · Last updated: 2026-10-27
+> Status: **Draft v0.33** · Last updated: 2026-10-28
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -204,7 +204,14 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 - **Login:** OIDC authorization code flow with PKCE against the user's IdP (Authentik, Authelia, Keycloak, Pocket ID, …).
   - Web: the server performs the flow as a confidential client (ASP.NET's OpenIdConnect handler). The browser navigates to `GET /api/v1/auth/login?returnTo=…`, and the IdP redirects back to `/api/v1/auth/callback`. Only local paths are accepted as `returnTo`.
   - The IdP's response comes back as a query string, so the short-lived correlation cookies can be SameSite=Lax. That also lets login work over plain http on a LAN.
-  - Mobile: the app opens the system browser and redirects back to a custom scheme. The server then exchanges the code. The hand-off to the app is built in M5. Bearer sessions are already accepted.
+  - Clients that run the sign-in themselves (the API reference now, the mobile app in M5) use the **token endpoint**, `POST /api/v1/auth/token`:
+    1. The client opens the IdP's authorize URL with our client id and PKCE: Scalar in a popup, the app in the system browser.
+    2. The IdP redirects back to the client with a code. Scalar gets it at its page; the app gets it at a custom scheme.
+    3. The client sends an OAuth token request (`grant_type=authorization_code`, `code`, `code_verifier`, `redirect_uri`).
+    4. The server redeems the code as the confidential client, so the secret never leaves it. It validates the ID token, reads userinfo and provisions the person as at web login.
+    5. It answers with one of our own **bearer sessions** as `access_token`. The IdP's tokens are dropped, and no refresh token is needed because sessions slide.
+  - Errors use OAuth's shape (`invalid_grant`, `access_denied`, …). Requests share login's rate limit.
+  - Codes are redeemed only for allow-listed redirect URIs, which must also be registered at the IdP. Today that is only the API reference's page (`${PUBLIC_URL}/scalar/`), in development. M5 adds the app's scheme.
 - **Configuration** is bootstrap env (§4.3). Sign-in stays off until `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set, so a fresh install still starts.
 
   | Variable | Default | Meaning |
@@ -236,6 +243,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 - **Rate limiting:** 20 login starts per minute per IP.
 - **Break-glass:** a CLI command in the container (`dokument admin reset-oidc` / `create-admin-token`) for when the IdP is broken.
 - **Local development:** Aspire runs Keycloak with a `dokument` realm. Its test users are alice (admin), bob (user) and carol (no groups); each password is the username.
+  - The API reference (Scalar, `${PUBLIC_URL}/scalar/`, proxied by Vite) has an Authorize button. It signs in at Keycloak through the token endpoint, and its requests then carry a bearer session, which is listed under active devices.
 - **Built in M0:** login, sessions, CSRF and active devices. **Still to come:**
   - API keys and the break-glass CLI
   - auth audit events, with the audit table in M1

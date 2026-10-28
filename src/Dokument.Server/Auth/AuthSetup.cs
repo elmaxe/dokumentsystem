@@ -127,25 +127,15 @@ public static class AuthSetup
     {
         var principal = context.Principal!;
         var http = context.HttpContext;
-        var subject =
-            principal.FindFirstValue("sub")
-            ?? throw new InvalidOperationException("The IdP's ID token has no sub claim.");
+        if (principal.FindFirstValue("sub") is null)
+        {
+            throw new InvalidOperationException("The IdP's ID token has no sub claim.");
+        }
+
         var logger = http
             .RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger(typeof(AuthSetup));
-        var identity = new OidcIdentity(
-            Issuer: principal.FindFirstValue("iss") ?? principal.FindFirst("sub")!.Issuer,
-            Subject: subject,
-            Email: principal.FindFirstValue("email"),
-            DisplayName: principal.FindFirstValue("name")
-                ?? principal.FindFirstValue("preferred_username"),
-            Groups: principal
-                .FindAll(oidc.GroupsClaim)
-                .Select(c => c.Value)
-                .Distinct(StringComparer.Ordinal)
-                .ToList(),
-            Quota: ReadQuotaClaim(principal, oidc, logger)
-        );
+        var identity = IdentityFrom(principal, oidc, ReadQuotaClaim(principal, oidc, logger));
 
         var result = await http
             .RequestServices.GetRequiredService<UserProvisioner>()
@@ -183,8 +173,28 @@ public static class AuthSetup
         context.HandleResponse();
     }
 
+    /// <summary>The person the IdP vouches for, from the claims of its ID token and userinfo.</summary>
+    internal static OidcIdentity IdentityFrom(
+        ClaimsPrincipal principal,
+        OidcSettings oidc,
+        ClaimedQuota quota
+    ) =>
+        new(
+            Issuer: principal.FindFirstValue("iss") ?? principal.FindFirst("sub")!.Issuer,
+            Subject: principal.FindFirstValue("sub")!,
+            Email: principal.FindFirstValue("email"),
+            DisplayName: principal.FindFirstValue("name")
+                ?? principal.FindFirstValue("preferred_username"),
+            Groups: principal
+                .FindAll(oidc.GroupsClaim)
+                .Select(c => c.Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToList(),
+            Quota: quota
+        );
+
     /// <summary>The quota claim's value (§17.1). One that can't be read is logged and changes nothing.</summary>
-    private static ClaimedQuota ReadQuotaClaim(
+    internal static ClaimedQuota ReadQuotaClaim(
         ClaimsPrincipal principal,
         OidcSettings oidc,
         ILogger logger

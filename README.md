@@ -25,7 +25,7 @@ dotnet tool restore
 dotnet run --project src/Dokument.AppHost
 ```
 
-The Aspire dashboard opens with Postgres (built from `docker/postgres`), Keycloak, the server, a worker and the Vite dev server. Local files go to `.data/`. Open http://localhost:5173 and sign in as `alice`/`alice` (admin), `bob`/`bob` or `carol`/`carol`. pgAdmin is at http://localhost:5050, and the API reference (Scalar) is at `/scalar` on the server; the dashboard links both.
+The Aspire dashboard opens with Postgres (built from `docker/postgres`), Keycloak, the server, a worker and the Vite dev server. Local files go to `.data/`. Open http://localhost:5173 and sign in as `alice`/`alice` (admin), `bob`/`bob` or `carol`/`carol`. pgAdmin is at http://localhost:5050, and the API reference (Scalar) is at http://localhost:5173/scalar/; the dashboard links both. In Scalar, **Authorize** signs in at Keycloak with the same test users, and its requests then carry a bearer session from `POST /api/v1/auth/token`.
 
 The worker runs from the app's Docker image (its `runtime` stage, without the web UI), so exiftool, Tesseract and libvips come with it and nothing more needs installing. Aspire rebuilds the image on each start, which takes a minute or two after a change to the worker code.
 
