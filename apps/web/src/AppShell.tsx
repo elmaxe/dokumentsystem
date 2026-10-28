@@ -25,6 +25,7 @@ import { useTranslation } from "react-i18next";
 import { logout, sessionQuery } from "./api";
 import { useLiveOffline, useLiveUpdates } from "./live";
 import { useAccountSettings } from "./settings/account";
+import { useFiledMessages } from "./settings/filing";
 import { NameDialog } from "./files/dialogs";
 import { drive, errorMessage, folderQuery, invalidateFolders, nameKey, storageQuery } from "./files/drive";
 import { canPickFolders, fromDrop, fromFolderInput } from "./files/folderPicking";
@@ -58,6 +59,7 @@ function Shell() {
   const uploads = useUploads();
   const session = useQuery(sessionQuery);
   useLiveUpdates();
+  useFiledMessages();
   const offline = useLiveOffline();
   const storage = useQuery(storageQuery);
   const pathname = useRouterState({ select: (state) => state.location.pathname });

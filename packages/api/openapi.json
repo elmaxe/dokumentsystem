@@ -581,7 +581,7 @@
         "tags": [
           "Files"
         ],
-        "description": "What the viewer shows: a WebP for images browsers can't display or that are huge, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18).",
+        "description": "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18).",
         "operationId": "GetPreview",
         "parameters": [
           {
@@ -600,11 +600,50 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "original",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/playable": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Asks for a playable copy of a video or audio file browsers can't play, ahead of other work. 409 when copies are turned off or the file can't be converted; see NodeDto.media.",
+        "operationId": "RequestPlayableCopy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
           }
         }
       }
@@ -1277,7 +1316,7 @@
         "tags": [
           "Search"
         ],
-        "description": "Files and folders whose name, text or metadata match. `q` takes words, \"exact phrases\", -excluded words and the operators type:, in:, after:, before:, camera:, taken: and is:starred; the other parameters are the filter chips and override the operators.",
+        "description": "Files and folders whose name, text or metadata match. `q` takes words, \"exact phrases\", -excluded words and the operators type:, in:, after:, before:, camera:, taken:, tag: and is:starred; the other parameters are the filter chips and override the operators. A word also finds files with a tag that has it.",
         "operationId": "Search",
         "parameters": [
           {
@@ -1324,6 +1363,16 @@
             "schema": {
               "type": "boolean",
               "default": false
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           {
@@ -1382,7 +1431,7 @@
         "tags": [
           "Search"
         ],
-        "description": "Name matches as someone types, best first.",
+        "description": "Tags and name matches as someone types, best first.",
         "operationId": "SearchSuggest",
         "parameters": [
           {
@@ -1442,6 +1491,325 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/tags": {
+      "get": {
+        "tags": [
+          "Tags"
+        ],
+        "description": "A file's tags, and the automatic tags someone took off it, for the details panel.",
+        "operationId": "GetFileTags",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileTags"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/tags": {
+      "post": {
+        "tags": [
+          "Tags"
+        ],
+        "description": "Adds and removes tags on one or more files at once. Removing an automatic tag is remembered for each file, so keyword rules don't add it back.",
+        "operationId": "ChangeTags",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeTagsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/tags": {
+      "get": {
+        "tags": [
+          "Tags"
+        ],
+        "description": "Tags on files the person can see, most used first, with how many files have each. `q` keeps those that start with it, or have a word that does.",
+        "operationId": "SuggestTags",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagSuggestions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-rules": {
+      "get": {
+        "tags": [
+          "Filing"
+        ],
+        "operationId": "ListFilingRules",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingRuleListing"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Adds a rule at the end of the list: when one of your files gets the tag, it moves to the folder.",
+        "operationId": "CreateFilingRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingRuleDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-rules/{id}": {
+      "put": {
+        "tags": [
+          "Filing"
+        ],
+        "operationId": "UpdateFilingRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingRuleDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Deletes a rule. Files it moved stay where they are.",
+        "operationId": "DeleteFilingRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-rules/order": {
+      "put": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Puts all your rules in this order. The first that matches a file wins.",
+        "operationId": "ReorderFilingRules",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingRuleOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-rules/preview": {
+      "post": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "How many of your files have the tag now and would be filed, with where a few would go. Changes nothing.",
+        "operationId": "PreviewFilingRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingPreviewDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filings/recent": {
+      "get": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Files your rules moved after `after` (by default, the last two minutes) that are still there, oldest first.",
+        "operationId": "ListRecentFilings",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FiledFiles"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filings/{id}/undo": {
+      "post": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Moves a filed file back where it was. No rule files it again.",
+        "operationId": "UndoFiling",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         }
       }
@@ -1874,6 +2242,166 @@
         }
       }
     },
+    "/api/v1/admin/settings/videos": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutVideoSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/settings/office": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutOfficeSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfficeSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficeSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/office/test": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminTestOffice",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestOfficeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/videos/copies": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "How many playable copies of videos exist, the disk they take, and how many are still to make.",
+        "operationId": "AdminGetVideoCopies",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopyStats"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Deletes every playable copy. The originals are untouched; copies are made again as the setting says.",
+        "operationId": "AdminDeleteVideoCopies",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopyStats"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/storage": {
       "get": {
         "tags": [
@@ -2204,6 +2732,151 @@
           }
         }
       }
+    },
+    "/api/v1/admin/tag-rules": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminListTagRules",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagRuleListing"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Adds a rule and runs it over every stored file in the background.",
+        "operationId": "AdminCreateTagRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagRuleDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/tag-rules/{id}": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Changing the tag or words runs the rule again over every file in the background; turning it off takes its tags off at once.",
+        "operationId": "AdminUpdateTagRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagRuleDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Deletes the rule and takes its tags off every file.",
+        "operationId": "AdminDeleteTagRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/tag-rules/preview": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "How many files a rule would tag, and which, a page at a time. Changes nothing.",
+        "operationId": "AdminPreviewTagRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagRulePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagRulePreviewDto"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2216,7 +2889,7 @@
         "type": "object",
         "properties": {
           "step": {
-            "$ref": "#/components/schemas/JobKind"
+            "$ref": "#/components/schemas/FileStep"
           },
           "running": {
             "type": "boolean"
@@ -2231,6 +2904,8 @@
           "ml",
           "scanner",
           "textRecognition",
+          "videos",
+          "office",
           "signIn"
         ],
         "type": "object",
@@ -2252,6 +2927,12 @@
           },
           "textRecognition": {
             "$ref": "#/components/schemas/TextRecognitionDto"
+          },
+          "videos": {
+            "$ref": "#/components/schemas/VideoSettingsDto"
+          },
+          "office": {
+            "$ref": "#/components/schemas/OfficeSettingsDto"
           },
           "signIn": {
             "$ref": "#/components/schemas/SignInInfo"
@@ -2336,6 +3017,41 @@
           }
         }
       },
+      "ChangeTagsRequest": {
+        "required": [
+          "ids",
+          "add",
+          "remove"
+        ],
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "add": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "remove": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "CopyFromContentRequest": {
         "required": [
           "folderId",
@@ -2367,6 +3083,43 @@
           },
           "onConflict": {
             "$ref": "#/components/schemas/NameConflictPolicy"
+          }
+        }
+      },
+      "CopyState": {
+        "enum": [
+          "notNeeded",
+          "none",
+          "waiting",
+          "making",
+          "ready",
+          "failed"
+        ]
+      },
+      "CopyStats": {
+        "required": [
+          "count",
+          "bytes",
+          "waiting",
+          "failed"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "waiting": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -2728,6 +3481,64 @@
           }
         }
       },
+      "FiledFileDto": {
+        "required": [
+          "nodeId",
+          "name",
+          "mimeType",
+          "folderId",
+          "folder",
+          "tag",
+          "filedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "filedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FiledFiles": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FiledFileDto"
+            }
+          }
+        }
+      },
       "FileProcessing": {
         "required": [
           "steps"
@@ -2738,6 +3549,35 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProcessingStepDto"
+            }
+          }
+        }
+      },
+      "FileStep": {
+        "enum": [
+          "thumbnail",
+          "metadata",
+          "text",
+          "transcode"
+        ]
+      },
+      "FileTags": {
+        "required": [
+          "tags",
+          "removed"
+        ],
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagDto"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }
@@ -2808,6 +3648,158 @@
         "properties": {
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "FilingExampleDto": {
+        "required": [
+          "nodeId",
+          "name",
+          "mimeType",
+          "folder"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "folder": {
+            "type": "string"
+          }
+        }
+      },
+      "FilingPreviewDto": {
+        "required": [
+          "files",
+          "examples"
+        ],
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilingExampleDto"
+            }
+          }
+        }
+      },
+      "FilingPreviewRequest": {
+        "required": [
+          "tag",
+          "folder"
+        ],
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "folder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "FilingRuleDto": {
+        "required": [
+          "id",
+          "tag",
+          "folder",
+          "enabled",
+          "filed",
+          "running"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "filed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "running": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FilingRuleListing": {
+        "required": [
+          "rules"
+        ],
+        "type": "object",
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilingRuleDto"
+            }
+          }
+        }
+      },
+      "FilingRuleOrderRequest": {
+        "required": [
+          "ids"
+        ],
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "FilingRuleRequest": {
+        "required": [
+          "tag",
+          "folder"
+        ],
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "fileExisting": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -3002,7 +3994,8 @@
           "error",
           "size",
           "mimeType",
-          "files"
+          "files",
+          "ruleTag"
         ],
         "type": "object",
         "properties": {
@@ -3069,6 +4062,12 @@
             "items": {
               "$ref": "#/components/schemas/JobFileDto"
             }
+          },
+          "ruleTag": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -3124,7 +4123,11 @@
         "enum": [
           "thumbnail",
           "metadata",
-          "text"
+          "text",
+          "transcode",
+          "tagRule",
+          "file",
+          "filingRule"
         ]
       },
       "JobList": {
@@ -3231,8 +4234,51 @@
           "name",
           "text",
           "ocr",
-          "metadata"
+          "metadata",
+          "tag"
         ]
+      },
+      "MediaDto": {
+        "required": [
+          "durationSeconds",
+          "hasVideo",
+          "hasAudio",
+          "videoCodec",
+          "copy",
+          "progress"
+        ],
+        "type": "object",
+        "properties": {
+          "durationSeconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "hasVideo": {
+            "type": "boolean"
+          },
+          "hasAudio": {
+            "type": "boolean"
+          },
+          "videoCodec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "copy": {
+            "$ref": "#/components/schemas/CopyState"
+          },
+          "progress": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
       },
       "MlEndpointDto": {
         "required": [
@@ -3359,7 +4405,10 @@
           "thumbnail",
           "contents",
           "starred",
-          "processing"
+          "processing",
+          "tags",
+          "media",
+          "shownAsPdf"
         ],
         "type": "object",
         "properties": {
@@ -3449,6 +4498,25 @@
             "items": {
               "$ref": "#/components/schemas/ActiveStepDto"
             }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagDto"
+            }
+          },
+          "media": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MediaDto"
+              }
+            ]
+          },
+          "shownAsPdf": {
+            "type": "boolean"
           }
         }
       },
@@ -3472,6 +4540,38 @@
           "folder",
           "file"
         ]
+      },
+      "OfficeSettingsDto": {
+        "required": [
+          "gotenbergUrl",
+          "configured"
+        ],
+        "type": "object",
+        "properties": {
+          "gotenbergUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "configured": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OfficeSettingsRequest": {
+        "required": [
+          "gotenbergUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "gotenbergUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
       },
       "PageMatchDto": {
         "required": [
@@ -3583,6 +4683,7 @@
           "state",
           "at",
           "ahead",
+          "progress",
           "jobId",
           "attempts",
           "error"
@@ -3590,7 +4691,7 @@
         "type": "object",
         "properties": {
           "step": {
-            "$ref": "#/components/schemas/JobKind"
+            "$ref": "#/components/schemas/FileStep"
           },
           "state": {
             "$ref": "#/components/schemas/StepState"
@@ -3603,6 +4704,13 @@
             "format": "date-time"
           },
           "ahead": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "progress": {
             "type": [
               "null",
               "integer"
@@ -4057,7 +5165,9 @@
           "skipped",
           "unsupported",
           "unreadable",
-          "failed"
+          "failed",
+          "onOpen",
+          "off"
         ]
       },
       "StorageReport": {
@@ -4140,7 +5250,8 @@
       "SuggestResponse": {
         "required": [
           "items",
-          "terms"
+          "terms",
+          "tags"
         ],
         "type": "object",
         "properties": {
@@ -4154,6 +5265,228 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagSuggestion"
+            }
+          }
+        }
+      },
+      "TagDto": {
+        "required": [
+          "name",
+          "source",
+          "ruleId"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/TagSource"
+          },
+          "ruleId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "TagRuleDto": {
+        "required": [
+          "id",
+          "tag",
+          "words",
+          "enabled",
+          "files",
+          "running",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tag": {
+            "type": "string"
+          },
+          "words": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TagRuleListing": {
+        "required": [
+          "rules"
+        ],
+        "type": "object",
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagRuleDto"
+            }
+          }
+        }
+      },
+      "TagRuleMatchDto": {
+        "required": [
+          "nodeId",
+          "name",
+          "mimeType",
+          "owner",
+          "snippet"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "snippet": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SnippetDto"
+              }
+            ]
+          }
+        }
+      },
+      "TagRulePreviewDto": {
+        "required": [
+          "files",
+          "matches"
+        ],
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagRuleMatchDto"
+            }
+          }
+        }
+      },
+      "TagRulePreviewRequest": {
+        "required": [
+          "tag",
+          "words"
+        ],
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "words": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "default": 50
+          }
+        }
+      },
+      "TagRuleRequest": {
+        "required": [
+          "tag",
+          "words"
+        ],
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "words": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "TagSource": {
+        "enum": [
+          "user",
+          "rule",
+          "ml"
+        ]
+      },
+      "TagSuggestion": {
+        "required": [
+          "name",
+          "files"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "files": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TagSuggestions": {
+        "required": [
+          "tags"
+        ],
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagSuggestion"
             }
           }
         }
@@ -4196,6 +5529,17 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "TestOfficeRequest": {
+        "required": [
+          "url"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
           }
         }
       },
@@ -4585,6 +5929,29 @@
           }
         }
       },
+      "VideoCopies": {
+        "enum": [
+          "background",
+          "onOpen",
+          "never"
+        ]
+      },
+      "VideoSettingsDto": {
+        "required": [
+          "copies",
+          "maxHeight"
+        ],
+        "type": "object",
+        "properties": {
+          "copies": {
+            "$ref": "#/components/schemas/VideoCopies"
+          },
+          "maxHeight": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "VolumeUsage": {
         "required": [
           "holds",
@@ -4635,6 +6002,12 @@
     },
     {
       "name": "Search"
+    },
+    {
+      "name": "Tags"
+    },
+    {
+      "name": "Filing"
     },
     {
       "name": "Uploads"

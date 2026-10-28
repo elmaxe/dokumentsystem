@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.24** · Last updated: 2026-10-27
+> Status: **Draft v0.33** · Last updated: 2026-10-28
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -187,14 +187,14 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 ### 4.3 Configuration
 
 - **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
-- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17, 18 and 24): the default quota, trash and version retention, text recognition on or off, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
+- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17, 18, 24, 32 and 33): the default quota, trash and version retention, text recognition on or off, video copies (when they're made and their size), the Gotenberg URL, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
   - quota defaults
   - trash and version retention
   - SMTP
   - backup schedule
   - ML URLs
   - Gotenberg URL
-  - job concurrency (until the Jobs page can edit it: `Worker__ThumbnailConcurrency`, default 2; `Worker__MetadataConcurrency`, default 2; `Worker__TextConcurrency`, default 1)
+  - job concurrency (until the Jobs page can edit it: `Worker__ThumbnailConcurrency`, default 2; `Worker__MetadataConcurrency`, default 2; `Worker__TextConcurrency`, default 1; `Worker__TranscodeConcurrency`, default 1)
   - OCR languages (until then `Worker__OcrLanguages`, default `swe+eng`)
 
 ---
@@ -298,12 +298,19 @@ version_details(version_id PK → file_versions, title NULL, description NULL, t
                 taken_precision {year|month|day|time} NULL, edited_by, edited_at)   -- edits over what was read (§13.5)
 embeddings(blob_hash, page_no NULL, model, vector vchord) -- optional (M7)
 
--- Planned (decision 26, §13.4), not built yet:
-blob_tags(blob_hash, tag, source {rule|ml}, rule_id NULL, confidence NULL, created_at,
-          PRIMARY KEY (blob_hash, tag))          -- automatic tags belong to the bytes, like text
-node_tags(node_id, tag, added_by, added_at, PRIMARY KEY (node_id, tag))   -- tags people add (source user)
-node_tag_removals(node_id, tag, removed_by, removed_at)   -- an automatic tag someone took off this file
-tag_rules(id, tag, words, enabled, created_by, created_at) -- "kvitto, receipt, faktura" → receipt
+blob_tags(blob_hash, tag, tag_key, source {rule|ml}, rule_id NULL, created_at,
+          PRIMARY KEY (blob_hash, tag_key))      -- automatic tags belong to the bytes, like text (§13.4)
+node_tags(node_id, tag, tag_key, added_by, added_at, PRIMARY KEY (node_id, tag_key))   -- tags people add
+node_tag_removals(node_id, tag, tag_key, removed_by, removed_at,
+                  PRIMARY KEY (node_id, tag_key))  -- an automatic tag someone took off this file
+tag_rules(id, tag, tag_key UNIQUE, words, enabled, created_by, created_at, updated_at)  -- "kvitto, receipt" → receipt
+effective_node_tags  -- a view: node_tags, plus the current version's blob_tags minus removals (what a file shows),
+                     -- with since: when the file got each tag (filing rules, §13.6)
+
+filing_rules(id, owner_id, tag, tag_key, folder_template, position, enabled, active_since, created_at, updated_at,
+             UNIQUE (owner_id, tag_key))      -- each person's own: "receipt" → Kvitton/{year} (§13.6)
+node_filings(node_id PK, rule_id NULL, tag, from_folder_id NULL, to_folder_id NULL, filed_at, undone_at NULL)
+                                              -- a file is filed once; moving it back, or Undo, sticks
 
 stars(user_id, node_id, starred_at, PRIMARY KEY (user_id, node_id))   -- each person's own (§15.2)
 recent_files(user_id, node_id, at, action {opened|downloaded|uploaded|restored},
@@ -347,7 +354,8 @@ Notes:
   tmp/{upload_id}           # in-flight uploads (tus), same filesystem for atomic rename
 /data/derived/              # REGENERABLE — backup optional
   thumbs/ab/{sha256}/{kind}.webp   # thumb_s, thumb_m, preview; keyed by blob like the originals
-  previews/ab/{sha256}/…           # later: PDF renditions of Office files, web-playable video, posters
+  previews/ab/{sha256}/playable.mp4  # a copy browsers play, of video and audio they can't (§14)
+  previews/ab/{sha256}/document.pdf  # a PDF of an Office or OpenDocument file, made by Gotenberg (§10.3)
 /data/backups/              # DB dumps and name manifests (§7.1, §19)
 /data/exports/              # optional: readable copies written by export jobs (§7.1)
 ```
@@ -473,26 +481,27 @@ On disk, identical bytes are always stored once per person (§6, §7). On top of
 - **`pipeline_version` per stage:** bumping it (e.g. a better thumbnailer) lets an admin choose "re-run stage X for all".
 - **Concurrency per job type**, configurable in the UI. Defaults are NAS-friendly, e.g. thumbnails 2, video 1, OCR 1.
 - **Priorities:** interactive work (a user just uploaded) before bulk imports and rescans.
-- **Backfill:** when the worker starts, it queues the thumbnail, metadata and text stages at background priority for every blob without results from the current `pipeline_version`. That covers files from before a stage existed and pipeline upgrades.
-- **Timeouts per job type:** the default 5 minutes, except the text stage, which gets 30 minutes because a long scanned PDF is read page by page.
-- **Admin UI** (built, decision 27): the Jobs page at `/admin/jobs` shows one card per queue (running, waiting, failed, done in the last 7 days) with **Pause/Resume**, then the running, waiting or failed jobs, filterable by type. Each job names the **files that use its content**, whoever owns them: name, owner, folder path, and whether it's the current file, an older version or in the trash. Failed jobs show their last error and can be retried or cleared, one at a time or all at once. Jobs record `started_at`, so running jobs show how long they've been at it. A paused queue is stored in the `jobs` setting (`{"paused": ["text"]}`) and checked in the claim query, so every worker honours it. Still to come: "regenerate missing" and editing concurrency.
-- **Per file:** the details panel's Info tab has a **Processing** section with each stage's state (done, working on it, waiting with the number of jobs ahead, paused, nothing found, unsupported, unreadable, failed), and file listings carry the stages still waiting or running so grid and list can show a badge (§16.4). Admins also see a failed step's error and can retry it there.
+- **Backfill:** when the worker starts, it queues the thumbnail, metadata and text stages at background priority for every blob without results from the current `pipeline_version`. That covers files from before a stage existed and pipeline upgrades. When video copies are made in the background, it also queues every copy still missing (never ones that failed).
+- **Timeouts per job type:** the default 5 minutes, except the text stage, which gets 30 minutes because a long scanned PDF is read page by page, and the transcode stage, which gets 3 hours (`Worker__TranscodeJobTimeout`) because a long film is re-encoded on the CPU.
+- **Admin UI** (built, decision 27): the Jobs page at `/admin/jobs` shows one card per queue (running, waiting, failed, done in the last 7 days) with **Pause/Resume**, then the running, waiting or failed jobs, filterable by type. Each job names the **files that use its content**, whoever owns them: name, owner, folder path, and whether it's the current file, an older version or in the trash. Playable copies (§14) have their own card, after the file stages. Tag-rule runs (§13.4) have their own card and name the rule's tag instead of files. Filing (§13.6) has two: `file` jobs name the file being filed, and a filing rule's "file existing" run names its tag (without a link, since filing rules are each person's own). Failed jobs show their last error and can be retried or cleared, one at a time or all at once. Jobs record `started_at`, so running jobs show how long they've been at it. A paused queue is stored in the `jobs` setting (`{"paused": ["text"]}`) and checked in the claim query, so every worker honours it. Still to come: "regenerate missing" and editing concurrency.
+- **Per file:** the details panel's Info tab has a **Processing** section with each stage's state (done, working on it, waiting with the number of jobs ahead, paused, nothing found, unsupported, unreadable, failed), and file listings carry the stages still waiting or running so grid and list can show a badge (§16.4). Admins also see a failed step's error and can retry it there. Video and audio files browsers can't play also list their **playable copy** (§14) after the stages: its progress while it's made, "made when someone opens the file" or "turned off" by the admin's setting, and ffmpeg's error for admins when it couldn't be converted. It is left out of the file-list badge, since the viewer shows its own progress.
 
 ### 10.2 Stages
 
 ```
 upload complete (or the backfill)
-   ├─► thumbnail (+ preview renditions)                       built (M2)
+   ├─► thumbnail (+ preview renditions, Office → PDF)          built (M2)
    ├─► metadata   (exiftool → blob_metadata, content page 0)  built (M3)
    ├─► text       (text layer: PDF, Office, ODF, plain text)  built (M3)
    │      └─► ocr (pages and images with no text layer)       Tesseract now, ML in M7
-   │             └─► tag rules (keyword rules → blob_tags)    planned (§13.4)
-   ├─► transcode (video/audio only if not browser-playable)
+   │             └─► tag rules (keyword rules → blob_tags)    built (§13.4)
+   │                    └─► filing rules (tag → move)         built (§13.6)
+   ├─► transcode (video/audio browsers can't play)            built (M2)
    ├─► embed     (optional, ML)
    └─► transcribe (optional, ML, M7; audio/video → timed transcript pages)
 ```
 
-The stages are independent jobs per blob, queued together when an upload finishes; each detects the format from the bytes itself.
+The stages are independent jobs per blob, queued together when an upload finishes; each detects the format from the bytes itself. Transcode is the exception: the thumbnail stage probes video and audio anyway, so it queues the copy when one is needed.
 
 ### 10.3 Tooling per format
 
@@ -500,9 +509,9 @@ The stages are independent jobs per blob, queued together when an upload finishe
 |---|---|---|---|
 | JPEG/PNG/WebP/GIF/HEIC/AVIF/TIFF/SVG (RAW later) | exiftool | **NetVips** (libvips + libheif) → WebP thumbs, plus a WebP preview when the browser can't show the original | OCR (Tesseract, ML in M7) |
 | PDF | exiftool | **PDFium** renders page 1 for the thumbs; the viewer renders pages with pdf.js | PDFium text layer per page → OCR of pages without one |
-| DOCX/XLSX/PPTX/ODF/RTF | exiftool | **Gotenberg** (LibreOffice) → PDF rendition → PDFium | The document XML read straight from the zip (one page per slide); RTF and fallbacks from the PDF rendition later |
-| Video | ffprobe | ffmpeg poster frame; **web-playable rendition only if needed** (H.264/AAC MP4, or HLS for large files). Hardware acceleration: VAAPI/QSV/NVENC. | Transcript (ML, optional) |
-| Audio | ffprobe / ID3 | Embedded cover art, or a generic icon | Transcript (ML, optional) |
+| DOCX/XLSX/PPTX/ODF/DOC/XLS/PPT/RTF | exiftool | **Gotenberg** (LibreOffice) → PDF rendition → PDFium | The document XML read straight from the zip (one page per slide); .doc, .xls and .ppt from the PDF rendition |
+| Video | ffprobe (+ exiftool) | ffmpeg poster frame; **a playable MP4 copy only when browsers can't play the original** (below). Hardware acceleration later: VAAPI/QSV/NVENC. | Transcript (ML, optional) |
+| Audio | ffprobe / ID3 | Embedded cover art, or the type icon; a playable copy of WMA, ALAC and the like | Transcript (ML, optional) |
 | Text/Markdown/code/CSV/JSON | — | Rendered first lines as thumb (optional) | Raw text (size-capped) |
 | Archives (zip) | entry list | icon | entry names only |
 
@@ -529,6 +538,23 @@ The stages are independent jobs per blob, queued together when an upload finishe
 - **A missing tool doesn't fail jobs.** When the worker runs outside the image (`--WorkerOnHost`) and exiftool or Tesseract isn't installed, it logs one warning. Metadata jobs then store nothing, and text jobs keep a PDF's text layer and mark scans and photos as skipped. The next worker start queues those files again once the tool runs. The commands are `Worker:ExifToolCommand` and `Worker:TesseractCommand`, a name on PATH or a full path.
 - With text recognition turned off (an admin switch, default on), scans and photos are recorded as skipped; turning it on queues them at background priority. "Read all files again" re-queues every blob.
 - The stage replaces a blob's pages in one transaction, so a search never sees half a document.
+
+**Office documents, as built (M2, decision 33):**
+- **Gotenberg is optional** and set up by an admin: its address under Admin › Settings › Office documents (empty means off), with a Test button that checks `/health` reports LibreOffice. `docker-compose.yml` runs it under the `office` profile with a 3-minute API timeout. `GOTENBERG_URL` in a process's environment wins over the setting, and the admin page then shows the address read-only. Each process reads its own, because the server on the host and a worker in a container reach Gotenberg at different addresses; the worker's start queues documents recorded as unsupported before it was set. The Aspire AppHost starts Gotenberg and sets it for every role, so Office previews work in development with no setup.
+- **The thumbnail stage converts** Word, Excel, PowerPoint and OpenDocument files (by MIME type, with the bytes checked: a zip, an OLE file for `.doc`/`.xls`/`.ppt`, or `{\rtf`) through `POST /forms/libreoffice/convert`, with one page per spreadsheet sheet so wide sheets aren't cut into strips. Macros never run (LibreOffice's default). The PDF is kept at `previews/ab/{sha}/document.pdf`, and its page 1 is rendered by PDFium into the usual thumbnails.
+- **Failures:** a file Gotenberg refuses (damaged, password-protected) is recorded as failed and not retried; Gotenberg being down or busy fails the job, which retries with the usual backoff. While Office previews are off, documents are recorded as unsupported, and saving an address queues those at background priority.
+- **Later: split and merge PDFs.** Gotenberg's PDF engines (`/forms/pdfengines/split` and `/forms/pdfengines/merge`) can split a PDF into pages or ranges, and merge several PDFs (or the PDFs made of Office files) into one. Each result is a new file in the drive, next to the originals, which stay as they are. This needs the same Gotenberg setup as the previews, so the actions only show when an address is set.
+- **Text:** `.docx`, `.xlsx`, `.pptx` and ODF are still read from their XML. Formats the text stage can't read (`.doc`, `.xls`, `.ppt`) are read from the PDF instead: making the PDF queues the text stage for them again.
+
+**Video and audio, as built (M2, decision 32):**
+- **The thumbnail stage probes** anything libvips doesn't take with `ffprobe` (JSON, 1-minute timeout), limited to an allowlist of media containers so images, subtitles and text are never treated as video. It stores `blob_media` per blob: container, duration, whether there is video and audio, the codecs, the picture size as shown (after the rotation a phone records), and the **playback plan**. Other stages read it too; transcription (M7) runs only for blobs with audio.
+- **The poster** is the most typical of 60 frames (`thumbnail=60`) from 10 % into the video (at most 60 s in), or from the start for short clips, turned upright, made into the usual WebP thumbnails. Audio files use their embedded cover art; without one they keep the type icon. Cover art is not a video stream for planning (`0:V:0`).
+- **The plan** counts only what every current browser plays, so Firefox on Linux gets the same answer as Safari: H.264 (8-bit 4:2:0), VP8, VP9 or AV1 video and AAC, MP3, Opus, Vorbis or FLAC audio. **Direct** files (H.264/AAC in MP4, VP9/Opus in WebM, MP3, FLAC, Ogg, WAV, AAC in M4A) are played from the original. **Remux** files have streams that play in the wrong container (H.264 in a `.mov`, `.mkv` or `.ts`): the streams are copied into MP4 in seconds, with no loss. **Transcode** files need converting (HEVC, 10-bit H.264, MPEG-4 Part 2, MPEG-2, WMV, AC-3, PCM in a video, WMA, ALAC).
+- **The copy** (the transcode stage) is one MP4 per blob at `previews/ab/{sha}/playable.mp4`: the first video and audio streams only, each copied when it plays and otherwise re-encoded with libx264 (`veryfast`, CRF 23, High profile, 4:2:0) and AAC (160 kb/s stereo, 192 kb/s for audio only), `+faststart` so it plays before it's fully loaded, and metadata stripped. Converted video fits within the admin's size (1080p by default, as a 1920 × 1920 box so portrait phone videos keep 1080 × 1920; 720p or the original's size). HDR (PQ, HLG) is tone-mapped to SDR with zscale; if that fails the copy is made without it. Progress is written every 3 s from `-progress` and read by the viewer; it sends no live notice per step, only when the copy is done. A file ffmpeg can't convert is recorded as failed, with ffmpeg's last error for admins, and not retried. One copy at a time by default (`Worker__TranscodeConcurrency`).
+- **When copies are made** is an admin setting: **in the background** (default: queued after upload at the upload's priority, and by the backfill), **when someone opens one** (the viewer asks, at interactive priority, and the first person waits), or **never** (the viewer offers Download). Opening a file whose copy is still waiting moves it ahead of background work. Admins see how many copies exist, their disk use, how many are still to make and how many failed, and can delete them all; they are made again as the setting says.
+- **HLS is not used.** One MP4 with range requests seeks fine in every browser, and is one file to clean up. Hardware encoding (VAAPI, QSV, NVENC) can be added behind the same stage.
+- **A missing ffmpeg doesn't fail jobs.** Outside the image, the worker logs one warning, and files libvips doesn't take are left without a thumbnail record, so the next worker start queues them again once ffmpeg runs. The commands are `Worker:FfmpegCommand` and `Worker:FfprobeCommand`.
+- **For other stages**, the worker's `FFmpeg` service (probe, frame, cover, and a runner with progress and a timeout) is the one way to call ffmpeg, so transcription can make its 16 kHz audio the same way.
 
 Licensing note: NetVips/libvips (LGPL), PDFium (BSD/Apache), PdfPig (Apache) and ffmpeg (LGPL build) are all fine. We avoid ImageSharp (split license) and MuPDF, which is AGPL; MuPDF would be acceptable since we are AGPL, but it isn't needed.
 
@@ -622,8 +648,8 @@ Built in M3 (decision 26). Two BM25 indexes, created in the migration with pg_se
 ### 13.3 Query
 
 - **The search bar** suggests names as someone types (`GET /search/suggest`, no text, ~6 rows). Enter opens the search page, `/search?q=…`, with its filters in the URL so a search can be bookmarked.
-- **The query language:** words, `"exact phrases"`, `-excluded` words and the operators `type:` (pdf, doc, sheet, slides, image, video, audio, text, archive, folder), `in:` (folders with that name, and everything below), `after:` and `before:` (modified), `camera:`, `taken:` (a year, month or day) and `is:starred`. Unknown operators are searched as words. The chips on the search page (Type, Modified, In, Starred, and a Relevance / Last modified sort) set the same filters. Queries are capped at 20 words.
-- **Matching:** every word must match, in the name, the text or the metadata. In text a word matches its Swedish or English stem or, from 5 letters, one typo; in names a word matches whole (boosted), as a prefix, with one typo from 5 letters, or by its 3-grams. Phrases match the unstemmed text in order.
+- **The query language:** words, `"exact phrases"`, `-excluded` words and the operators `type:` (pdf, doc, sheet, slides, image, video, audio, text, archive, folder), `in:` (folders with that name, and everything below), `after:` and `before:` (modified), `camera:`, `taken:` (a year, month or day), `tag:` (a tag, `tag:"tax 2026"` for one with spaces) and `is:starred`. Unknown operators are searched as words. The chips on the search page (Type, Modified, In, Starred, Tag, and a Relevance / Last modified sort) set the same filters. Queries are capped at 20 words.
+- **Matching:** every word must match, in the name, the text, the metadata or the file's tags (§13.4). In text a word matches its Swedish or English stem or, from 5 letters, one typo; in names a word matches whole (boosted), as a prefix, with one typo from 5 letters, or by its 3-grams. Phrases match the unstemmed text in order.
 - **Ranking:** the name's BM25 score, weighted ×2, plus the best page's. At most 1000 candidates are ranked; that is plenty for a person's own files.
 - **Results are files, not pages** (`GET /search`). Each has its best page: the page number ("Page 2 of 5", "Slide 3 of 12"), how many pages matched, where the hit was (name, text, a scan or photo's recognized text, or the file's details), and a snippet. The snippet is about 220 characters of plain text around the most hits, with the hits as `[start, end)` offsets, never HTML, so file content can't inject markup.
 - **Marking hits** uses one rule on the server and in the clients (`Highlighter` in C#, `matchesTerm` in `@dokument/core`): the word itself, the word plus an ending of up to 4 letters (from 4 letters: "kvitto" marks "kvittot"), or one typo from 5 letters. It approximates the stemmers closely enough that what is marked is what matched.
@@ -635,16 +661,23 @@ Built in M3 (decision 26). Two BM25 indexes, created in the migration with pg_se
 - **Scope:** search *always* applies the same effective-permission predicate as browsing (§9): the candidates are joined with `NodeAccess`, so only files the person could open are found or counted, and `/matches` answers 404 for anyone else's file.
 - **Sound and speech:** audio tags (title, artist, album, comment) are searchable now through the metadata stage. Spoken words wait for transcription in M7: Whisper segments become `transcript` pages with times, and opening a hit plays from there.
 
-### 13.4 Tags (planned)
+### 13.4 Tags
 
-Prepared in M3, built as its own piece after it (decision 26).
+Built after M3 (decision 29).
 
-- **A tag is a word on a file**, such as "receipt". Tags are **shared**: everyone who can see the file sees its tags (not per person, unlike stars).
-- **Sources:** `user` (someone added it), `rule` (an admin's keyword rule matched the text) and `ml` (the ML service, M7). The source is shown, so an automatic tag reads as one.
-- **Automatic tags belong to the bytes** (`blob_tags`), like text: identical files get the same automatic tags once. Tags people add belong to the file (`node_tags`).
-- **Automatic tags are removable:** removing one from a file is recorded per file (`node_tag_removals`) and sticks when the rules run again.
-- **Keyword rules** run right after the text stage: a rule is a tag plus words ("kvitto, kvittot, receipt → receipt"), matched with the search rule above on the text and metadata. Admins manage them; editing a rule re-runs it at background priority. The text stage's output stays the input, so rules never re-read files.
-- **Search:** a `tag:` operator and a Tags chip, through a `tags` field on the name index or a join; results show a file's tags.
+- **A tag is a word or a few words on a file**, such as "receipt" or "tax 2026": at most 50 characters, trimmed, NFC, no commas or line breaks. Two tags are the same when they match ignoring case (`tag_key`); the first spelling used on files the person can see, or a rule's, is kept, so "Receipt" joins "receipt". Files only: a tag on a folder would raise whether it applies to everything inside.
+- **Tags are shared:** everyone who can see a file sees its tags (not per person, unlike stars). Anyone who can change the file adds and removes them: the owner now, editors with sharing (M4). Suggestions and counts only ever come from files the person can see, so a tag on someone's private file never shows.
+- **Sources:** `user` (someone added it), `rule` (an admin's keyword rule matched the text) and `ml` (the ML service, M7). Automatic tags look different, tinted with a small icon, and say on hover which rule added them.
+- **Automatic tags belong to the bytes** (`blob_tags`), like text: identical files get them once, and a new version gets those of its own bytes once its text is read. Tags people add belong to the file (`node_tags`) and stay through new versions. A tag someone adds that a rule also gives is theirs, so it stays if the rule stops matching.
+- **Removing an automatic tag** is recorded for that file (`node_tag_removals`) and sticks when rules run again and through new versions. The details panel says "Removed from this file: receipt · Put back"; adding the tag again lifts the removal. What a file shows is the `effective_node_tags` view.
+- **Keyword rules** are a tag plus words: `kvitto, receipt, "tack för ditt köp"`. A word matches as itself, as a Swedish or English stem, or, from 5 letters, as the start of a longer word ("kvitto" in "kvittot", which the Swedish stemmer keeps apart); a quoted phrase matches word for word. **There's no typo tolerance**, unlike search: one typo would let "kvitto" match "kvitta" and tag files it shouldn't. Rules match the stored text and metadata (content pages, page 0 included) through the BM25 index, so they never read a file again. One rule per tag; at most 500 rules.
+  - The worker runs every enabled rule on a blob right after its text stage and its metadata stage finish.
+  - Adding or changing a rule queues a `tag-rule` job (background priority) that replaces the rule's tags in one query and one insert. Turning a rule off or deleting it takes its tags off at once. Rule tags have the rule's id, so a renamed tag follows.
+  - **Admin → Tags** (`/admin/tags`, between Jobs and Settings) lists the rules with how many live files show each tag, "Running" while one is being run, an on/off switch and Edit. The edit dialog previews, without changing anything, how many files would get the tag and lists them, newest first, 50 at a time, each with its owner and a snippet. Admins see every owner's file names there, as on the Jobs page.
+- **In the clients:** a Tags section in the details panel's Info tab, under the file facts, with a chip per tag (remove button, tapping the name searches for it) and Add tag, a field with suggestions from tags on files the person can see, most used first, then "Create tag". Selecting files adds a Tags action: a dialog with the tags all of them have and those only some have (dashed, "1 of 3", with + and ×); nothing changes until Save, and the snackbar offers Undo. List rows on wide screens show up to two small tags after the name; the grid and phones show none. Search results show a file's tags.
+- **Search:** `tag:receipt` and the Tag chip are exact filters. **Plain words also match tags**: a word that is a word of a tag on files in scope also counts as found on those files (scored like a good name match), so "receipt" finds a Swedish receipt tagged receipt and "receipt hornstull" finds it when "hornstull" is in its text. At most three words are tried this way. The search bar suggests up to two matching tags above the names; picking one opens the search page filtered to it.
+- **API:** `GET /nodes/{id}/tags` (tags and removed ones), `POST /nodes/tags` (`ids`, `add`, `remove`, up to 1000 files and 20 tags), `GET /tags?q=` (suggestions with counts), tags on every `NodeDto`, and `/admin/tag-rules` (list, create, update, delete, `preview`). Changes send a live `files` notice and write `file.tags_change` per file, naming the tags (§18).
+- **Not yet:** renaming or merging a tag across all files, tag colours, a Tags item in the main nav, and copying tags with a file copy (when copying lands, the copy gets the file's tags and removals).
 
 ### 13.5 Details and text in the file info
 
@@ -661,21 +694,39 @@ Built after M3 (decision 28). The details panel's Info tab shows what the worker
 
 ---
 
+### 13.6 Filing rules
+
+Built after tags (decision 30). The case: upload a receipt, and it ends up in `Kvitton/2026` with the receipt tag, without anyone moving it.
+
+- **Filing rules are each person's own,** in a Filing rules section of their Settings (`/settings`), not an admin's: moving files is the owner's business, and an admin's rule shouldn't rearrange someone's folders. A rule is a tag plus a folder: "When a file of mine gets **receipt**, move it to **Kvitton/{year}**". One rule per tag, at most 100 per person.
+- **Folders** are a path from the top of My files, folders separated by `/`, which may hold `{year}` and `{month}` (`Kvitton/{year}`, `Räkningar/{year}/{month}`). The month is two digits, so the folders sort in order. Other `{…}` are refused, and every folder must make a valid name. The date is the date taken people gave the version (§13.5, as written, so a scan dated "1974" goes to 1974), else when the photo was taken (`blob_metadata`), else the file's modified time on the device it came from, else when the version was uploaded, on the server's clock (`TZ`). Missing folders are made; a folder name held by a file stops the filing; a file name already taken in the folder is numbered as an upload would ("kvitto (1).pdf").
+- **When it runs:** a `file` job (subject: the node id, concurrency 1) runs the owner's rules on one file. It's queued when a file gets a tag (`POST /nodes/tags`), when a keyword rule tags its bytes (after the text or metadata stage, or when an admin changes a rule), and when a file gets new bytes (upload, new version, restore, copy), since bytes that already have tags may match at once. Only files whose owner has a rule on, not in the trash, and not filed before, are queued.
+- **Only tags got while the rule was on:** the `effective_node_tags` view says since when a file has each tag (when someone added it, or when its current bytes got it or were uploaded, whichever is later), and a rule matches a tag only from its `active_since` (made, turned back on, or given another tag). So a new rule doesn't move the files that already have its tag, unless the person ticks "Also file the N files that have this tag now", which queues a `filing-rule` job for those. Keyword rules keep the tags blobs already had when they run again, so their time stays.
+- **Once, and reversibly:** a file is filed at most once, by whichever rule (`node_filings`, one row per file). If the person moves it back or elsewhere, or presses Undo, it stays there. The move is a `node.move` in the audit log with the actor `system`, naming the rule and the tag (and the new name if it was numbered); folders it makes are `folder.create` by the system. Deleting a rule leaves its files where they are.
+- **Telling the person:** the worker sends a `filings` live notice. The web app waits for notices to settle (0.8 s), fetches `GET /filings/recent?after=` (the person's filings after the last ones shown, still where the rule put them) and shows one snackbar wherever the person is: "Filed IMG_4471.jpg in Kvitton / 2026", or "Filed 3 files in Kvitton / 2026", with Undo (`POST /filings/{id}/undo`, which moves each back where it was, or to the top of My files if that folder is gone). The upload tray doesn't say it, since a tag can arrive minutes after an upload (OCR). The Activity tab shows the move once it lists audit events.
+- **Order:** rules are ordered (Move up and Move down in a rule's menu); the first enabled rule that matches wins, so a file with two tags moves once.
+- **Settings:** each rule shows its tag, its folder ("Kvitton / Year"), how many files it filed with an example ("for example Kvitton / 2026"), an on/off switch and a menu (Edit, Move up, Move down, Delete). The dialog has the tag (with suggestions), the folder with Year and Month buttons that insert the placeholders, a preview of where two of the files that have the tag now would go, and the "Also file" choice, on by default for a new rule.
+- **API:** `/me/filing-rules` (list with `filed` counts and `running`, create, update, delete, `PUT /order`, `POST /preview`), `GET /filings/recent`, `POST /filings/{id}/undo`. Rule changes write `filing_rule.change` and send an `account` notice.
+- **Not yet:** shared folders (M4: a file in a folder shared with others should only be filed if it stays visible to the same people, or the rule asks first), the mobile app, and conditions beyond a single tag.
+
 ## 14. Viewers
 
 | Type | Web | Mobile |
 |---|---|---|
 | Images | The original, or the WebP preview for HEIC/TIFF/SVG and huge images; zoom/pan; EXIF details in the details panel (§13.5) | Same; `expo-image` |
 | PDF | **pdf.js** with page thumbnails, search-in-document, OCR text-layer overlay for scans | `react-native-pdf` (or pdf.js in a WebView) |
-| Office | The server's **PDF rendition** in the PDF viewer | Same |
-| Video | `<video>` with HTTP Range; web rendition if the original isn't playable | `expo-video` |
-| Audio | `<audio>` player with cover art; playlist for a folder | `expo-audio` (background playback) |
-| Text / code / Markdown | CodeMirror (read-only) / rendered Markdown | Rendered text |
+| Office | The server's **PDF rendition** in the PDF viewer, with a note that it's shown as a PDF | Same |
+| Video | `<video>` with HTTP Range and the poster; the playable copy if the original isn't playable | `expo-video` |
+| Audio | `<audio>` player with cover art; playlist for a folder later | `expo-audio` (background playback) |
+| Text / code / Markdown | CodeMirror 6 (read-only) / formatted Markdown with a Source toggle | The same views as Expo DOM components (M5) |
 | Other | Metadata + download | Download / "open in…" |
 
-- **Built in M2 (web):** a full-screen viewer at `/files/{id}` for images (zoom steps from 50 % to 400 %, double-click, drag to pan), PDFs (pdf.js with range requests, one page at a time fitted to the width, Page Up/Down), text (the first 1 MiB, as plain text; later a read-only CodeMirror 6 view with syntax highlighting, line numbers, folding and search for code, JSON, YAML and logs, plus rendered Markdown), and audio and video the browser can play. Everything else shows "No preview" with Download. Arrow keys or a swipe move between the files in the folder; Esc closes. PDF page thumbnails and free search in the document come later.
+- **Built in M2 (web):** a full-screen viewer at `/files/{id}` for images (zoom steps from 50 % to 400 %, double-click, drag to pan), PDFs (pdf.js with range requests, one page at a time fitted to the width, Page Up/Down), text (the first 1 MiB; see below), and audio and video the browser can play. Everything else shows "No preview" with Download. Arrow keys or a swipe move between the files in the folder; Esc closes. PDF page thumbnails and free search in the document come later.
+- **Text and Markdown, built in M2 (web, decision 31):** text files open in a read-only **CodeMirror 6** editor, loaded only when one is opened: line numbers, folding, syntax highlighting with the language picked from the file name by `@codemirror/language-data` (each language is its own small chunk), and find with Ctrl+F or the top bar's search button. A top-bar toggle wraps long lines and is remembered per browser. Markdown (`text/markdown`) opens **formatted**, with a Formatted / Source toggle in the top bar; Source is the same editor. Markdown is GitHub-flavoured (tables, task lists, strikethrough, autolinks) through `react-markdown`, and raw HTML in a file stays text, so nothing in a file runs in our page. **Images from the web are not loaded** until "Load images" is pressed, so a remote server can't tell the file was opened, and then load with `no-referrer`. Web links open in a new tab with `noopener noreferrer`. Relative links and images (other files in the drive) show as text for now. Code blocks are highlighted by the same language data. Syntax colours are the `code-*` tokens (§16.2). Search hits are marked in both views.
+- **Video and audio, built in M2 (web, decision 32):** grid tiles of video and audio show the duration and the poster or cover art. The viewer plays the original when browsers can, and otherwise `GET /nodes/{id}/preview` serves the playable copy. While the copy is on its way the viewer says so, with its progress (polled every 3 s); opening the file asks for it (`POST /nodes/{id}/playable`), which in the "when opened" mode starts it and otherwise moves it ahead of background work. If no copy can be made, or copies are off, it says the file can't be played here and offers Download. Browsers that say they play HEVC (Safari, some Chromium builds) get the original first, for full quality, with `?original=true`, and fall back to the copy if it fails. Audio shows its cover art.
+- **Office, built in M2 (web, decision 33):** documents with a PDF rendition (`NodeDto.shownAsPdf`) open in the PDF viewer, with a note that the layout may differ a little and that the original is the one to download for editing. While the worker is still on one, the viewer says the preview is being prepared; with Office previews off, it shows "No preview" and Download.
 - **Built in M3 (web):** opened from search, the viewer marks the hits like a highlighter: on PDF text pages from pdf.js' text layer (positions measured in the page's font), on scanned pages and photos at the recognized word boxes, and in text files inline. It opens on the best page, and a header stepper ("1 of 3") moves between pages with hits; closing the marks keeps the file open.
-- **`GET /nodes/{id}/preview` serves what the viewer shows** and is **not audited** (§18): the WebP preview if there is one, otherwise the original bytes inline, with range support. Markup (HTML, XML, SVG) is served as `text/plain`, with `nosniff` and a `sandbox` CSP, so a preview can never run in our origin. `GET /nodes/{id}/content` stays the audited download. Anyone who can view a file can read its bytes through the preview, so the audit log records downloads, not every way the bytes could leave.
+- **`GET /nodes/{id}/preview` serves what the viewer shows** and is **not audited** (§18): the WebP preview if there is one, then the playable copy of a video or audio file (unless `original=true`), the PDF of an Office document, otherwise the original bytes inline, all with range support. Markup (HTML, XML, SVG) is served as `text/plain`, with `nosniff` and a `sandbox` CSP, so a preview can never run in our origin. `GET /nodes/{id}/content` stays the audited download. Anyone who can view a file can read its bytes through the preview, so the audit log records downloads, not every way the bytes could leave.
 - **"Download original" is always available** to anyone with viewer rights (except via no-download links), and returns exact bytes.
 - Folders can be downloaded as a **streamed zip** (built on the fly, never staged on disk).
 
@@ -708,7 +759,7 @@ These are better in React DOM than through React Native Web.
 
 - **Layout:** a left nav rail, a top search bar and a content area. On mobile it collapses to a bottom nav.
   - The nav: My files, Shared with me, Recent, Starred, Trash, and a storage meter. The phone bottom nav has no room for Trash, so it is in the account menu there.
-  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: search and text recognition, machine learning, virus scanning, trash and versions, sign-in). **Jobs** (`/admin/jobs`, §10.1) sits between Storage and Settings. Server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
+  - **Admin pages swap the nav, as in Immich.** Under `/admin` the rail (and the bottom nav on phones) lists the admin pages instead: **People** (`/admin/people`: everyone who has signed in, their usage and their quota), **Storage** (`/admin/storage`: disk usage and the default quota) and **Settings** (`/admin/settings`: search and text recognition, video and audio, Office documents, machine learning, virus scanning, trash and versions, sign-in). **Jobs** (`/admin/jobs`, §10.1) and **Tags** (`/admin/tags`: keyword rules, §13.4) sit between Storage and Settings, in that order. Server stats join the list when they're built. The rail's top button is "Back to files" where the New button usually sits; on phones it's a back arrow in the top bar. `/admin` opens People. A person's own settings (language for now) aren't admin pages, so they keep the normal nav.
 - **Content area:** grid/list toggle, breadcrumbs, sorting, multi-select with a contextual action bar, right-click menu.
 - **Search** (M3, §13.3): the search bar sits in the top bar on every page except admin and settings, with name suggestions as you type and "Narrow it down" chips (PDFs, Images, In this folder). `/search` shows the results; on phones the bottom nav's Search opens it and focuses the bar, which then has a back arrow. The admin page's "Search and text recognition" section has the text recognition switch, progress (files read, waiting, in progress, failed) and "Read all files again".
 - **Starred and Recent** (decision 21):
@@ -718,7 +769,7 @@ These are better in React DOM than through React Native Web.
   - Recent is stored in `recent_files`, one row per person and file. It is **private to that person** and is **not the audit log**: the viewer reports an open with `POST /nodes/{id}/opened`, which is never audited (§18); downloads and uploads are noted by the server as they happen.
   - Trashed items (and everything inside a trashed folder) drop out of both pages. A star comes back on restore; deleting forever removes stars and recent rows with the node.
   - A file opened from Starred or Recent steps through that page's files in the viewer, and closing returns there.
-- **Details panel:** info, sharing, versions, activity. Info goes on with the file's **Details** and **Text in this file**, which people can correct (§13.5), and ends with its **Processing** steps (§10.1, §16.4), folded to one line once every step is done.
+- **Details panel:** info (with the file's tags, §13.4), sharing, versions, activity. Info goes on with the file's **Details** and **Text in this file**, which people can correct (§13.5), and ends with its **Processing** steps (§10.1, §16.4), folded to one line once every step is done.
 - **Upload tray** (bottom-right) with per-file progress, pause/resume and retry.
 - **Live updates** (§15.4): changes from other tabs and devices, and thumbnails as they are made, show up without a refresh.
 - Optionally a PWA, for "Add to home screen" on phones.
@@ -750,7 +801,8 @@ Changes made in one tab or on one device show up in the person's other open clie
   | `recent` | an open or download | Recent |
   | `trash` | trash, restore, delete forever, empty, trash purge | Trash |
   | `storage` | anything that changes usage, a quota or the default quota | the storage meter |
-  | `account` | language or preferences | the session |
+  | `account` | language or preferences, filing rules | the session, filing rules |
+  | `filings` | a filing rule moved files (§13.6) | filing rules, and the "Filed" snackbar |
 
 - **Who hears what:** notices go to the owner of the changed items (and the person who made the change, when that's someone else). Sharing (M4) will add the people with access. A change to the default quota goes to everyone.
 - **Echo skip:** each tab makes a random client id and sends it as `X-Dokument-Client` on its mutations and tus requests. The server passes it on as the notice's origin (only if it is at most 64 letters, digits and dashes), and the tab that made the change skips that notice, since it has already updated itself.
@@ -799,10 +851,11 @@ One JSON source, `docs/design-system/tokens.json`, is read at build time by `pac
 | `secondary-container` | `#d3e5ee` | `#33474f` | Active nav item, selected chips, tonal buttons |
 | `error`, `success`, `warning` (+ `-container`) | `#b3261e`, `#1d6b3c`, `#795900` | `#ffb4ab`, `#86d9a0`, `#f2c14c` | Status, always with an icon and words |
 | `file-pdf` `-doc` `-sheet` `-slides` `-image` `-video` `-audio` `-archive` `-text` `-folder` | red, blue, green, orange, magenta, violet, teal, brown, grey, grey | lighter tints | File-type icons only |
+| `code-keyword` `-string` `-number` `-comment` `-function` `-type` | `#7b3fb8`, `#1f6e3a`, `#9a4d00`, `#5f6b72`, `#00629b`, `#8b3d6a` | `#d0a8ff`, `#8fd6a0`, `#ffb877`, `#93a1a9`, `#7cc7f2`, `#f4a6cf` | Syntax colours in the text viewer and Markdown code blocks (§14). All 4.5:1 on `surface-container-lowest` and `surface-container` |
 
 Every text pair meets WCAG AA (4.5:1) in both themes. Icons, borders and the focus ring meet 3:1.
 
-**Typography:** **Albert Sans** (SIL OFL) for all UI text, with the latin-ext subset for å, ä and ö. **IBM Plex Mono** only for checksums, keys and job ids. The same font files are bundled in the app with `expo-font`.
+**Typography:** **Albert Sans** (SIL OFL) for all UI text, with the latin-ext subset for å, ä and ö. **IBM Plex Mono** only for checksums, keys, job ids and the text viewer. The same font files are bundled in the app with `expo-font`.
 
 | Style | Size / line | Weight | Use |
 |---|---|---|---|
@@ -839,7 +892,8 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 
 - **Button** (filled / tonal / outlined / text / danger) and **IconButton**. At most one filled button per view.
 - **Chip:** search filters that mirror the operators ("Type: PDF" for `type:pdf`).
-- **SearchBar** with **SearchSuggestions** (a combobox: "Search for …" first, then names with their location, arrow keys and Enter), **SearchResult** (thumbnail, name with marked hits, the snippet, then location · date · page · "Found in a scan" badge) and **Highlighted** (text with `<mark>` from offsets or terms, never parsed as markup).
+- **TagChip** (outlined for tags people add; tinted in `secondary-container` with a `bolt` icon for rule tags and `auto_awesome` for ML tags, a tooltip naming the rule, an optional remove button; a small variant for list rows and results), **TagEditor** (the Info tab's Tags section with **TagInput**, a combobox of suggestions with counts and "Create tag") and **TagsDialog** (tags for a selection: on all, on some with + and ×, applied on Save).
+- **SearchBar** with **SearchSuggestions** (a combobox: "Search for …" first, then up to two matching tags, then names with their location, arrow keys and Enter), **SearchResult** (thumbnail, name with marked hits, the snippet, then location · date · page · "Found in a scan" badge) and **Highlighted** (text with `<mark>` from offsets or terms, never parsed as markup).
 - **FileTypeIcon:** a Material Symbol in the `file-*` colour per MIME group. Also the thumbnail fallback. Folders stay neutral.
 - **FileGrid:** folders first, then file tiles with 4:3 thumbnails. Documents (PDF, Office, text) show the top of page 1; photos are cropped to fill. A shimmer shows while a thumbnail is pending, and the thumbnail is swapped in when it is ready, through a live update (§15.4). While the live connection is down, the listing is polled instead (every 2 s, then every 10 s) as long as anything is pending. Video tiles show a duration badge.
 - **FileList:** a sortable name / owner / modified / size table. Under 600 px of container width, the columns fold into a second line. Pages can swap the columns after the name: the Trash page shows original location / deleted / size.
@@ -865,7 +919,8 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - Keyboard navigation everywhere: arrow keys in the grid, Space to select, Enter to open, Delete to trash. Focus is shown by a visible 2 px focus ring. Every icon button has a label.
 - **Clickable mockup:** `packages/ui` holds the components in Storybook (`pnpm --filter @dokument/ui dev`), with toolbar switches for light/dark, sv/en and phone to desktop widths. The **Screens** stories are one app on fake data: the file browser, viewer, search results and admin settings, with selection, sharing, uploads and the duplicate prompt working locally.
 - Dates in lists come from `formatFileDate` in `packages/core`: "Today 09:14", "Yesterday", "12 Mar", then "21 Jun 2025". English uses British day-month order and a 24-hour clock. Tooltips and the details panel use `formatFullDate` ("23 October 2026, 17:40").
-- **Settings page** (`/settings`, "Settings" in the account menu): the person's own settings, with the normal nav, saved as soon as they change. Sections so far: Language (the same choice as the account menu's quick switch) and Date and time.
+- **Settings page** (`/settings`, "Settings" in the account menu): the person's own settings, with the normal nav, saved as soon as they change. Sections so far: Language (the same choice as the account menu's quick switch), Appearance, Filing rules (§13.6) and Date and time.
+- **Appearance** (decision 36) picks the theme: Same as device (the default, following `prefers-color-scheme`, with a "Now light/dark" hint), Light or Dark. Unlike the other settings it is saved per device, in `localStorage` (`dokument.theme`), because the right theme depends on the screen and the room, and a phone and a computer can differ. A small inline script in `index.html` sets `data-theme` on `<html>` before first paint, so the page never flashes the wrong theme; the token CSS (§16.2) already lets `data-theme` override the media query. Other open tabs follow a change through the `storage` event. The mobile app will keep its own choice on the phone.
 - **Show seconds in times** is a per-person switch on the Settings page, off by default and saved on the account (`users.show_seconds`, `PUT /api/v1/me/preferences`) so it follows them across devices. When it is on, every time shown gets seconds ("Today 09:14:07", "23 October 2026, 17:40:12"). Components read it through `useFormat()` in `packages/ui`.
 - **Sizes are binary everywhere** (decision 19): 1 KiB = 1024 B, labelled B, KiB, MiB, GiB and TiB, through `formatBytes` in `packages/core`. Inputs use the same units: quotas are entered in GiB. There is no setting, so every screen, the API docs and the admin pages agree.
 
@@ -902,11 +957,11 @@ People who are managed in an IdP can get their storage from it instead of from t
 - **Append-only `audit_events`**, written **in the same transaction** as the change itself.
 - **Events:**
   - auth: login, logout, session revoked, API key created
-  - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`)
-  - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), with the actor kind `system`
+  - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`), tags added or removed (`file.tags_change`, naming the tags), filing rules added, changed, reordered or deleted (`filing_rule.change`)
+  - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), and filing rules moving files (`node.move`, `folder.create`, naming the rule, §13.6), with the actor kind `system`
   - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged. (Each person's Recent page remembers their own opens in `recent_files`, which nobody else sees and which isn't part of the audit log, §15.2.)
   - sharing: share granted/changed/revoked, link created/accessed/revoked
-  - admin: settings changed, quota changed, user disabled
+  - admin: settings changed, quota changed, keyword rule added, changed or deleted (`admin.tag_rule`), user disabled
 - **Partitioned by month** (from M6; M1 ships a plain table with indexes on `at` and `(target_node_id, at)`). An admin setting controls retention (default 1 year).
 - **Views:**
   - users see the activity on their own files ("Activity" tab)
@@ -1028,13 +1083,13 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 |---|---|
 | **M0: Foundations** | Repo/monorepo setup, CI, Postgres image, .NET solution, Aspire, OIDC login + sessions, design tokens, clickable mockup |
 | **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, folder uploads and live updates. |
-| **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, the web viewer for images, PDFs, text and browser-playable media, and the admin Jobs page with per-file processing status (decision 27). **Still to come:** metadata, video posters and transcoding, Gotenberg, rendered Markdown, and a CodeMirror 6 text viewer (syntax highlighting, folding, search; lazy-loaded, read-only). |
-| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Then details and text in the file info, with corrections search uses (§13.5, decision 28). **Next, as its own piece:** tags with keyword rules (§13.4). |
+| **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, the web viewer for images, PDFs, text and browser-playable media, the admin Jobs page with per-file processing status (decision 27), the CodeMirror 6 text viewer and formatted Markdown (decision 31), video posters, audio cover art and playable copies with the admin's Video and audio section (decision 32), and Office previews through Gotenberg (decision 33). M2 is complete; PDF page thumbnails and free search inside a document in the viewer come later. |
+| **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Then details and text in the file info, with corrections search uses (§13.6, decision 28). Tags with keyword rules came next (§13.4, decision 29). Then filing rules that move tagged files (§13.6, decision 30). |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback, transcription of audio and video into searchable, timed text |
-| **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders) |
+| **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders), PDF split and merge through Gotenberg (§10.3) |
 
 ---
 
@@ -1070,7 +1125,13 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 26 | Search (M3) | 2026-10-25: pg_search BM25 over names (words + 3-grams) and page text indexed Swedish-stemmed, English-stemmed and unstemmed together, no language detection; text, metadata and automatic tags keyed by blob; Tesseract (`swe+eng`) in the worker for scans and photos, at background priority with an admin switch (default on), replaced by the ML service in M7; exiftool metadata searchable now, with `camera:` and `taken:`; snippets as text + offsets, one marking rule shared by server and clients; queries never logged. Tags planned as shared per file, sources user / rule / ml, automatic ones per blob and removable per file. Transcription waits for M7 (§6, §10, §13, §14) |
 | 27 | Seeing what the worker is doing | 2026-10-25: admins see every job's files by name, owner and folder, whoever owns them (the admin already runs the server, and a hash alone is no use); jobs record `started_at`; queues pause per type through the `jobs` setting, checked when claiming; failed jobs can be retried or cleared, singly or all. Everyone sees a Processing section per file in the details panel, and a badge in grid and list only while steps wait or run; failed steps show only in details (errors for admins) and on the Jobs page. Metadata and text steps send no live notices yet, so pages poll every 2 s while they're pending; the Jobs page polls every 2 s; concurrency isn't editable yet (§10.1, §15.2, §16.4) |
 | 28 | Details and text in the file info | 2026-10-25: the Info tab shows what was read (details from exiftool, now with GPS, lens, size and the camera's UTC offset; and the text with its source) and lets people edit the title, description and date taken (partial dates allowed) and the text, page by page; edits belong to the file version, not the shared bytes, so nobody else's copy changes; a new version keeps the details edits but not the text corrections, a restore brings back that version's edits; search uses the edits (corrected pages replace read ones, edited dates win in `taken:`); the original is never changed; edits are audited without their text (§6, §10.3, §13.5) |
+| 29 | Tags | 2026-10-25: tags are shared per file (files only), case-insensitive, at most 50 characters; sources user / rule / ml; automatic tags per blob with per-file removals that stick, and a person's own tag wins over a rule's; admin keyword rules (one per tag) match stored text and metadata by stem, phrase or, from 5 letters, word start, but never typos, after the text and metadata stages and over everything when changed; admin Tags page with a preview; a Tags section in the Info tab, a bulk dialog, two tags in wide list rows; `tag:` and a Tag chip, and plain words match tags. Filing rules are decision 30 (§6, §10.2, §13.4, §13.6, §15.2, §16.4, §18) |
+| 30 | Filing rules | 2026-10-25: each person's own rules in Settings, a tag plus a folder from the top of My files with `{year}` and `{month}` (two digits), dated by the edited date taken, then the camera's, then device modified time, then upload; one rule per tag, ordered, first match wins; only tags a file got while the rule was on, plus "Also file the N files that have this tag now"; a file is filed once, and moving it back or Undo sticks; `node.move` by the system naming the rule; a snackbar with Undo from a `filings` live notice, not the upload tray (§6, §10.2, §13.6, §15.4, §16.5, §18) |
+| 31 | Text and Markdown viewers | 2026-10-25: text opens in a lazy, read-only CodeMirror 6 with the language from the file name, folding, find and a remembered wrap toggle; Markdown opens formatted (GFM via react-markdown, raw HTML as text) with a Formatted / Source toggle; web images load only after "Load images", with no referrer; relative links and images show as text for now; syntax colours are new `code-*` tokens. |
+| 32 | Video and audio | 2026-10-25: ffprobe in the thumbnail stage stores `blob_media` per blob and plans playback by what every current browser plays (direct / remux / transcode); posters from the most typical frame 10 % in, cover art for audio; one MP4 copy per blob only when needed, streams copied when they play, otherwise H.264/AAC at CRF 23 fitted to 1080p (admin: 720p, 1080p or original), HDR tone-mapped, `+faststart`, no HLS; copies made in the background by default, or when opened, or never; failures not retried; HEVC-capable browsers get the original first; progress polled, not pushed (§10.3, §14) |
+| 33 | Office previews | 2026-10-25: Gotenberg is optional, its URL an admin setting with a Test button (empty = off); the thumbnail stage converts Office and OpenDocument files by MIME type with the bytes checked, one page per sheet, and keeps one PDF per blob that the viewer shows with pdf.js and a "shown as PDF" note; page 1 makes the thumbnails; refused files fail without retries, an unreachable Gotenberg retries; turning it on queues documents uploaded while it was off; .doc/.xls/.ppt text comes from the PDF (§10.3, §14) |
+| 36 | Theme setting | 2026-10-27: Same as device / Light / Dark on the Settings page, Same as device by default; saved per device in `localStorage`, not on the account, and applied by an inline script before first paint (§16.5) |
 
 ## 26. Open questions
 
-1. **Video:** transcode to MP4 once, or generate HLS for large files? MP4-once is simpler and probably sufficient.
+1. ~~**Video:** transcode to MP4 once, or generate HLS for large files?~~ MP4 once, only when needed (decision 32).

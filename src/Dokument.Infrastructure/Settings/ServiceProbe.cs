@@ -12,7 +12,7 @@ public sealed record ProbeResult(bool Reachable, string? Version, string? Error)
     public static ProbeResult Failed(string error) => new(false, null, error);
 }
 
-/// <summary>Checks that the companion containers answer: the ML service (§11) and ClamAV (§21).</summary>
+/// <summary>Checks that the companion containers answer: the ML service (§11), ClamAV (§21) and Gotenberg (§10.3).</summary>
 public sealed class ServiceProbe(HttpClient http)
 {
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
@@ -41,6 +41,46 @@ public sealed class ServiceProbe(HttpClient http)
             }
 
             return new ProbeResult(true, await ReadVersionAsync(response, timeout.Token), null);
+        }
+        catch (Exception e) when (e is HttpRequestException or OperationCanceledException)
+        {
+            ct.ThrowIfCancellationRequested();
+            return ProbeResult.Failed(
+                e is OperationCanceledException ? "No answer within 5 seconds" : e.Message
+            );
+        }
+    }
+
+    /// <summary>Calls Gotenberg's <c>GET /health</c>, then <c>GET /version</c> for what to show.</summary>
+    public async Task<ProbeResult> CheckGotenbergAsync(ServiceUrl url, CancellationToken ct)
+    {
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(Timeout);
+            using var health = await http.GetAsync(url.Resolve("health"), timeout.Token);
+            if (!health.IsSuccessStatusCode)
+            {
+                return ProbeResult.Failed($"HTTP {(int)health.StatusCode}");
+            }
+
+            var body = await health.Content.ReadAsStringAsync(timeout.Token);
+            if (!body.Contains("libreoffice", StringComparison.OrdinalIgnoreCase))
+            {
+                return ProbeResult.Failed(
+                    "Something answered, but it isn't Gotenberg with LibreOffice"
+                );
+            }
+
+            using var version = await http.GetAsync(url.Resolve("version"), timeout.Token);
+            var text = version.IsSuccessStatusCode
+                ? (await version.Content.ReadAsStringAsync(timeout.Token)).Trim()
+                : "";
+            return new ProbeResult(
+                true,
+                text is { Length: > 0 and <= 64 } ? $"Gotenberg {text}" : "Gotenberg",
+                null
+            );
         }
         catch (Exception e) when (e is HttpRequestException or OperationCanceledException)
         {

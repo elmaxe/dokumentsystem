@@ -1,5 +1,8 @@
 using Dokument.Domain.Jobs;
+using Dokument.Worker.Filing;
 using Dokument.Worker.Jobs;
+using Dokument.Worker.Media;
+using Dokument.Worker.Office;
 using Dokument.Worker.Previews;
 using Dokument.Worker.Search;
 using Microsoft.Extensions.Configuration;
@@ -48,6 +51,33 @@ public static class WorkerRole
                 typeof(TextHandler),
                 worker.TextConcurrency,
                 worker.TextJobTimeout
+            )
+        );
+
+        services.AddScoped<TagRuleHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(JobType.TagRule, typeof(TagRuleHandler), 1)
+        );
+
+        // One at a time, so two files filed into a new folder don't both make it.
+        services.AddScoped<FileHandler>();
+        services.AddSingleton(new JobHandlerRegistration(JobType.File, typeof(FileHandler), 1));
+        services.AddScoped<FilingRuleHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(JobType.FilingRule, typeof(FilingRuleHandler), 1)
+        );
+
+        services.AddSingleton<FFmpeg>();
+        services.AddHttpClient<Gotenberg>(http =>
+            http.Timeout = Gotenberg.Timeout + TimeSpan.FromSeconds(10)
+        );
+        services.AddScoped<TranscodeHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(
+                JobType.Transcode,
+                typeof(TranscodeHandler),
+                worker.TranscodeConcurrency,
+                worker.TranscodeJobTimeout
             )
         );
 

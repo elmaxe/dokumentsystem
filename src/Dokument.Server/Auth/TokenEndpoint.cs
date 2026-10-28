@@ -35,12 +35,19 @@ public static class TokenEndpoint
                     + "for a code from the IdP. Returns a bearer session as access_token."
             );
 
-    /// <summary>The clients' redirect URIs we redeem codes for: the API reference's page, in development.</summary>
-    private static bool IsAllowedRedirectUri(
+    /// <summary>
+    /// The clients' redirect URIs we redeem codes for, each also registered at the IdP. Add a client's here.
+    /// </summary>
+    private static IEnumerable<string> AllowedRedirectUris(
         HttpRequest request,
-        IHostEnvironment environment,
-        string redirectUri
-    ) => environment.IsDevelopment() && redirectUri == ApiReference.RedirectUri(request);
+        IHostEnvironment environment
+    )
+    {
+        if (environment.IsDevelopment())
+        {
+            yield return ApiReference.RedirectUri(request);
+        }
+    }
 
     private static async Task<IResult> RedeemAsync(
         HttpContext context,
@@ -79,7 +86,7 @@ public static class TokenEndpoint
             return Error("invalid_request", "Send code and code_verifier (PKCE is required).");
         }
 
-        if (!IsAllowedRedirectUri(context.Request, environment, redirectUri))
+        if (!AllowedRedirectUris(context.Request, environment).Contains(redirectUri))
         {
             return Error("invalid_grant", "Codes for that redirect_uri aren't redeemed here.");
         }

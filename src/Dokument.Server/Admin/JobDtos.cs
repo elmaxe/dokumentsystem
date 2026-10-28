@@ -28,7 +28,11 @@ public sealed record JobList(List<JobDto> Items, bool More);
 /// <param name="Size">Bytes of the content, from the first file that uses it.</param>
 /// <param name="Files">
 /// The files that use the content, best match first: current versions, then trashed files, then older versions. Empty
-/// when no file uses it any more.
+/// when no file uses it any more, and for keyword-rule runs.
+/// </param>
+/// <param name="RuleTag">
+/// For a keyword-rule run (<c>tagRule</c>) or a filing rule's run (<c>filingRule</c>): the tag of the rule it runs.
+/// Null once the rule is deleted.
 /// </param>
 public sealed record JobDto(
     Guid Id,
@@ -43,7 +47,8 @@ public sealed record JobDto(
     string? Error,
     long? Size,
     string? MimeType,
-    List<JobFileDto> Files
+    List<JobFileDto> Files,
+    string? RuleTag
 )
 {
     public static JobDto From(JobEntry entry) =>
@@ -60,7 +65,8 @@ public sealed record JobDto(
             entry.Job.LastError,
             entry.Files.FirstOrDefault()?.Version.Size,
             entry.Files.FirstOrDefault()?.Version.MimeType,
-            entry.Files.Select(JobFileDto.From).ToList()
+            entry.Files.Select(JobFileDto.From).ToList(),
+            entry.RuleTag
         );
 }
 

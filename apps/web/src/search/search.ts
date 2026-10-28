@@ -17,6 +17,8 @@ export type SearchParams = {
   modified?: ModifiedRange;
   folder?: string;
   starred?: boolean;
+  /** A tag every result must have (§13.4). */
+  tag?: string;
   sort?: SearchSort;
 };
 
@@ -29,11 +31,13 @@ export function validateSearchParams(search: Record<string, unknown>): SearchPar
     modified: pick(search.modified, modifiedRanges),
     folder: typeof search.folder === "string" && search.folder ? search.folder : undefined,
     starred: search.starred === true || search.starred === "true" ? true : undefined,
+    tag: typeof search.tag === "string" && search.tag.trim() ? search.tag.trim() : undefined,
     sort: pick(search.sort, ["relevance", "modified"] as const),
   };
 }
 
-export const hasFilters = (params: SearchParams) => !!(params.type || params.modified || params.folder || params.starred);
+export const hasFilters = (params: SearchParams) =>
+  !!(params.type || params.modified || params.folder || params.starred || params.tag);
 
 /** A Modified chip as dates, in the browser's time zone: "Today" starts at local midnight. */
 function modifiedBounds(range: ModifiedRange | undefined, now = new Date()): { after?: string; before?: string } {
@@ -76,6 +80,7 @@ export const searchQuery = (params: SearchParams, limit: number) =>
               modifiedBefore: before,
               folderId: params.folder,
               starred: params.starred,
+              tag: params.tag ? [params.tag] : undefined,
               sort: params.sort,
               limit,
             },

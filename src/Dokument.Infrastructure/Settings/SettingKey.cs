@@ -111,4 +111,32 @@ public static class SettingKeys
                 .ToHashSet()
         )
     );
+
+    public static readonly SettingKey<VideoSettings> Videos = new(
+        "videos",
+        VideoSettings.Default,
+        s => new JsonObject
+        {
+            ["copies"] = s.Copies.ToString().ToLowerInvariant(),
+            ["maxHeight"] = s.MaxHeight,
+        },
+        json => new VideoSettings(
+            Enum.TryParse<VideoCopies>(json.GetProperty("copies").GetString(), true, out var copies)
+                ? copies
+                : throw new FormatException("Unknown video copies setting."),
+            json.GetProperty("maxHeight").GetInt32()
+        )
+    );
+
+    public static readonly SettingKey<OfficeSettings> Office = new(
+        "office",
+        OfficeSettings.Default,
+        s => new JsonObject { ["gotenbergUrl"] = s.GotenbergUrl?.Value },
+        json => new OfficeSettings(
+            json.TryGetProperty("gotenbergUrl", out var url)
+            && url.ValueKind == JsonValueKind.String
+                ? ServiceUrl.Parse(url.GetString()!)
+                : null
+        )
+    );
 }

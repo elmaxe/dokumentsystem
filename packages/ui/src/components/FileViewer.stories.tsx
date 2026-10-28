@@ -37,8 +37,58 @@ function samplePdf(): string {
   return URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
 }
 
-const text = `# Inköpslista\n\n- Mjölk\n- Kaffe (mörkrost)\n- Knäckebröd\n\n${Array.from({ length: 40 }, (_, i) => `Rad ${i + 1}: ${"lorem ipsum ".repeat(6)}`).join("\n")}`;
-const textUrl = () => URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+const markdown = `# Stugan på Utö
+
+Allt man behöver veta inför en helg i stugan. Se [färjetiderna](https://example.com/farjor).
+
+![Utsikten från bryggan](https://example.com/brygga.jpg)
+
+## Att göra när vi kommer
+
+- [x] Slå på vattnet (kranen under diskbänken)
+- [ ] Tänd i kaminen
+
+## Wifi
+
+| Nät | Lösenord |
+| --- | --- |
+| Stugan | \`[lösenordet]\` |
+
+\`\`\`yaml
+# Färjan går från Årsta brygga
+avgång: "17:45"
+retur: 16
+\`\`\`
+
+> Glöm inte att stänga av vattnet när vi åker. <b>Raw HTML</b> stays text.
+`;
+
+const code = `# Copies new photos from the camera card into the drive's import folder.
+import json, pathlib, subprocess
+
+
+def read_exif(path):
+    out = subprocess.run(["exiftool", "-json", str(path)], capture_output=True, check=True)
+    return json.loads(out.stdout)[0]
+
+
+def destination(meta, root):
+    taken = meta.get("DateTimeOriginal", "1970:01:01 00:00:00")
+    year, month = taken[:4], taken[5:7]
+    return pathlib.Path(root) / year / month / meta["FileName"]
+
+
+def main(card, root):
+    for photo in pathlib.Path(card).rglob("*.JPG"):
+        meta = read_exif(photo)
+        target = destination(meta, root)
+        if target.exists():
+            continue  # already copied
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(photo.read_bytes())
+${Array.from({ length: 30 }, (_, i) => `# line ${i + 25}: ${"a long comment that runs past the edge of the window ".repeat(3)}`).join("\n")}
+`;
+const textUrl = (body: string) => URL.createObjectURL(new Blob([body], { type: "text/plain" }));
 
 const files: Record<string, { item: FileItem; preview: () => PreviewSource }> = {
   image: {
@@ -49,13 +99,29 @@ const files: Record<string, { item: FileItem; preview: () => PreviewSource }> = 
     item: { id: "2", name: "Hyresavtal-2026.pdf", kind: "pdf", modified: "2026-10-01T10:00:00Z", owner: "Alice" },
     preview: () => ({ type: "pdf", src: samplePdf() }),
   },
-  text: {
-    item: { id: "3", name: "inköpslista.md", kind: "text", modified: "2026-10-22T10:00:00Z", owner: "Alice" },
-    preview: () => ({ type: "text", src: textUrl() }),
+  markdown: {
+    item: { id: "3", name: "README.md", kind: "text", modified: "2026-10-22T10:00:00Z", owner: "Alice" },
+    preview: () => ({ type: "markdown", src: textUrl(markdown) }),
+  },
+  code: {
+    item: { id: "7", name: "sync_photos.py", kind: "text", modified: "2026-10-22T10:00:00Z", owner: "Alice" },
+    preview: () => ({ type: "text", src: textUrl(code) }),
   },
   preparing: {
     item: { id: "4", name: "IMG_4021.HEIC", kind: "image", modified: "2026-10-23T10:00:00Z", owner: "Alice" },
     preview: () => ({ type: "preparing" }),
+  },
+  converting: {
+    item: { id: "8", name: "Midsommar-2026.mkv", kind: "video", modified: "2026-06-21T10:00:00Z", owner: "Alice" },
+    preview: () => ({ type: "converting", waiting: false, progress: 42 }),
+  },
+  waiting: {
+    item: { id: "9", name: "MVI_0412.AVI", kind: "video", modified: "2026-06-21T10:00:00Z", owner: "Alice" },
+    preview: () => ({ type: "converting", waiting: true }),
+  },
+  unplayable: {
+    item: { id: "10", name: "intervju.wma", kind: "audio", modified: "2026-03-02T10:00:00Z", owner: "Alice" },
+    preview: () => ({ type: "unplayable" }),
   },
   none: {
     item: { id: "5", name: "backup-2026.zip", kind: "archive", modified: "2026-09-01T10:00:00Z", owner: "Alice" },
@@ -100,7 +166,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "The viewer (§14). Images zoom with the toolbar or a double-click and pan by dragging; PDFs render with pdf.js one page at a time (Page Up/Down); text shows the first 1 MiB. Arrow keys or a swipe move to the next file, Esc closes. The arrows here step through every state.",
+          "The viewer (§14). Images zoom with the toolbar or a double-click and pan by dragging; PDFs render with pdf.js one page at a time (Page Up/Down); text shows the first 1 MiB in a read-only CodeMirror with highlighting, folding and find, and Markdown is formatted with a Source toggle. Video and audio browsers can't play wait for the worker's playable copy, with its progress. Arrow keys or a swipe move to the next file, Esc closes. The arrows here step through every state.",
       },
     },
   },
@@ -111,7 +177,11 @@ type Story = StoryObj<typeof meta>;
 
 export const Image: Story = { args: { file: "image" } };
 export const Pdf: Story = { args: { file: "pdf" } };
-export const Text: Story = { args: { file: "text" } };
+export const Markdown: Story = { args: { file: "markdown" } };
+export const Code: Story = { args: { file: "code" } };
 export const Preparing: Story = { args: { file: "preparing" } };
+export const Converting: Story = { args: { file: "converting" } };
+export const WaitingForCopy: Story = { args: { file: "waiting" } };
+export const Unplayable: Story = { args: { file: "unplayable" } };
 export const NoPreview: Story = { args: { file: "none" } };
 export const Failed: Story = { args: { file: "failed" } };

@@ -22,7 +22,15 @@ import { sessionQuery } from "../api";
 import { AdminFrame } from "./AdminPage";
 import { jobQueuesQuery, jobs, jobsQuery, type JobFilter } from "./jobsApi";
 
-const queueIcons: Record<JobKind, string> = { thumbnail: "image", metadata: "info", text: "document_scanner" };
+const queueIcons: Record<JobKind, string> = {
+  thumbnail: "image",
+  metadata: "info",
+  text: "document_scanner",
+  transcode: "movie",
+  tagRule: "sell",
+  file: "drive_file_move",
+  filingRule: "drive_file_move",
+};
 const pageSize = 50;
 
 /**
@@ -61,7 +69,7 @@ export function AdminJobsPage() {
     <AdminFrame title={t("admin.nav.jobs")}>
       <p className="m-0 max-w-160 text-body-md text-on-surface-variant">{t("admin.jobs.intro")}</p>
       {queues.isError && <Banner tone="error">{t("errors.generic")}</Banner>}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {queues.data?.map((queue) => (
           <QueueCard
             key={queue.type}
@@ -90,7 +98,7 @@ export function AdminJobsPage() {
           align="start"
           actions={[
             { id: "all", icon: !filter.type ? "check" : "", label: t("admin.jobs.allTypes") },
-            ...(["thumbnail", "metadata", "text"] as const).map((type) => ({
+            ...(["thumbnail", "metadata", "text", "transcode", "tagRule", "file", "filingRule"] as const).map((type) => ({
               id: type,
               icon: filter.type === type ? "check" : "",
               label: t(`admin.jobs.queues.${type}`),
@@ -216,6 +224,8 @@ function JobRow({ job, now, onRetry, onClear }: { job: Job; now: number; onRetry
   const me = session.data?.user.id;
   const file = job.files[0] as JobFile | undefined;
   const kind = file ? kindOf(file.name, job.mimeType) : "other";
+  const tagRule = job.type === "tagRule";
+  const rule = tagRule || job.type === "filingRule";
   const mine = file?.ownerId === me;
   const when = (at: string) => format.date(at, { inSentence: true });
 
@@ -246,11 +256,26 @@ function JobRow({ job, now, onRetry, onClear }: { job: Job; now: number; onRetry
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 md:grid md:grid-cols-[minmax(0,1fr)_8.5rem_8rem_minmax(0,13rem)_5.5rem]">
       <div className="flex min-w-0 flex-[1_1_100%] items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-sm bg-surface-container-high">
-          <FileTypeIcon kind={kind} size="sm" />
+          {rule ? <Icon name={queueIcons[job.type]} size={20} className="text-primary" /> : <FileTypeIcon kind={kind} size="sm" />}
         </span>
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-body-md text-on-surface">
-            {file && mine && file.use === "current" ? (
+            {tagRule ? (
+              job.ruleTag ? (
+                <Link to="/admin/tags" className="text-on-surface underline-offset-2 hover:underline">
+                  {t("admin.jobs.ruleRun", { tag: job.ruleTag })}
+                </Link>
+              ) : (
+                <span className="text-on-surface-variant">{t("admin.jobs.ruleDeleted")}</span>
+              )
+            ) : rule ? (
+              // Filing rules are each person's own, so there is nowhere for an admin to open one.
+              job.ruleTag ? (
+                t("admin.jobs.filingRun", { tag: job.ruleTag })
+              ) : (
+                <span className="text-on-surface-variant">{t("admin.jobs.filingDeleted")}</span>
+              )
+            ) : file && mine && file.use === "current" ? (
               <Link
                 to="/files/$fileId"
                 params={{ fileId: file.nodeId }}
@@ -268,7 +293,11 @@ function JobRow({ job, now, onRetry, onClear }: { job: Job; now: number; onRetry
               <span className="text-on-surface-variant"> {t("admin.jobs.andMore", { count: job.files.length - 1 })}</span>
             )}
           </span>
-          {where && <span className="truncate text-body-sm text-on-surface-variant">{where}</span>}
+          {rule ? (
+            <span className="truncate text-body-sm text-on-surface-variant">{t(tagRule ? "admin.jobs.ruleRunNote" : "admin.jobs.filingRunNote")}</span>
+          ) : (
+            where && <span className="truncate text-body-sm text-on-surface-variant">{where}</span>
+          )}
         </div>
       </div>
       <div className="flex min-w-0 items-center gap-2">

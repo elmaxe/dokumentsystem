@@ -2,10 +2,12 @@ import { Icon, Switch, useFormat } from "@dokument/ui";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAccountSettings } from "./account";
+import { FilingRules } from "./FilingRules";
+import { useTheme } from "./theme";
 
 /**
  * The person's own settings (§16.5, §23), opened from the account menu. Everything here saves as soon as it
- * changes and is stored on the account, so it follows the person to every device.
+ * changes. Most is stored on the account, so it follows the person to every device; the theme stays on this device.
  */
 export function SettingsPage() {
   const { t, i18n } = useTranslation();
@@ -23,6 +25,16 @@ export function SettingsPage() {
     { id: "en" as const, label: names.en, lang: "en" },
   ];
   const chosen = settings.language ?? "browser";
+  const theme = useTheme();
+  const themes = [
+    {
+      id: "system" as const,
+      label: t("settings.appearance.system"),
+      hint: theme.device === "dark" ? t("settings.appearance.nowDark") : t("settings.appearance.nowLight"),
+    },
+    { id: "light" as const, label: t("settings.appearance.light") },
+    { id: "dark" as const, label: t("settings.appearance.dark") },
+  ];
   // A fixed example, so the hint shows what the switch changes rather than the time the page opened.
   const example = new Date();
   example.setHours(9, 14, 7);
@@ -32,28 +44,26 @@ export function SettingsPage() {
       <div className="mx-auto flex max-w-220 flex-col gap-4 pt-2 lg:mx-0">
         <h1 className="m-0 text-headline-sm lg:text-headline-md">{t("settings.title")}</h1>
         <Section icon="language" title={t("account.language")}>
-          <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
-            <legend className="sr-only">{t("account.language")}</legend>
-            {languages.map((option) => (
-              <label
-                key={option.id}
-                lang={option.lang}
-                className={`flex cursor-pointer items-start gap-3 rounded-md p-3 ${chosen === option.id ? "bg-secondary-container" : "hover:bg-on-surface/8"}`}
-              >
-                <input
-                  type="radio"
-                  name="language"
-                  checked={chosen === option.id}
-                  onChange={() => void settings.setLanguage(option.id)}
-                  className="mt-0.5 size-5 accent-primary"
-                />
-                <span className="flex flex-col">
-                  <span className="text-title-sm text-on-surface">{option.label}</span>
-                  {option.hint && <span className="text-body-sm text-on-surface-variant">{option.hint}</span>}
-                </span>
-              </label>
-            ))}
-          </fieldset>
+          <Choices
+            name="language"
+            legend={t("account.language")}
+            options={languages}
+            chosen={chosen}
+            onChoose={(id) => void settings.setLanguage(id)}
+          />
+        </Section>
+        <Section icon="contrast" title={t("settings.appearance.title")}>
+          <Choices
+            name="theme"
+            legend={t("settings.appearance.title")}
+            options={themes}
+            chosen={theme.choice}
+            onChoose={theme.setChoice}
+          />
+          <p className="m-0 mt-3 px-3 text-body-sm text-on-surface-variant">{t("settings.appearance.note")}</p>
+        </Section>
+        <Section icon="drive_file_move" title={t("filing.title")}>
+          <FilingRules />
         </Section>
         <Section icon="schedule" title={t("settings.time.title")}>
           <div className="flex items-center gap-4">
@@ -72,6 +82,48 @@ export function SettingsPage() {
         </Section>
       </div>
     </main>
+  );
+}
+
+type Choice<T extends string> = { id: T; label: string; hint?: string; lang?: string };
+
+/** One choice from a few, as radio rows that save when picked. */
+function Choices<T extends string>({
+  name,
+  legend,
+  options,
+  chosen,
+  onChoose,
+}: {
+  name: string;
+  legend: string;
+  options: Choice<T>[];
+  chosen: T;
+  onChoose: (id: T) => void;
+}) {
+  return (
+    <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
+      <legend className="sr-only">{legend}</legend>
+      {options.map((option) => (
+        <label
+          key={option.id}
+          lang={option.lang}
+          className={`flex cursor-pointer items-start gap-3 rounded-md p-3 ${chosen === option.id ? "bg-secondary-container" : "hover:bg-on-surface/8"}`}
+        >
+          <input
+            type="radio"
+            name={name}
+            checked={chosen === option.id}
+            onChange={() => onChoose(option.id)}
+            className="mt-0.5 size-5 accent-primary"
+          />
+          <span className="flex flex-col">
+            <span className="text-title-sm text-on-surface">{option.label}</span>
+            {option.hint && <span className="text-body-sm text-on-surface-variant">{option.hint}</span>}
+          </span>
+        </label>
+      ))}
+    </fieldset>
   );
 }
 

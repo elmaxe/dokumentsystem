@@ -1,4 +1,4 @@
-import { findHits, formatBytes, splitHighlights } from "@dokument/core";
+import { formatBytes } from "@dokument/core";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
@@ -11,12 +11,20 @@ import { ActionMenu, type MenuAction } from "./Menu";
 import { Progress } from "./Progress";
 
 const PdfPreview = lazy(() => import("./PdfPreview"));
+const CodePreview = lazy(() => import("./CodePreview"));
+const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 
 /** What the viewer body shows (docs/design.md §14). `src` is the server's preview URL, which is not audited. */
 export type PreviewSource =
-  | { type: "image" | "pdf" | "text" | "video" | "audio"; src: string }
+  | { type: "image" | "pdf" | "text" | "markdown"; src: string }
+  /** `fallbacks` are tried in turn if the browser can't play `src`, e.g. the playable copy after the HEVC original. */
+  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string }
   /** The worker is still making the rendition the viewer needs, e.g. for a HEIC photo. */
   | { type: "preparing" }
+  /** A video or audio file browsers can't play, while the worker makes a copy that plays. `progress` is 0–100. */
+  | { type: "converting"; waiting: boolean; progress?: number }
+  /** A video or audio file browsers can't play and no copy can be made of: copies are off, or the file is damaged. */
+  | { type: "unplayable" }
   | { type: "none" };
 
 /** A hit's box on a page, as `[x, y, width, height]` fractions of the page. */
@@ -82,6 +90,10 @@ export function FileViewer({
   const previousMarked = markedPages.filter((p) => p < page).at(-1);
   const nextMarked = markedPages.find((p) => p > page);
   const boxesOn = (pageNo: number) => marks?.pages.find((p) => p.pageNo === pageNo)?.boxes ?? [];
+  const [markdownView, setMarkdownView] = useState<"formatted" | "source">("formatted");
+  const [wrap, setWrap] = useStoredFlag("dokument.viewer.wrap");
+  const [findRequest, setFindRequest] = useState(0);
+  const showsCode = preview.type === "text" || (preview.type === "markdown" && markdownView === "source");
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -149,6 +161,13 @@ export function FileViewer({
             <IconButton icon="close" label={t("viewer.stopMarking")} size="sm" onClick={marks.onClear} />
           </div>
         )}
+        {preview.type === "markdown" && <MarkdownViewToggle value={markdownView} onChange={setMarkdownView} />}
+        {showsCode && (
+          <>
+            <IconButton icon="wrap_text" label={t("code.wrap")} selected={wrap} onClick={() => setWrap(!wrap)} />
+            <IconButton icon="search" label={t("code.findInFile")} onClick={() => setFindRequest((n) => n + 1)} className="max-sm:hidden" />
+          </>
+        )}
         {onShare && (
           <>
             <Button variant="tonal" icon="person_add" onClick={onShare} className="max-md:hidden">
@@ -201,12 +220,61 @@ export function FileViewer({
                 fallback={noPreview(true)}
               />
             </Suspense>
-          ) : preview.type === "text" ? (
-            <TextPreview key={preview.src} src={preview.src} terms={marks?.terms} fallback={noPreview(true)} />
-          ) : preview.type === "video" ? (
-            <MediaPreview key={preview.src} type="video" src={preview.src} fallback={noPreview(true)} />
-          ) : preview.type === "audio" ? (
-            <MediaPreview key={preview.src} type="audio" src={preview.src} item={item} fallback={noPreview(true)} />
+          ) : preview.type === "text" || preview.type === "markdown" ? (
+            <TextPreview
+              key={preview.src}
+              src={preview.src}
+              fileName={item.name}
+              formatted={preview.type === "markdown" && markdownView === "formatted"}
+              wrap={wrap}
+              findRequest={findRequest}
+              terms={marks?.terms}
+              fallback={noPreview(true)}
+            />
+          ) : preview.type === "video" || preview.type === "audio" ? (
+            <MediaPreview
+              key={preview.src}
+              type={preview.type}
+              sources={[preview.src, ...(preview.fallbacks ?? [])]}
+              poster={preview.poster}
+              item={item}
+              fallback={noPreview(true)}
+            />
+          ) : preview.type === "converting" ? (
+            <Centered>
+              <EmptyState
+                icon={item.kind === "audio" ? "music_note" : "movie"}
+                title={t("viewer.convertingTitle")}
+                text={preview.waiting ? t("viewer.convertingWaiting") : t("viewer.convertingText")}
+                action={
+                  <div className="mt-2 flex w-full flex-col items-center gap-6">
+                    <Progress
+                      value={preview.waiting ? undefined : preview.progress}
+                      label={t("viewer.convertingTitle")}
+                      className="w-full max-w-64"
+                    />
+                    <Button variant="outlined" icon="download" onClick={onDownload}>
+                      {t("actions.download")}
+                    </Button>
+                  </div>
+                }
+                className="m-4 max-w-md bg-surface-container-low"
+              />
+            </Centered>
+          ) : preview.type === "unplayable" ? (
+            <Centered>
+              <EmptyState
+                icon="videocam_off"
+                title={t("viewer.unplayableTitle")}
+                text={t("viewer.unplayableText")}
+                action={
+                  <Button icon="download" onClick={onDownload}>
+                    {t("actions.download")}
+                  </Button>
+                }
+                className="m-4 max-w-md bg-surface-container-low"
+              />
+            </Centered>
           ) : preview.type === "preparing" ? (
             <Centered>
               <EmptyState
@@ -398,7 +466,23 @@ function ImagePreview({ src, alt, boxes, fallback }: { src: string; alt: string;
 /** Text files are shown up to this many bytes; the rest is a download away. */
 const textLimit = 1024 * 1024;
 
-function TextPreview({ src, terms, fallback }: { src: string; terms?: readonly string[]; fallback: ReactNode }) {
+function TextPreview({
+  src,
+  fileName,
+  formatted,
+  wrap,
+  findRequest,
+  terms,
+  fallback,
+}: {
+  src: string;
+  fileName: string;
+  formatted: boolean;
+  wrap: boolean;
+  findRequest: number;
+  terms?: readonly string[];
+  fallback: ReactNode;
+}) {
   const { t, i18n } = useTranslation();
   const [text, setText] = useState<{ body: string; truncated: boolean } | "failed" | null>(null);
 
@@ -420,51 +504,141 @@ function TextPreview({ src, terms, fallback }: { src: string; terms?: readonly s
 
   if (text === "failed") return <Centered>{fallback}</Centered>;
   if (!text) return <Loading />;
+  const truncated = text.truncated && (
+    <p className="m-0 flex shrink-0 items-center gap-2 border-b border-outline-variant px-4 py-2 text-body-sm text-on-surface-variant">
+      <Icon name="info" size="sm" />
+      {t("viewer.truncated", { size: formatBytes(textLimit, i18n.language) })}
+    </p>
+  );
+  if (formatted) {
+    return (
+      <div className="min-h-0 flex-1 overflow-auto p-2 sm:p-4">
+        <div className="mx-auto max-w-3xl overflow-hidden rounded-md bg-surface-container-lowest shadow-elevation-1">
+          {truncated}
+          <div className="px-5 py-6 sm:px-12 sm:py-10">
+            <Suspense fallback={<Loading />}>
+              <MarkdownPreview text={text.body} terms={terms} />
+            </Suspense>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div
-      ref={(element) => element?.querySelector("mark")?.scrollIntoView({ block: "center" })}
-      className="min-h-0 flex-1 overflow-auto p-4 sm:p-8"
-    >
-      <div className="mx-auto max-w-5xl rounded-md bg-surface-container-lowest shadow-elevation-1">
-        {text.truncated && (
-          <p className="m-0 flex items-center gap-2 border-b border-outline-variant px-4 py-2 text-body-sm text-on-surface-variant">
-            <Icon name="info" size="sm" />
-            {t("viewer.truncated", { size: formatBytes(textLimit, i18n.language) })}
-          </p>
-        )}
-        <pre className="m-0 overflow-x-auto p-4 font-mono text-body-sm break-words whitespace-pre-wrap">
-          {terms?.length
-            ? splitHighlights(text.body, findHits(text.body, terms)).map((part, i) =>
-                part.hit ? <mark key={i}>{part.text}</mark> : part.text,
-              )
-            : text.body}
-        </pre>
+    <div className="flex min-h-0 flex-1 flex-col p-2 sm:p-4">
+      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden rounded-md bg-surface-container-lowest shadow-elevation-1">
+        {truncated}
+        <div className="min-h-0 flex-1">
+          <Suspense fallback={<Loading />}>
+            <CodePreview text={text.body} fileName={fileName} wrap={wrap} terms={terms} findRequest={findRequest} />
+          </Suspense>
+        </div>
       </div>
     </div>
   );
 }
 
-function MediaPreview({ type, src, item, fallback }: { type: "video" | "audio"; src: string; item?: FileItem; fallback: ReactNode }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return <Centered>{fallback}</Centered>;
+/** Formatted or source, for Markdown files (§14). */
+function MarkdownViewToggle({ value, onChange }: { value: "formatted" | "source"; onChange: (value: "formatted" | "source") => void }) {
+  const { t } = useTranslation();
+  const options = [
+    { id: "formatted", icon: "article", label: t("markdown.formatted") },
+    { id: "source", icon: "code", label: t("markdown.source") },
+  ] as const;
+  return (
+    <div role="radiogroup" aria-label={t("markdown.showAs")} className="flex h-10 shrink-0 overflow-hidden rounded-full border border-outline">
+      {options.map((option, i) => (
+        <button
+          key={option.id}
+          type="button"
+          role="radio"
+          aria-checked={value === option.id}
+          title={option.label}
+          onClick={() => onChange(option.id)}
+          className={cn(
+            "inline-flex cursor-pointer items-center gap-1.5 px-3 text-label-lg max-sm:px-2.5",
+            i > 0 && "border-l border-outline",
+            value === option.id ? "bg-secondary-container text-on-secondary-container" : "text-on-surface-variant hover:bg-on-surface/8",
+          )}
+        >
+          <Icon name={value === option.id ? "check" : option.icon} size="sm" />
+          <span className="max-sm:sr-only">{option.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A per-browser preference, such as wrapping long lines. Storage can be unavailable; then it lasts the page. */
+function useStoredFlag(key: string) {
+  const [value, setValue] = useState(() => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const set = (next: boolean) => {
+    setValue(next);
+    try {
+      localStorage.setItem(key, next ? "1" : "0");
+    } catch {
+      // Not remembered.
+    }
+  };
+  return [value, set] as const;
+}
+
+/** Plays the first of `sources` the browser can, e.g. the original HEVC in Safari and the H.264 copy elsewhere. */
+function MediaPreview({
+  type,
+  sources,
+  poster,
+  item,
+  fallback,
+}: {
+  type: "video" | "audio";
+  sources: string[];
+  poster?: string;
+  item: FileItem;
+  fallback: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const [index, setIndex] = useState(0);
+  const [coverFailed, setCoverFailed] = useState(false);
+  if (index >= sources.length) return <Centered>{fallback}</Centered>;
+  const src = sources[index];
+  const next = () => setIndex((i) => i + 1);
   return (
     <Centered>
       {type === "video" ? (
         <video
+          key={src}
           src={src}
+          poster={poster}
           controls
           autoPlay
+          playsInline
           preload="metadata"
-          onError={() => setFailed(true)}
+          onError={next}
           className="max-h-full max-w-full bg-black shadow-elevation-2 sm:rounded-sm"
         />
       ) : (
         <div className="m-4 flex w-full max-w-md flex-col items-center gap-6 rounded-lg bg-surface-container-low p-8 shadow-elevation-1">
-          <span className="flex size-32 items-center justify-center rounded-lg bg-surface-container-high text-file-audio">
-            <Icon name="music_note" filled size={64} />
-          </span>
-          {item && <p className="m-0 max-w-full truncate text-title-md">{item.name}</p>}
-          <audio src={src} controls autoPlay preload="metadata" onError={() => setFailed(true)} className="w-full" />
+          {item.thumbnail && !coverFailed ? (
+            <img
+              src={item.thumbnail}
+              alt={t("viewer.cover")}
+              onError={() => setCoverFailed(true)}
+              className="size-48 rounded-lg object-cover shadow-elevation-1"
+            />
+          ) : (
+            <span className="flex size-32 items-center justify-center rounded-lg bg-surface-container-high text-file-audio">
+              <Icon name="music_note" filled size={64} />
+            </span>
+          )}
+          <p className="m-0 max-w-full truncate text-title-md">{item.name}</p>
+          <audio key={src} src={src} controls autoPlay preload="metadata" onError={next} className="w-full" />
         </div>
       )}
     </Centered>

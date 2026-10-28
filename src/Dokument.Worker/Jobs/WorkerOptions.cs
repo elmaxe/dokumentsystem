@@ -26,6 +26,18 @@ public sealed class WorkerOptions
     /// <summary>The exiftool command: a name on PATH, or a full path.</summary>
     public string ExifToolCommand { get; set; } = "exiftool";
 
+    /// <summary>Playable copies made at once. Re-encoding video keeps every core busy, so one (§10.1).</summary>
+    public int TranscodeConcurrency { get; set; } = 1;
+
+    /// <summary>The ffmpeg command: a name on PATH, or a full path.</summary>
+    public string FfmpegCommand { get; set; } = "ffmpeg";
+
+    /// <summary>The ffprobe command: a name on PATH, or a full path.</summary>
+    public string FfprobeCommand { get; set; } = "ffprobe";
+
+    /// <summary>Re-encoding a long video on a NAS takes a while; copy jobs get this long.</summary>
+    public TimeSpan TranscodeJobTimeout { get; set; } = TimeSpan.FromHours(3);
+
     /// <summary>A long scanned PDF takes a while; text jobs get this long instead of <see cref="JobTimeout"/>.</summary>
     public TimeSpan TextJobTimeout { get; set; } = TimeSpan.FromMinutes(30);
 

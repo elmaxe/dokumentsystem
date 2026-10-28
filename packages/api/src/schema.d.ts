@@ -339,10 +339,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description What the viewer shows: a WebP for images browsers can't display or that are huge, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18). */
+        /** @description What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18). */
         get: operations["GetPreview"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/playable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Asks for a playable copy of a video or audio file browsers can't play, ahead of other work. 409 when copies are turned off or the file can't be converted; see NodeDto.media. */
+        post: operations["RequestPlayableCopy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -692,7 +709,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Files and folders whose name, text or metadata match. `q` takes words, "exact phrases", -excluded words and the operators type:, in:, after:, before:, camera:, taken: and is:starred; the other parameters are the filter chips and override the operators. */
+        /** @description Files and folders whose name, text or metadata match. `q` takes words, "exact phrases", -excluded words and the operators type:, in:, after:, before:, camera:, taken:, tag: and is:starred; the other parameters are the filter chips and override the operators. A word also finds files with a tag that has it. */
         get: operations["Search"];
         put?: never;
         post?: never;
@@ -709,7 +726,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Name matches as someone types, best first. */
+        /** @description Tags and name matches as someone types, best first. */
         get: operations["SearchSuggest"];
         put?: never;
         post?: never;
@@ -730,6 +747,159 @@ export interface paths {
         get: operations["SearchMatchesInFile"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A file's tags, and the automatic tags someone took off it, for the details panel. */
+        get: operations["GetFileTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Adds and removes tags on one or more files at once. Removing an automatic tag is remembered for each file, so keyword rules don't add it back. */
+        post: operations["ChangeTags"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Tags on files the person can see, most used first, with how many files have each. `q` keeps those that start with it, or have a word that does. */
+        get: operations["SuggestTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ListFilingRules"];
+        put?: never;
+        /** @description Adds a rule at the end of the list: when one of your files gets the tag, it moves to the folder. */
+        post: operations["CreateFilingRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["UpdateFilingRule"];
+        post?: never;
+        /** @description Deletes a rule. Files it moved stay where they are. */
+        delete: operations["DeleteFilingRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-rules/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Puts all your rules in this order. The first that matches a file wins. */
+        put: operations["ReorderFilingRules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-rules/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description How many of your files have the tag now and would be filed, with where a few would go. Changes nothing. */
+        post: operations["PreviewFilingRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/filings/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Files your rules moved after `after` (by default, the last two minutes) that are still there, oldest first. */
+        get: operations["ListRecentFilings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/filings/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Moves a filed file back where it was. No rule files it again. */
+        post: operations["UndoFiling"];
         delete?: never;
         options?: never;
         head?: never;
@@ -948,6 +1118,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/settings/videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["AdminPutVideoSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings/office": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["AdminPutOfficeSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/office/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminTestOffice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/videos/copies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description How many playable copies of videos exist, the disk they take, and how many are still to make. */
+        get: operations["AdminGetVideoCopies"];
+        put?: never;
+        post?: never;
+        /** @description Deletes every playable copy. The originals are untouched; copies are made again as the setting says. */
+        delete: operations["AdminDeleteVideoCopies"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/storage": {
         parameters: {
             query?: never;
@@ -1096,12 +1332,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/tag-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminListTagRules"];
+        put?: never;
+        /** @description Adds a rule and runs it over every stored file in the background. */
+        post: operations["AdminCreateTagRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/tag-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Changing the tag or words runs the rule again over every file in the background; turning it off takes its tags off at once. */
+        put: operations["AdminUpdateTagRule"];
+        post?: never;
+        /** @description Deletes the rule and takes its tags off every file. */
+        delete: operations["AdminDeleteTagRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/tag-rules/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description How many files a rule would tag, and which, a page at a time. Changes nothing. */
+        post: operations["AdminPreviewTagRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ActiveStepDto: {
-            step: components["schemas"]["JobKind"];
+            step: components["schemas"]["FileStep"];
             running: boolean;
         };
         AdminSettingsDto: {
@@ -1111,6 +1399,8 @@ export interface components {
             ml: components["schemas"]["MlSettingsDto"];
             scanner: components["schemas"]["ScannerSettingsDto"];
             textRecognition: components["schemas"]["TextRecognitionDto"];
+            videos: components["schemas"]["VideoSettingsDto"];
+            office: components["schemas"]["OfficeSettingsDto"];
             signIn: components["schemas"]["SignInInfo"];
         };
         AdminUser: {
@@ -1133,6 +1423,11 @@ export interface components {
             enabled: boolean;
             providerName: null | string;
         };
+        ChangeTagsRequest: {
+            ids: string[];
+            add: null | string[];
+            remove: null | string[];
+        };
         CopyFromContentRequest: {
             /** Format: uuid */
             folderId: null | string;
@@ -1141,6 +1436,18 @@ export interface components {
             /** Format: date-time */
             clientModifiedAt: null | string;
             onConflict?: components["schemas"]["NameConflictPolicy"];
+        };
+        /** @enum {unknown} */
+        CopyState: "notNeeded" | "none" | "waiting" | "making" | "ready" | "failed";
+        CopyStats: {
+            /** Format: int32 */
+            count: number;
+            /** Format: int64 */
+            bytes: number;
+            /** Format: int32 */
+            waiting: number;
+            /** Format: int32 */
+            failed: number;
         };
         CreateFolderRequest: {
             /** Format: uuid */
@@ -1222,8 +1529,29 @@ export interface components {
             description: null | string;
             taken: null | string;
         };
+        FiledFileDto: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            mimeType: null | string;
+            /** Format: uuid */
+            folderId: null | string;
+            folder: string;
+            tag: string;
+            /** Format: date-time */
+            filedAt: string;
+        };
+        FiledFiles: {
+            items: components["schemas"]["FiledFileDto"][];
+        };
         FileProcessing: {
             steps: components["schemas"]["ProcessingStepDto"][];
+        };
+        /** @enum {unknown} */
+        FileStep: "thumbnail" | "metadata" | "text" | "transcode";
+        FileTags: {
+            tags: components["schemas"]["TagDto"][];
+            removed: string[];
         };
         FileTextDto: {
             state: components["schemas"]["TextState"];
@@ -1244,6 +1572,46 @@ export interface components {
         };
         FileTextPageRequest: {
             text: string;
+        };
+        FilingExampleDto: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            mimeType: null | string;
+            folder: string;
+        };
+        FilingPreviewDto: {
+            /** Format: int32 */
+            files: number;
+            examples: components["schemas"]["FilingExampleDto"][];
+        };
+        FilingPreviewRequest: {
+            tag: null | string;
+            folder: null | string;
+        };
+        FilingRuleDto: {
+            /** Format: uuid */
+            id: string;
+            tag: string;
+            folder: string;
+            enabled: boolean;
+            /** Format: int32 */
+            filed: number;
+            running: boolean;
+        };
+        FilingRuleListing: {
+            rules: components["schemas"]["FilingRuleDto"][];
+        };
+        FilingRuleOrderRequest: {
+            ids: string[];
+        };
+        FilingRuleRequest: {
+            tag: string;
+            folder: string;
+            /** @default true */
+            enabled: boolean;
+            /** @default false */
+            fileExisting: boolean;
         };
         /**
          * @default fail
@@ -1315,6 +1683,7 @@ export interface components {
             size: null | number;
             mimeType: null | string;
             files: components["schemas"]["JobFileDto"][];
+            ruleTag: null | string;
         };
         JobFileDto: {
             /** Format: uuid */
@@ -1331,7 +1700,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text";
+        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "tagRule" | "file" | "filingRule";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;
@@ -1360,7 +1729,17 @@ export interface components {
             pages: components["schemas"]["PageMatchDto"][];
         };
         /** @enum {unknown} */
-        MatchSource: "name" | "text" | "ocr" | "metadata";
+        MatchSource: "name" | "text" | "ocr" | "metadata" | "tag";
+        MediaDto: {
+            /** Format: double */
+            durationSeconds: null | number;
+            hasVideo: boolean;
+            hasAudio: boolean;
+            videoCodec: null | string;
+            copy: components["schemas"]["CopyState"];
+            /** Format: int32 */
+            progress: null | number;
+        };
         MlEndpointDto: {
             url: string;
             hasApiKey: boolean;
@@ -1416,12 +1795,22 @@ export interface components {
             contents: null | components["schemas"]["FolderCounts"];
             starred: boolean;
             processing: components["schemas"]["ActiveStepDto"][];
+            tags: components["schemas"]["TagDto"][];
+            media: null | components["schemas"]["MediaDto"];
+            shownAsPdf: boolean;
         };
         NodeIdsRequest: {
             ids: string[];
         };
         /** @enum {unknown} */
         NodeKind: "folder" | "file";
+        OfficeSettingsDto: {
+            gotenbergUrl: null | string;
+            configured: boolean;
+        };
+        OfficeSettingsRequest: {
+            gotenbergUrl: null | string;
+        };
         PageMatchDto: {
             /** Format: int32 */
             pageNo: number;
@@ -1450,12 +1839,14 @@ export interface components {
             error: null | string;
         };
         ProcessingStepDto: {
-            step: components["schemas"]["JobKind"];
+            step: components["schemas"]["FileStep"];
             state: components["schemas"]["StepState"];
             /** Format: date-time */
             at: null | string;
             /** Format: int32 */
             ahead: null | number;
+            /** Format: int32 */
+            progress: null | number;
             /** Format: uuid */
             jobId: null | string;
             /** Format: int32 */
@@ -1563,7 +1954,7 @@ export interface components {
             items: components["schemas"]["StarredItem"][];
         };
         /** @enum {unknown} */
-        StepState: "notStarted" | "waiting" | "paused" | "running" | "done" | "nothingFound" | "skipped" | "unsupported" | "unreadable" | "failed";
+        StepState: "notStarted" | "waiting" | "paused" | "running" | "done" | "nothingFound" | "skipped" | "unsupported" | "unreadable" | "failed" | "onOpen" | "off";
         StorageReport: {
             /** Format: int64 */
             filesBytes: number;
@@ -1588,6 +1979,71 @@ export interface components {
         SuggestResponse: {
             items: components["schemas"]["SuggestionDto"][];
             terms: string[];
+            tags: components["schemas"]["TagSuggestion"][];
+        };
+        TagDto: {
+            name: string;
+            source: components["schemas"]["TagSource"];
+            /** Format: uuid */
+            ruleId: null | string;
+        };
+        TagRuleDto: {
+            /** Format: uuid */
+            id: string;
+            tag: string;
+            words: string;
+            enabled: boolean;
+            /** Format: int32 */
+            files: number;
+            running: boolean;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        TagRuleListing: {
+            rules: components["schemas"]["TagRuleDto"][];
+        };
+        TagRuleMatchDto: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            mimeType: null | string;
+            owner: string;
+            snippet: null | components["schemas"]["SnippetDto"];
+        };
+        TagRulePreviewDto: {
+            /** Format: int32 */
+            files: number;
+            matches: components["schemas"]["TagRuleMatchDto"][];
+        };
+        TagRulePreviewRequest: {
+            tag: null | string;
+            words: string;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Format: int32
+             * @default 50
+             */
+            limit: number;
+        };
+        TagRuleRequest: {
+            tag: string;
+            words: string;
+            /** @default true */
+            enabled: boolean;
+        };
+        /** @enum {unknown} */
+        TagSource: "user" | "rule" | "ml";
+        TagSuggestion: {
+            name: string;
+            /** Format: int32 */
+            files: number;
+        };
+        TagSuggestions: {
+            tags: components["schemas"]["TagSuggestion"][];
         };
         TakenDto: {
             value: string;
@@ -1598,6 +2054,9 @@ export interface components {
         TestMlRequest: {
             url: string;
             apiKey: null | string;
+        };
+        TestOfficeRequest: {
+            url: string;
         };
         TestScannerRequest: {
             address: string;
@@ -1711,6 +2170,13 @@ export interface components {
             keepDays: number;
             /** Format: int32 */
             maxVersions: number;
+        };
+        /** @enum {unknown} */
+        VideoCopies: "background" | "onOpen" | "never";
+        VideoSettingsDto: {
+            copies: components["schemas"]["VideoCopies"];
+            /** Format: int32 */
+            maxHeight: number;
         };
         VolumeUsage: {
             holds: string[];
@@ -2190,6 +2656,7 @@ export interface operations {
         parameters: {
             query?: {
                 versionId?: string;
+                original?: boolean;
             };
             header?: never;
             path: {
@@ -2205,6 +2672,28 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    RequestPlayableCopy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDto"];
+                };
             };
         };
     };
@@ -2708,6 +3197,7 @@ export interface operations {
                 modifiedBefore?: string;
                 folderId?: string;
                 starred?: boolean;
+                tag?: string[];
                 sort?: components["schemas"]["SearchSort"];
                 offset?: number;
                 limit?: number;
@@ -2781,6 +3271,251 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MatchesResponse"];
                 };
+            };
+        };
+    };
+    GetFileTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileTags"];
+                };
+            };
+        };
+    };
+    ChangeTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeTagsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SuggestTags: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSuggestions"];
+                };
+            };
+        };
+    };
+    ListFilingRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingRuleListing"];
+                };
+            };
+        };
+    };
+    CreateFilingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingRuleDto"];
+                };
+            };
+        };
+    };
+    UpdateFilingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingRuleDto"];
+                };
+            };
+        };
+    };
+    DeleteFilingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReorderFilingRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingRuleOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PreviewFilingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingPreviewDto"];
+                };
+            };
+        };
+    };
+    ListRecentFilings: {
+        parameters: {
+            query?: {
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FiledFiles"];
+                };
+            };
+        };
+    };
+    UndoFiling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -3141,6 +3876,145 @@ export interface operations {
             };
         };
     };
+    AdminPutVideoSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoSettingsDto"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoSettingsDto"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminPutOfficeSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfficeSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfficeSettingsDto"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminTestOffice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestOfficeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminGetVideoCopies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyStats"];
+                };
+            };
+        };
+    };
+    AdminDeleteVideoCopies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyStats"];
+                };
+            };
+        };
+    };
     AdminGetStorage: {
         parameters: {
             query?: never;
@@ -3392,6 +4266,120 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    AdminListTagRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagRuleListing"];
+                };
+            };
+        };
+    };
+    AdminCreateTagRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagRuleDto"];
+                };
+            };
+        };
+    };
+    AdminUpdateTagRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagRuleDto"];
+                };
+            };
+        };
+    };
+    AdminDeleteTagRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminPreviewTagRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagRulePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagRulePreviewDto"];
+                };
             };
         };
     };

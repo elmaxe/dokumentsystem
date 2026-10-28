@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using Dokument.Application.Files;
 using Dokument.Domain.Files;
+using Dokument.Domain.Jobs;
 using Dokument.Domain.Previews;
+using Dokument.Domain.Settings;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Persistence;
@@ -56,7 +58,13 @@ public static class FileEndpoints
             .MapGet("/nodes/{id:guid}/preview", GetPreview)
             .WithName("GetPreview")
             .WithDescription(
-                "What the viewer shows: a WebP for images browsers can't display or that are huge, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18)."
+                "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18)."
+            );
+        files
+            .MapPost("/nodes/{id:guid}/playable", RequestPlayable)
+            .WithName("RequestPlayableCopy")
+            .WithDescription(
+                "Asks for a playable copy of a video or audio file browsers can't play, ahead of other work. 409 when copies are turned off or the file can't be converted; see NodeDto.media."
             );
         files.MapGet("/nodes/{id:guid}/versions", ListVersions).WithName("ListVersions");
         files
@@ -302,9 +310,11 @@ public static class FileEndpoints
             : TypedResults.NotFound();
     }
 
+    /// <param name="original">For video and audio: the original even when a playable copy exists, for browsers that play more than most (HEVC in Safari).</param>
     private static async Task<PhysicalFileHttpResult> GetPreview(
         Guid id,
         Guid? versionId,
+        bool? original,
         HttpContext context,
         DriveService drive,
         PreviewService previews,
@@ -325,6 +335,25 @@ public static class FileEndpoints
         )
         {
             return Rendition(context, preview);
+        }
+
+        if (
+            original != true
+            && await previews.FindAsync(content.Version.BlobHash, RenditionKind.Playable, ct)
+                is { } playable
+            && File.Exists(playable.PhysicalPath)
+        )
+        {
+            return Rendition(context, playable);
+        }
+
+        if (
+            await previews.FindAsync(content.Version.BlobHash, RenditionKind.Document, ct)
+                is { } document
+            && File.Exists(document.PhysicalPath)
+        )
+        {
+            return Rendition(context, document);
         }
 
         // User content never renders in our origin (§21). Markup is shown as text, so a preview can't run it even sandboxed.
@@ -355,8 +384,39 @@ public static class FileEndpoints
             lastModified: file.Rendition.CreatedAt,
             entityTag: new EntityTagHeaderValue(
                 $"\"{file.Rendition.BlobHash.Hex}-{file.Rendition.Kind.Key()}-{file.Rendition.CreatedAt.ToUnixTimeSeconds()}\""
-            )
+            ),
+            // Video players seek with ranges.
+            enableRangeProcessing: true
         );
+    }
+
+    private static async Task<Results<Ok<NodeDto>, ProblemHttpResult>> RequestPlayable(
+        Guid id,
+        HttpContext context,
+        DriveService drive,
+        MediaService media,
+        SettingsStore settings,
+        DokumentDbContext db,
+        NodeDtoMapper mapper,
+        CancellationToken ct
+    )
+    {
+        var node = await drive.GetFileAsync(context.Actor(), id, ct);
+        var videos = await settings.GetAsync(SettingKeys.Videos, ct);
+        if (
+            videos.Copies == VideoCopies.Never
+            || node.CurrentVersion is not { } version
+            || !await media.RequestCopyAsync(version.BlobHash, JobPriority.Interactive, ct)
+        )
+        {
+            return TypedResults.Problem(
+                "No playable copy can be made of this file.",
+                statusCode: StatusCodes.Status409Conflict
+            );
+        }
+
+        await db.SaveChangesAsync(ct);
+        return TypedResults.Ok(await mapper.MapAsync(node, ct));
     }
 
     private static async Task<Ok<List<VersionDto>>> ListVersions(

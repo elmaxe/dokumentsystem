@@ -1,5 +1,5 @@
 // Local development: `dotnet run --project src/Dokument.AppHost` starts Postgres (our image), Keycloak as a test IdP,
-// the server, a worker and the Vite dev server, and opens the Aspire dashboard. See docs/design.md §3.2.
+// Gotenberg for Office previews, the server, a worker and the Vite dev server, and opens the Aspire dashboard. See docs/design.md §3.2.
 //
 // Sign in at http://localhost:5173 as alice/alice (admin), bob/bob (user) or carol/carol (no groups).
 // pgAdmin runs at http://localhost:5050, already connected to Postgres. The API reference (Scalar) is linked on the
@@ -28,6 +28,15 @@ var database = postgres.AddDatabase("Dokument", databaseName: "dokument");
 // The realm, client and test users are imported on every start, so the dev IdP needs no setup or volume.
 var keycloak = builder.AddKeycloak("keycloak", port: 8180).WithRealmImport("keycloak");
 
+// Office previews (docs/design.md §14). Each role gets the address it reaches Gotenberg at as GOTENBERG_URL, which wins
+// over the admin setting. Long documents take a while; the worker waits up to 3 minutes.
+var gotenberg = builder
+    .AddContainer("gotenberg", "gotenberg/gotenberg", "8")
+    .WithArgs("gotenberg", "--api-timeout=180s")
+    .WithHttpEndpoint(targetPort: 3000)
+    .WithHttpHealthCheck("/health");
+var gotenbergUrl = gotenberg.GetEndpoint("http");
+
 // Only the server uses the Host's launch profile. Both roles taking its fixed port 5080 made Aspire bind that port
 // for whichever came first, so the server could stay "not ready" and nothing waiting on it would start.
 IResourceBuilder<ProjectResource> AddRole(string role, string? launchProfile) =>
@@ -51,6 +60,7 @@ var server = AddRole("server", launchProfile: "http")
     .WithEnvironment("OIDC_PROVIDER_NAME", "Keycloak (dev)")
     // bob gets 50GB from this claim; alice and carol fall back to the admin page (§17.1).
     .WithEnvironment("OIDC_QUOTA_CLAIM", "dokument_quota")
+    .WithEnvironment("GOTENBERG_URL", gotenbergUrl)
     .WaitFor(keycloak);
 
 // The worker runs in the app's image by default, so exiftool, Tesseract and libvips are there on any machine, the same
@@ -64,6 +74,8 @@ if (builder.Configuration.GetValue<bool>("WorkerOnHost"))
         .WithEnvironment("Serilog__MinimumLevel__Override__Dokument.Worker", "Debug")
         .WithHttpEndpoint(env: "HTTP_PORTS")
         .WithHttpHealthCheck("/health/ready")
+        .WithEnvironment("GOTENBERG_URL", gotenbergUrl)
+        .WaitFor(gotenberg)
         .WaitFor(server);
 }
 else
@@ -82,6 +94,8 @@ else
         .WithOtlpExporter()
         .WithHttpEndpoint(targetPort: 8080)
         .WithHttpHealthCheck("/health/ready")
+        .WithEnvironment("GOTENBERG_URL", gotenbergUrl)
+        .WaitFor(gotenberg)
         .WaitFor(server);
 
     // On Linux and macOS the container writes thumbnails as you, so the server on the host can clean them up.

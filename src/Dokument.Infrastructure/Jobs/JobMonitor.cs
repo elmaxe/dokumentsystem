@@ -45,7 +45,8 @@ public sealed record JobFile(
 );
 
 /// <summary>A job with the files that use its content, best match first. Empty when no file uses it any more.</summary>
-public sealed record JobEntry(Job Job, IReadOnlyList<JobFile> Files);
+/// <param name="RuleTag">For a keyword-rule run: the rule's tag, null once the rule is deleted (§13.4).</param>
+public sealed record JobEntry(Job Job, IReadOnlyList<JobFile> Files, string? RuleTag = null);
 
 /// <summary>Where one processing step stands for a file (§10.1).</summary>
 public enum StepState
@@ -73,17 +74,27 @@ public enum StepState
 
     /// <summary>The job gave up after its retries; an admin can retry it.</summary>
     Failed,
+
+    /// <summary>A playable copy waits until someone opens the file (§14).</summary>
+    OnOpen,
+
+    /// <summary>An admin has turned the step off, e.g. playable copies (§14).</summary>
+    Off,
 }
 
 /// <param name="At">When it started (running), finished (done and the like) or gave up (failed).</param>
 /// <param name="Ahead">For a waiting step: how many jobs of its type will run first.</param>
 /// <param name="Job">The queued, running or failed job, if any.</param>
+/// <param name="Progress">For a playable copy being made: how far it has got, 0 to 100.</param>
+/// <param name="Error">Why the step failed when no job says so, e.g. ffmpeg's error for a copy it couldn't make.</param>
 public sealed record ProcessingStep(
     JobType Type,
     StepState State,
     DateTimeOffset? At,
     int? Ahead,
-    Job? Job
+    Job? Job,
+    int? Progress = null,
+    string? Error = null
 );
 
 /// <summary>A step that is still waiting or running, for the badge in file lists.</summary>
@@ -166,8 +177,20 @@ public sealed class JobMonitor(
             .Skip(Math.Max(0, offset))
             .Take(Math.Clamp(limit, 1, MaxPage))
             .ToListAsync(ct);
-        var files = await FilesAsync(jobs.Select(j => j.Subject), ct);
-        return jobs.Select(j => new JobEntry(j, files.GetValueOrDefault(j.Subject, []))).ToList();
+        var files = await FilesAsync(
+            jobs.Where(j => j.Type != JobType.File).Select(j => j.Subject),
+            ct
+        );
+        var filed = await FilingFilesAsync(jobs, ct);
+        var rules = await RulesAsync(jobs, ct);
+        return jobs.Select(j => new JobEntry(
+                j,
+                j.Type == JobType.File
+                    ? filed.GetValueOrDefault(j.Subject, [])
+                    : files.GetValueOrDefault(j.Subject, []),
+                rules.GetValueOrDefault((j.Type, j.Subject))
+            ))
+            .ToList();
     }
 
     public async Task<Job?> FindAsync(Guid id, CancellationToken ct = default) =>
@@ -229,7 +252,10 @@ public sealed class JobMonitor(
         }
     }
 
-    /// <summary>For a file list: the steps still waiting or running for each of these contents.</summary>
+    /// <summary>
+    /// For a file list: the steps still waiting or running for each of these contents. A playable copy isn't a step:
+    /// its progress is in the file's media (§14).
+    /// </summary>
     public async Task<Dictionary<ContentHash, List<ActiveStep>>> ActiveAsync(
         IReadOnlyCollection<ContentHash> hashes,
         CancellationToken ct = default
@@ -256,6 +282,7 @@ public sealed class JobMonitor(
             })
             .ToListAsync(ct);
         return active
+            .Where(j => JobType.FileSteps.Contains(j.Type))
             .GroupBy(j => byHex[j.Subject])
             .ToDictionary(
                 g => g.Key,
@@ -266,7 +293,10 @@ public sealed class JobMonitor(
             );
     }
 
-    /// <summary>Every step for one file's current content, in pipeline order (the details panel).</summary>
+    /// <summary>
+    /// Every step for one file's current content, in pipeline order (the details panel), then its playable copy when
+    /// it is a video or audio file browsers can't play as it is (§14).
+    /// </summary>
     public async Task<List<ProcessingStep>> StepsAsync(
         ContentHash hash,
         CancellationToken ct = default
@@ -285,7 +315,7 @@ public sealed class JobMonitor(
             .SingleOrDefaultAsync(c => c.BlobHash == hash, ct);
 
         var steps = new List<ProcessingStep>();
-        foreach (var type in JobType.All)
+        foreach (var type in JobType.FileSteps)
         {
             // Finished jobs say nothing the results don't; a queued, running or failed one wins over them.
             var job = jobs.Where(j => j.Type == type && j.Status != JobStatus.Done)
@@ -320,7 +350,88 @@ public sealed class JobMonitor(
             );
         }
 
+        var media = await db
+            .BlobMedia.AsNoTracking()
+            .SingleOrDefaultAsync(m => m.BlobHash == hash, ct);
+        if (media is { NeedsCopy: true })
+        {
+            steps.Add(
+                await CopyStepAsync(
+                    media,
+                    jobs.Where(j => j.Type == JobType.Transcode && j.Status != JobStatus.Done)
+                        .OrderByDescending(j => j.CreatedAt)
+                        .FirstOrDefault(),
+                    paused,
+                    ct
+                )
+            );
+        }
+
         return steps;
+    }
+
+    /// <summary>
+    /// A copy that couldn't be made is recorded on the media, not as a failed job, since it isn't retried (§14).
+    /// </summary>
+    private async Task<ProcessingStep> CopyStepAsync(
+        BlobMedia media,
+        Job? job,
+        JobSettings paused,
+        CancellationToken ct
+    )
+    {
+        var type = JobType.Transcode;
+        if (media.CopyStatus == CopyStatus.Ready)
+        {
+            return new(type, StepState.Done, media.UpdatedAt, null, null);
+        }
+
+        if (job is { Status: JobStatus.Running })
+        {
+            return new(type, StepState.Running, job.StartedAt, null, job, media.CopyProgress);
+        }
+
+        if (job is { Status: JobStatus.Queued })
+        {
+            return new(
+                type,
+                paused.IsPaused(type) ? StepState.Paused : StepState.Waiting,
+                null,
+                await AheadAsync(job, ct),
+                job
+            );
+        }
+
+        if (job is { Status: JobStatus.Failed })
+        {
+            return new(type, StepState.Failed, job.FinishedAt, null, job);
+        }
+
+        if (media.CopyStatus == CopyStatus.Failed)
+        {
+            return new(
+                type,
+                StepState.Unreadable,
+                media.UpdatedAt,
+                null,
+                null,
+                Error: media.CopyError
+            );
+        }
+
+        var videos = await settings.GetAsync(SettingKeys.Videos, ct);
+        return new(
+            type,
+            videos.Copies switch
+            {
+                VideoCopies.Never => StepState.Off,
+                VideoCopies.OnOpen => StepState.OnOpen,
+                _ => StepState.NotStarted,
+            },
+            null,
+            null,
+            null
+        );
     }
 
     private static ProcessingStep Result(
@@ -360,15 +471,15 @@ public sealed class JobMonitor(
 
     private static int PipelineOrder(JobType type)
     {
-        for (var i = 0; i < JobType.All.Count; i++)
+        for (var i = 0; i < JobType.FileSteps.Count; i++)
         {
-            if (JobType.All[i] == type)
+            if (JobType.FileSteps[i] == type)
             {
                 return i;
             }
         }
 
-        return JobType.All.Count;
+        return JobType.FileSteps.Count;
     }
 
     /// <summary>How many jobs of the same type the claim query will take before this one.</summary>
@@ -384,6 +495,100 @@ public sealed class JobMonitor(
                 ),
             ct
         );
+
+    /// <summary>
+    /// The tags of the keyword rules (§13.4) and filing rules (§13.6) that <paramref name="jobs"/> run, by type and
+    /// subject. Deleted rules are left out.
+    /// </summary>
+    private async Task<Dictionary<(JobType, string), string>> RulesAsync(
+        List<Job> jobs,
+        CancellationToken ct
+    )
+    {
+        List<Guid> Ids(JobType type) =>
+            jobs.Where(j => j.Type == type)
+                .Select(j => Guid.TryParse(j.Subject, out var id) ? id : (Guid?)null)
+                .OfType<Guid>()
+                .Distinct()
+                .ToList();
+
+        var tagRules = Ids(JobType.TagRule);
+        var filingRules = Ids(JobType.FilingRule);
+        var tags = new Dictionary<(JobType, string), string>();
+        if (tagRules.Count > 0)
+        {
+            foreach (
+                var rule in await db
+                    .TagRules.AsNoTracking()
+                    .Where(r => tagRules.Contains(r.Id))
+                    .Select(r => new { r.Id, r.Tag })
+                    .ToListAsync(ct)
+            )
+            {
+                tags[(JobType.TagRule, rule.Id.ToString())] = rule.Tag.Value;
+            }
+        }
+
+        if (filingRules.Count > 0)
+        {
+            foreach (
+                var rule in await db
+                    .FilingRules.AsNoTracking()
+                    .Where(r => filingRules.Contains(r.Id))
+                    .Select(r => new { r.Id, r.Tag })
+                    .ToListAsync(ct)
+            )
+            {
+                tags[(JobType.FilingRule, rule.Id.ToString())] = rule.Tag.Value;
+            }
+        }
+
+        return tags;
+    }
+
+    /// <summary>The files that <see cref="JobType.File"/> jobs file, by subject (the node id), as their current version.</summary>
+    private async Task<Dictionary<string, List<JobFile>>> FilingFilesAsync(
+        List<Job> jobs,
+        CancellationToken ct
+    )
+    {
+        var ids = jobs.Where(j => j.Type == JobType.File)
+            .Select(j => Guid.TryParse(j.Subject, out var id) ? id : (Guid?)null)
+            .OfType<Guid>()
+            .Distinct()
+            .ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var rows = await (
+            from n in db.Nodes.AsNoTracking()
+            join v in db.FileVersions.AsNoTracking() on n.CurrentVersionId equals v.Id
+            join u in db.Users.AsNoTracking() on n.OwnerId equals u.Id
+            where ids.Contains(n.Id)
+            select new
+            {
+                Node = n,
+                Version = v,
+                Owner = u.DisplayName,
+            }
+        ).ToListAsync(ct);
+        var folders = await drive.AncestorsAsync(rows.Select(r => r.Node).ToList(), ct);
+        return rows.ToDictionary(
+            r => r.Node.Id.ToString(),
+            r => new List<JobFile>
+            {
+                new(
+                    r.Node,
+                    r.Version,
+                    r.Node.IsTrashed ? JobFileUse.Trashed : JobFileUse.Current,
+                    r.Owner,
+                    folders[r.Node.Id]
+                ),
+            }
+        );
+    }
 
     /// <summary>
     /// The files that use each content, keyed by hex hash: files whose current version it is first, then trashed ones,

@@ -1,9 +1,11 @@
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
+using Dokument.Domain.Filing;
 using Dokument.Domain.Identity;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Previews;
 using Dokument.Domain.Search;
+using Dokument.Domain.Tags;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
@@ -23,12 +25,20 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<BlobPreview> BlobPreviews => Set<BlobPreview>();
     public DbSet<Rendition> Renditions => Set<Rendition>();
+    public DbSet<BlobMedia> BlobMedia => Set<BlobMedia>();
     public DbSet<Star> Stars => Set<Star>();
     public DbSet<RecentFile> RecentFiles => Set<RecentFile>();
     public DbSet<BlobContent> BlobContents => Set<BlobContent>();
     public DbSet<ContentPage> ContentPages => Set<ContentPage>();
     public DbSet<BlobMetadata> BlobMetadata => Set<BlobMetadata>();
     public DbSet<VersionDetails> VersionDetails => Set<VersionDetails>();
+    public DbSet<NodeTag> NodeTags => Set<NodeTag>();
+    public DbSet<NodeTagRemoval> NodeTagRemovals => Set<NodeTagRemoval>();
+    public DbSet<BlobTag> BlobTags => Set<BlobTag>();
+    public DbSet<TagRule> TagRules => Set<TagRule>();
+    public DbSet<EffectiveTag> EffectiveTags => Set<EffectiveTag>();
+    public DbSet<FilingRule> FilingRules => Set<FilingRule>();
+    public DbSet<NodeFiling> NodeFilings => Set<NodeFiling>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -101,6 +111,8 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
         ConfigureJobs(modelBuilder);
         ConfigurePreviews(modelBuilder);
         ConfigureSearch(modelBuilder);
+        ConfigureTags(modelBuilder);
+        ConfigureFiling(modelBuilder);
     }
 
     private static readonly ValueConverter<ContentHash, byte[]> ContentHashConverter = new(
@@ -182,6 +194,32 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(r => r.Width).HasColumnName("width");
             e.Property(r => r.Height).HasColumnName("height");
             e.Property(r => r.CreatedAt).HasColumnName("created_at");
+        });
+
+        modelBuilder.Entity<BlobMedia>(e =>
+        {
+            e.ToTable("blob_media");
+            e.HasKey(m => m.BlobHash);
+            e.Property(m => m.BlobHash)
+                .HasColumnName("blob_hash")
+                .HasConversion(ContentHashConverter);
+            e.Property(m => m.Container).HasColumnName("container");
+            e.Property(m => m.DurationSeconds).HasColumnName("duration_seconds");
+            e.Property(m => m.HasVideo).HasColumnName("has_video");
+            e.Property(m => m.HasAudio).HasColumnName("has_audio");
+            e.Property(m => m.VideoCodec).HasColumnName("video_codec");
+            e.Property(m => m.AudioCodec).HasColumnName("audio_codec");
+            e.Property(m => m.Width).HasColumnName("width");
+            e.Property(m => m.Height).HasColumnName("height");
+            e.Property(m => m.Plan)
+                .HasColumnName("plan")
+                .HasConversion(LowercaseEnum<PlaybackPlan>());
+            e.Property(m => m.CopyStatus)
+                .HasColumnName("copy_status")
+                .HasConversion(LowercaseEnum<CopyStatus>());
+            e.Property(m => m.CopyProgress).HasColumnName("copy_progress");
+            e.Property(m => m.CopyError).HasColumnName("copy_error");
+            e.Property(m => m.UpdatedAt).HasColumnName("updated_at");
         });
     }
 
@@ -277,6 +315,146 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(m => m.Tags).HasColumnName("tags").HasColumnType("jsonb");
             e.Property(m => m.Readable).HasColumnName("readable");
             e.Property(m => m.UpdatedAt).HasColumnName("updated_at");
+        });
+    }
+
+    private static void ConfigureTags(ModelBuilder modelBuilder)
+    {
+        // Tags (docs/design.md §13.4). People's tags and removals belong to the file; automatic tags belong to the
+        // bytes, keyed by hash with no foreign key, like text. The effective_node_tags view (created in SQL by the
+        // migration) is what a file shows.
+        var tagName = new ValueConverter<TagName, string>(t => t.Value, v => TagName.From(v));
+
+        modelBuilder.Entity<NodeTag>(e =>
+        {
+            e.ToTable("node_tags");
+            e.HasKey(t => new { t.NodeId, t.TagKey });
+            e.Property(t => t.NodeId).HasColumnName("node_id");
+            e.Property(t => t.Tag).HasColumnName("tag").HasConversion(tagName);
+            e.Property(t => t.TagKey).HasColumnName("tag_key");
+            e.Property(t => t.AddedBy).HasColumnName("added_by");
+            e.Property(t => t.AddedAt).HasColumnName("added_at");
+            e.HasOne<Node>()
+                .WithMany()
+                .HasForeignKey(t => t.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(t => t.TagKey);
+        });
+
+        modelBuilder.Entity<NodeTagRemoval>(e =>
+        {
+            e.ToTable("node_tag_removals");
+            e.HasKey(t => new { t.NodeId, t.TagKey });
+            e.Property(t => t.NodeId).HasColumnName("node_id");
+            e.Property(t => t.Tag).HasColumnName("tag").HasConversion(tagName);
+            e.Property(t => t.TagKey).HasColumnName("tag_key");
+            e.Property(t => t.RemovedBy).HasColumnName("removed_by");
+            e.Property(t => t.RemovedAt).HasColumnName("removed_at");
+            e.HasOne<Node>()
+                .WithMany()
+                .HasForeignKey(t => t.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BlobTag>(e =>
+        {
+            e.ToTable("blob_tags");
+            e.HasKey(t => new { t.BlobHash, t.TagKey });
+            e.Property(t => t.BlobHash)
+                .HasColumnName("blob_hash")
+                .HasConversion(ContentHashConverter);
+            e.Property(t => t.Tag).HasColumnName("tag").HasConversion(tagName);
+            e.Property(t => t.TagKey).HasColumnName("tag_key");
+            e.Property(t => t.Source)
+                .HasColumnName("source")
+                .HasConversion(LowercaseEnum<TagSource>());
+            e.Property(t => t.RuleId).HasColumnName("rule_id");
+            e.Property(t => t.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(t => t.RuleId);
+            e.HasIndex(t => t.TagKey);
+        });
+
+        modelBuilder.Entity<TagRule>(e =>
+        {
+            e.ToTable("tag_rules");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Id).HasColumnName("id");
+            e.Property(r => r.Tag).HasColumnName("tag").HasConversion(tagName);
+            e.Property(r => r.TagKey).HasColumnName("tag_key");
+            e.Property(r => r.Words)
+                .HasColumnName("words")
+                .HasConversion(w => w.Value, v => TagRuleWords.From(v));
+            e.Property(r => r.Enabled).HasColumnName("enabled");
+            e.Property(r => r.CreatedBy).HasColumnName("created_by");
+            e.Property(r => r.CreatedAt).HasColumnName("created_at");
+            e.Property(r => r.UpdatedAt).HasColumnName("updated_at");
+            e.HasIndex(r => r.TagKey).IsUnique();
+        });
+
+        modelBuilder.Entity<EffectiveTag>(e =>
+        {
+            e.ToView("effective_node_tags");
+            e.HasNoKey();
+            e.Property(t => t.NodeId).HasColumnName("node_id");
+            e.Property(t => t.Tag).HasColumnName("tag");
+            e.Property(t => t.TagKey).HasColumnName("tag_key");
+            e.Property(t => t.Source)
+                .HasColumnName("source")
+                .HasConversion(LowercaseEnum<TagSource>());
+            e.Property(t => t.RuleId).HasColumnName("rule_id");
+            e.Property(t => t.Since).HasColumnName("since");
+        });
+    }
+
+    private static void ConfigureFiling(ModelBuilder modelBuilder)
+    {
+        // Filing rules (docs/design.md §13.6): each person's own, and one row per file a rule moved, so it moves once.
+        modelBuilder.Entity<FilingRule>(e =>
+        {
+            e.ToTable("filing_rules");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Id).HasColumnName("id");
+            e.Property(r => r.OwnerId).HasColumnName("owner_id");
+            e.Property(r => r.Tag)
+                .HasColumnName("tag")
+                .HasConversion(t => t.Value, v => TagName.From(v));
+            e.Property(r => r.TagKey).HasColumnName("tag_key");
+            e.Property(r => r.Folder)
+                .HasColumnName("folder_template")
+                .HasConversion(f => f.Value, v => FolderTemplate.From(v));
+            e.Property(r => r.Position).HasColumnName("position");
+            e.Property(r => r.Enabled).HasColumnName("enabled");
+            e.Property(r => r.ActiveSince).HasColumnName("active_since");
+            e.Property(r => r.CreatedAt).HasColumnName("created_at");
+            e.Property(r => r.UpdatedAt).HasColumnName("updated_at");
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(r => r.OwnerId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(r => new { r.OwnerId, r.TagKey }).IsUnique();
+        });
+
+        modelBuilder.Entity<NodeFiling>(e =>
+        {
+            e.ToTable("node_filings");
+            e.HasKey(f => f.NodeId);
+            e.Property(f => f.NodeId).HasColumnName("node_id");
+            e.Property(f => f.RuleId).HasColumnName("rule_id");
+            e.Property(f => f.Tag).HasColumnName("tag");
+            e.Property(f => f.FromFolderId).HasColumnName("from_folder_id");
+            e.Property(f => f.ToFolderId).HasColumnName("to_folder_id");
+            e.Property(f => f.FiledAt).HasColumnName("filed_at");
+            e.Property(f => f.UndoneAt).HasColumnName("undone_at");
+            e.HasOne<Node>()
+                .WithMany()
+                .HasForeignKey(f => f.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<FilingRule>()
+                .WithMany()
+                .HasForeignKey(f => f.RuleId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(f => f.RuleId);
+            e.HasIndex(f => f.FiledAt);
         });
     }
 

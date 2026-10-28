@@ -382,6 +382,100 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("uploads", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Filing.FilingRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ActiveSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("active_since");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Folder")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("folder_template");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.Property<string>("TagKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "TagKey")
+                        .IsUnique();
+
+                    b.ToTable("filing_rules", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Filing.NodeFiling", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<DateTimeOffset>("FiledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("filed_at");
+
+                    b.Property<Guid?>("FromFolderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("from_folder_id");
+
+                    b.Property<Guid?>("RuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rule_id");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.Property<Guid?>("ToFolderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("to_folder_id");
+
+                    b.Property<DateTimeOffset?>("UndoneAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("undone_at");
+
+                    b.HasKey("NodeId");
+
+                    b.HasIndex("FiledAt");
+
+                    b.HasIndex("RuleId");
+
+                    b.ToTable("node_filings", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Domain.Identity.Session", b =>
                 {
                     b.Property<Guid>("Id")
@@ -584,6 +678,72 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasFilter("status IN ('queued', 'running')");
 
                     b.ToTable("jobs", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Previews.BlobMedia", b =>
+                {
+                    b.Property<byte[]>("BlobHash")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob_hash");
+
+                    b.Property<string>("AudioCodec")
+                        .HasColumnType("text")
+                        .HasColumnName("audio_codec");
+
+                    b.Property<string>("Container")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("container");
+
+                    b.Property<string>("CopyError")
+                        .HasColumnType("text")
+                        .HasColumnName("copy_error");
+
+                    b.Property<int?>("CopyProgress")
+                        .HasColumnType("integer")
+                        .HasColumnName("copy_progress");
+
+                    b.Property<string>("CopyStatus")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("copy_status");
+
+                    b.Property<double?>("DurationSeconds")
+                        .HasColumnType("double precision")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("HasAudio")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_audio");
+
+                    b.Property<bool>("HasVideo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_video");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer")
+                        .HasColumnName("height");
+
+                    b.Property<string>("Plan")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("plan");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("VideoCodec")
+                        .HasColumnType("text")
+                        .HasColumnName("video_codec");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.HasKey("BlobHash");
+
+                    b.ToTable("blob_media", (string)null);
                 });
 
             modelBuilder.Entity("Dokument.Domain.Previews.BlobPreview", b =>
@@ -839,6 +999,181 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("version_details", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Tags.BlobTag", b =>
+                {
+                    b.Property<byte[]>("BlobHash")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob_hash");
+
+                    b.Property<string>("TagKey")
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("RuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rule_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.HasKey("BlobHash", "TagKey");
+
+                    b.HasIndex("RuleId");
+
+                    b.HasIndex("TagKey");
+
+                    b.ToTable("blob_tags", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.EffectiveTag", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<Guid?>("RuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rule_id");
+
+                    b.Property<DateTimeOffset>("Since")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("since");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.Property<string>("TagKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.ToTable((string)null);
+
+                    b.ToView("effective_node_tags", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.NodeTag", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<string>("TagKey")
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at");
+
+                    b.Property<Guid>("AddedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("added_by");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.HasKey("NodeId", "TagKey");
+
+                    b.HasIndex("TagKey");
+
+                    b.ToTable("node_tags", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.NodeTagRemoval", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<string>("TagKey")
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.Property<DateTimeOffset>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
+                    b.Property<Guid>("RemovedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("removed_by");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.HasKey("NodeId", "TagKey");
+
+                    b.ToTable("node_tag_removals", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.TagRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.Property<string>("TagKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("tag_key");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Words")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("words");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TagKey")
+                        .IsUnique();
+
+                    b.ToTable("tag_rules", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Infrastructure.Persistence.Setting", b =>
                 {
                     b.Property<string>("Key")
@@ -949,6 +1284,29 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Filing.FilingRule", b =>
+                {
+                    b.HasOne("Dokument.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Filing.NodeFiling", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dokument.Domain.Filing.FilingRule", null)
+                        .WithMany()
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("Dokument.Domain.Identity.Session", b =>
                 {
                     b.HasOne("Dokument.Domain.Identity.User", "User")
@@ -973,6 +1331,24 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.HasOne("Dokument.Domain.Files.FileVersion", null)
                         .WithOne()
                         .HasForeignKey("Dokument.Domain.Search.VersionDetails", "VersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.NodeTag", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Tags.NodeTagRemoval", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

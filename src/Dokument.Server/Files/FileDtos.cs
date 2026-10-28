@@ -1,7 +1,9 @@
 using Dokument.Domain.Files;
 using Dokument.Domain.Previews;
+using Dokument.Domain.Tags;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Jobs;
+using Dokument.Infrastructure.Tags;
 
 namespace Dokument.Server.Files;
 
@@ -15,6 +17,9 @@ namespace Dokument.Server.Files;
 /// The steps the worker still has to do for the current version, in pipeline order; empty when it is done. Files with
 /// any show a "Processing" badge. See <c>/nodes/{id}/processing</c> for every step.
 /// </param>
+/// <param name="Tags">The file's tags, by name: the ones people added and the automatic ones nobody removed (§13.4).</param>
+/// <param name="Media">For video and audio files, once the worker has looked at them. Null for everything else.</param>
+/// <param name="ShownAsPdf">Whether <c>/nodes/{id}/preview</c> serves a PDF made of the file, for Office documents.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -32,7 +37,10 @@ public sealed record NodeDto(
     ThumbnailState Thumbnail,
     FolderCounts? Contents,
     bool Starred,
-    List<ActiveStepDto> Processing
+    List<ActiveStepDto> Processing,
+    List<TagDto> Tags,
+    MediaDto? Media,
+    bool ShownAsPdf
 )
 {
     public static NodeDto From(
@@ -41,7 +49,10 @@ public sealed record NodeDto(
         IReadOnlyDictionary<ContentHash, ThumbnailState> thumbnails,
         IReadOnlyDictionary<Guid, FolderContents> folders,
         IReadOnlySet<Guid> starred,
-        IReadOnlyDictionary<ContentHash, List<ActiveStep>> processing
+        IReadOnlyDictionary<ContentHash, List<ActiveStep>> processing,
+        IReadOnlyDictionary<Guid, List<TagView>> tags,
+        IReadOnlyDictionary<ContentHash, MediaState> media,
+        IReadOnlySet<ContentHash> documents
     ) =>
         new(
             node.Id,
@@ -66,14 +77,61 @@ public sealed record NodeDto(
             starred.Contains(node.Id),
             node.CurrentVersion is { } current
             && processing.TryGetValue(current.BlobHash, out var steps)
-                ? steps.Select(s => new ActiveStepDto(JobKinds.Of(s.Type), s.Running)).ToList()
-                : []
+                ? steps.Select(s => new ActiveStepDto(JobKinds.StepOf(s.Type), s.Running)).ToList()
+                : [],
+            tags.TryGetValue(node.Id, out var shown)
+                ? shown.Select(t => new TagDto(t.Name, t.Source, t.RuleId)).ToList()
+                : [],
+            node.CurrentVersion is { } latest && media.TryGetValue(latest.BlobHash, out var m)
+                ? new MediaDto(
+                    m.DurationSeconds,
+                    m.HasVideo,
+                    m.HasAudio,
+                    m.VideoCodec,
+                    m.Copy,
+                    m.Progress
+                )
+                : null,
+            node.CurrentVersion is { } converted && documents.Contains(converted.BlobHash)
         );
 }
 
 /// <summary>A processing step that hasn't finished yet.</summary>
 /// <param name="Running">False while it waits its turn.</param>
-public sealed record ActiveStepDto(JobKind Step, bool Running);
+public sealed record ActiveStepDto(FileStep Step, bool Running);
+
+/// <param name="Source">Who added it: a person (<c>user</c>), a keyword rule or the ML service. Show automatic ones differently.</param>
+/// <param name="RuleId">For <c>rule</c>: which keyword rule added it.</param>
+public sealed record TagDto(string Name, TagSource Source, Guid? RuleId);
+
+/// <param name="Tags">What the file shows.</param>
+/// <param name="Removed">Automatic tags someone took off this file, which "Put back" can restore.</param>
+public sealed record FileTags(List<TagDto> Tags, List<string> Removed);
+
+/// <param name="Ids">Files to change, 1 to 1000.</param>
+/// <param name="Add">Tags to add, at most 20. Adding a removed automatic tag puts it back.</param>
+/// <param name="Remove">Tags to remove, at most 20.</param>
+public sealed record ChangeTagsRequest(List<Guid> Ids, List<string>? Add, List<string>? Remove);
+
+/// <param name="Files">How many of the person's files have it.</param>
+public sealed record TagSuggestion(string Name, int Files);
+
+public sealed record TagSuggestions(List<TagSuggestion> Tags);
+
+/// <summary>A video or audio file, as the tile and the viewer need it (docs/design.md §14).</summary>
+/// <param name="DurationSeconds">Null when the file doesn't say, e.g. some live recordings.</param>
+/// <param name="HasVideo">False for audio files; their cover art, if any, is the thumbnail.</param>
+/// <param name="VideoCodec">ffprobe's name, e.g. <c>hevc</c>: the viewer tries the original first when the browser says it plays it.</param>
+/// <param name="Copy">Whether <c>/nodes/{id}/preview</c> serves a playable copy, or will. NotNeeded means the original plays as it is.</param>
+/// <param name="Progress">How far a copy being made has got, 0 to 100.</param>
+public sealed record MediaDto(
+    double? DurationSeconds,
+    bool HasVideo,
+    bool HasAudio,
+    string? VideoCodec,
+    CopyState Copy,
+    int? Progress
+);
 
 /// <summary>What a folder holds, at any depth.</summary>
 public sealed record FolderCounts(int Files, int Folders);

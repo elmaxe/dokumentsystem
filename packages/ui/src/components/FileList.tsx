@@ -12,6 +12,7 @@ import { ProcessingIcon } from "./Processing";
 import type { FileViewProps } from "./FileGrid";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
+import { TagStrip } from "./Tags";
 import { ActionContextMenu, ActionMenu } from "./Menu";
 
 /** A column after the name. Columns with a sort key get a sortable header. */
@@ -191,6 +192,7 @@ export function FileList<T extends FileItem>({
                     </div>
                     {!!item.processing?.length && <ProcessingIcon steps={item.processing} />}
                     <FileFlags item={item} />
+                    {item.tags && <TagStrip tags={item.tags} className="shrink overflow-hidden @max-[820px]:hidden" />}
                   </div>
                 </td>
                 {columns.map((column) => (

@@ -13,12 +13,15 @@ import {
   storageReportQuery,
   textProgressQuery,
   toGib,
+  videoCopiesQuery,
 } from "./adminApi";
 
 const sections = [
   { id: "storage", icon: "hard_drive" },
   { id: "people", icon: "group" },
   { id: "textRecognition", icon: "document_scanner" },
+  { id: "videos", icon: "movie" },
+  { id: "office", icon: "description" },
   { id: "ml", icon: "neurology" },
   { id: "scanning", icon: "shield" },
   { id: "versions", icon: "history" },
@@ -53,6 +56,8 @@ export function AdminSettingsPage() {
       {(settings) => (
         <>
           <TextRecognitionSection settings={settings.data} />
+          <VideosSection key={`p${settings.dataUpdatedAt}`} settings={settings.data} />
+          <OfficeSection key={`o${settings.dataUpdatedAt}`} settings={settings.data} />
           <MlSection key={`m${settings.dataUpdatedAt}`} settings={settings.data} />
           <ScannerSection key={`c${settings.dataUpdatedAt}`} settings={settings.data} />
           <VersionsSection key={`v${settings.dataUpdatedAt}`} settings={settings.data} />
@@ -145,7 +150,7 @@ function SaveButton({ disabled, onClick }: { disabled: boolean; onClick: () => v
   );
 }
 
-/** A two-way choice drawn as connected pills. */
+/** A choice between a few short options, drawn as connected pills. */
 function Segmented<T extends string>({
   label,
   value,
@@ -661,6 +666,162 @@ function TextRecognitionSection({ settings }: { settings: AdminSettings }) {
           {t("admin.textRecognition.reread")}
         </Button>
       </div>
+    </Section>
+  );
+}
+
+type VideoSettings = AdminSettings["videos"];
+
+/** Playable copies of videos and audio browsers can't play as they are (§14): when they're made, and their size. */
+function VideosSection({ settings }: { settings: AdminSettings }) {
+  const { t, i18n } = useTranslation();
+  const toast = useSnackbar();
+  const queryClient = useQueryClient();
+  const copiesQuery = useQuery(videoCopiesQuery);
+  const [copies, setCopies] = useState(settings.videos.copies);
+  const [maxHeight, setMaxHeight] = useState(String(settings.videos.maxHeight));
+  const { busy, save } = useSave();
+  const dirty = copies !== settings.videos.copies || Number(maxHeight) !== settings.videos.maxHeight;
+  const stats = copiesQuery.data;
+  const whenOptions: { id: VideoSettings["copies"]; label: string; hint: string }[] = [
+    { id: "background", label: t("admin.videos.background"), hint: t("admin.videos.backgroundHint") },
+    { id: "onOpen", label: t("admin.videos.onOpen"), hint: t("admin.videos.onOpenHint") },
+    { id: "never", label: t("admin.videos.never"), hint: t("admin.videos.neverHint") },
+  ];
+
+  const deleteCopies = async () => {
+    try {
+      queryClient.setQueryData(videoCopiesQuery.queryKey, await admin.deleteVideoCopies());
+      toast(t("admin.videos.deleted"));
+    } catch {
+      toast(t("errors.generic"));
+    }
+  };
+
+  return (
+    <Section id="videos" intro={t("admin.videos.intro")}>
+      <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
+        <legend className="mb-2 text-label-lg text-on-surface">{t("admin.videos.when")}</legend>
+        {whenOptions.map((option) => (
+          <label
+            key={option.id}
+            className={`flex cursor-pointer items-start gap-3 rounded-md p-3 ${copies === option.id ? "bg-secondary-container" : "hover:bg-on-surface/8"}`}
+          >
+            <input
+              type="radio"
+              name="video-copies"
+              checked={copies === option.id}
+              onChange={() => setCopies(option.id)}
+              className="mt-0.5 size-5 accent-primary"
+            />
+            <span className="flex flex-col">
+              <span className="text-title-sm text-on-surface">{option.label}</span>
+              <span className="text-body-sm text-on-surface-variant">{option.hint}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <div className="flex flex-col gap-2">
+        <span className="text-label-lg text-on-surface">{t("admin.videos.size")}</span>
+        <Segmented
+          label={t("admin.videos.size")}
+          value={maxHeight}
+          options={[
+            { id: "720", label: "720p" },
+            { id: "1080", label: "1080p" },
+            { id: "0", label: t("admin.videos.original") },
+          ]}
+          onChange={setMaxHeight}
+        />
+        <span className="text-body-sm text-on-surface-variant">{t("admin.videos.sizeHint")}</span>
+      </div>
+      <SaveButton
+        disabled={busy || !dirty}
+        onClick={() => void save(() => admin.putVideos({ copies, maxHeight: Number(maxHeight) }))}
+      />
+      {stats && (
+        <div className="flex flex-col gap-2 rounded-md bg-surface-container p-4 text-body-md">
+          <span className="tabular flex items-center gap-2 text-title-sm">
+            <Icon name="check_circle" filled className="text-success" size={20} />
+            {t("admin.videos.made", { count: stats.count, size: formatBytes(stats.bytes, i18n.language) })}
+          </span>
+          {stats.waiting > 0 && (
+            <span className="tabular flex items-center gap-2 text-on-surface-variant">
+              <Icon name="hourglass_top" size={20} />
+              {t("admin.videos.waiting", { count: stats.waiting })}
+            </span>
+          )}
+          {stats.failed > 0 && (
+            <span className="flex items-center gap-2 text-on-surface-variant">
+              <Icon name="error" size={20} className="text-error" />
+              {t("admin.videos.failed", { count: stats.failed })}
+            </span>
+          )}
+          <span className="flex items-start gap-2 text-body-sm text-on-surface-variant">
+            <Icon name="info" size={20} />
+            {t("admin.videos.engine")}
+          </span>
+        </div>
+      )}
+      {stats && stats.count + stats.failed > 0 && (
+        <div className="flex justify-end">
+          <Button variant="outlined" icon="delete_sweep" onClick={() => void deleteCopies()}>
+            {t("admin.videos.delete")}
+          </Button>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+/** Office previews (§10.3, §14): where Gotenberg runs, checked before saving. */
+function OfficeSection({ settings }: { settings: AdminSettings }) {
+  const { t } = useTranslation();
+  const initial = settings.office.gotenbergUrl ?? "";
+  const configured = settings.office.configured;
+  const [url, setUrl] = useState(initial);
+  const [test, setTest] = useState<ProbeResult | "testing" | null>(null);
+  const { busy, save } = useSave();
+
+  const runTest = async () => {
+    setTest("testing");
+    try {
+      setTest(await admin.testOffice(url.trim()));
+    } catch {
+      setTest({ reachable: false, version: null, error: t("errors.generic") });
+    }
+  };
+
+  return (
+    <Section id="office" intro={t("admin.office.intro")}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <TextField
+          label={t("admin.office.address")}
+          value={url}
+          onChange={(event) => {
+            setUrl(event.target.value);
+            setTest(null);
+          }}
+          placeholder="http://gotenberg:3000"
+          hint={configured ? t("admin.office.configured") : t("admin.office.addressHint")}
+          readOnly={configured}
+          mono
+          className="flex-1"
+        />
+        <Button variant="outlined" icon="network_check" disabled={!url.trim() || test === "testing"} onClick={() => void runTest()} className="sm:mt-6">
+          {t("admin.ml.test")}
+        </Button>
+      </div>
+      <ProbeBanner
+        result={test}
+        okText={(p) => t("admin.office.connected", { version: p.version })}
+        failText={(e) => t("admin.office.failed", { error: e })}
+      />
+      {!initial && !url.trim() && <Banner tone="info">{t("admin.office.off")}</Banner>}
+      {!initial && url.trim() && <Banner tone="info">{t("admin.office.backfill")}</Banner>}
+      {!configured && (
+        <SaveButton disabled={busy || url.trim() === initial} onClick={() => void save(() => admin.putOffice(url.trim() || null))} />
+      )}
     </Section>
   );
 }

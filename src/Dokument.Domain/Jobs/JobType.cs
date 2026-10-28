@@ -15,8 +15,30 @@ public sealed record JobType
     /// <summary>Searchable text for one blob: the text layer, then recognition for scans and photos (§10.2, §13.2).</summary>
     public static readonly JobType Text = new("text");
 
+    /// <summary>Runs one keyword rule over the stored text of every blob, after an admin changed it (§13.4).</summary>
+    public static readonly JobType TagRule = new("tag-rule");
+
+    /// <summary>Runs its owner's filing rules on one file, after it got a tag or new bytes (§13.6). The subject is the node id.</summary>
+    public static readonly JobType File = new("file");
+
+    /// <summary>Files everything that has a filing rule's tag now, when the person asks for it (§13.6).</summary>
+    public static readonly JobType FilingRule = new("filing-rule");
+
+    /// <summary>A playable copy of a video or audio blob the browser can't play as it is (§10.2, §14).</summary>
+    public static readonly JobType Transcode = new("transcode");
+
+    /// <summary>The steps every file goes through, in pipeline order (§10.2).</summary>
+    public static readonly IReadOnlyList<JobType> FileSteps = [Thumbnail, Metadata, Text];
+
     /// <summary>The types the worker runs, in the order the admin Jobs page shows them (§10.1).</summary>
-    public static readonly IReadOnlyList<JobType> All = [Thumbnail, Metadata, Text];
+    public static readonly IReadOnlyList<JobType> All =
+    [
+        .. FileSteps,
+        Transcode,
+        TagRule,
+        File,
+        FilingRule,
+    ];
 
     private JobType(string name) => Name = name;
 
