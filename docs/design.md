@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.33** · Last updated: 2026-10-28
+> Status: **Draft v0.34** · Last updated: 2026-10-29
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -206,18 +206,19 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   - The IdP's response comes back as a query string, so the short-lived correlation cookies can be SameSite=Lax. That also lets login work over plain http on a LAN.
   - Clients that run the sign-in themselves (the API reference now, the mobile app in M5) use the **token endpoint**, `POST /api/v1/auth/token`:
     1. The client opens the IdP's authorize URL with our client id and PKCE: Scalar in a popup, the app in the system browser.
-    2. The IdP redirects back to the client with a code. Scalar gets it at its page; the app gets it at a custom scheme.
-    3. The client sends an OAuth token request (`grant_type=authorization_code`, `code`, `code_verifier`, `redirect_uri`).
+    2. The IdP redirects back to the client with a code. Scalar gets it at its page. The app's redirect URI is an https page on our server, `${PUBLIC_URL}/api/v1/auth/app-callback`, which answers `302` to `dokumentsystem://signed-in` with the IdP's query unchanged, so the IdP only needs ordinary redirect URIs (decision 37).
+    3. The client sends an OAuth token request (`grant_type=authorization_code`, `code`, `code_verifier`, `redirect_uri`). The app adds `device_name` (the phone's model), which names the session under active devices; other clients are named from their User-Agent.
     4. The server redeems the code as the confidential client, so the secret never leaves it. It validates the ID token, reads userinfo and provisions the person as at web login.
     5. It answers with one of our own **bearer sessions** as `access_token`. The IdP's tokens are dropped, and no refresh token is needed because sessions slide.
   - Errors use OAuth's shape (`invalid_grant`, `access_denied`, …). Requests share login's rate limit.
-  - Codes are redeemed only for allow-listed redirect URIs, which must also be registered at the IdP. Today that is only the API reference's page (`${PUBLIC_URL}/scalar/`), in development. M5 adds the app's scheme.
+  - Codes are redeemed only for allow-listed redirect URIs, which must also be registered at the IdP: the app's `${PUBLIC_URL}/api/v1/auth/app-callback` always, and the API reference's page (`${PUBLIC_URL}/scalar/`) in development.
+  - `GET /api/v1/auth/config` tells such clients the issuer, client id, scope and the app's redirect URI. All are null while sign-in is off.
 - **Configuration** is bootstrap env (§4.3). Sign-in stays off until `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set, so a fresh install still starts.
 
   | Variable | Default | Meaning |
   |---|---|---|
   | `OIDC_ISSUER` | — | Issuer URL, e.g. `https://auth.example.com/application/o/dokument/` |
-  | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | — | The confidential client registered at the IdP. Its redirect URI is `${PUBLIC_URL}/api/v1/auth/callback`. |
+  | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | — | The confidential client registered at the IdP. Its redirect URIs are `${PUBLIC_URL}/api/v1/auth/callback` and, for the mobile app, `${PUBLIC_URL}/api/v1/auth/app-callback`. |
   | `OIDC_SCOPE` | `openid profile email` | Add `groups` for IdPs that need it (e.g. Authelia) |
   | `OIDC_GROUPS_CLAIM` | `groups` | Read from the ID token and the userinfo endpoint |
   | `OIDC_USER_GROUP` | unset (anyone at the IdP may log in) | Allow-list group |
@@ -231,7 +232,8 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   - **Lifetime:** a session expires after **30 days without use**. Each use slides the expiry forward, with at most one write every 5 minutes.
   - **Web:** an httpOnly, SameSite=Lax cookie (`dokument_session`). It is Secure whenever `PUBLIC_URL` is https.
     - CSRF: mutations made with the cookie must send `X-CSRF-Token`. Its value is a hash of the session token, returned by `GET /api/v1/auth/session`.
-  - **Mobile:** the same opaque token, sent as `Authorization: Bearer`. It is stored in the secure enclave/keystore and needs no CSRF token.
+  - **Mobile:** the same opaque token, sent as `Authorization: Bearer`. It is stored in the Keychain or Android Keystore (expo-secure-store) and needs no CSRF token. Only the live updates hub also reads it from the `access_token` query, because WebSockets can't send headers (§15.4).
+  - **Session proof:** `POST /api/v1/auth/proof` with `{sessionId, nonce}` answers `{proof}`, the base64url HMAC-SHA256 of the nonce's text keyed by the stored SHA-256 of the session token. The app computes the same from its token, so a local address can prove it's this server without the token crossing the network (§15.3). The nonce is 16–64 random bytes as base64url; unknown, revoked and cookie sessions get 404. It shares login's rate limit.
   - **Revoking:** users list and revoke their own sessions ("active devices": `GET/DELETE /api/v1/sessions`). Admins do the same for anyone (`/api/v1/admin/users/{id}/sessions`, `/api/v1/admin/sessions/{id}`). A revoked session stops working on its next request.
   - **Sign out** revokes the current session only. It does not end the user's session at the IdP.
 - **API keys:** personal, scoped (read-only / read-write), for scripts, rclone and WebDAV later.
@@ -243,12 +245,13 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 - **Rate limiting:** 20 login starts per minute per IP.
 - **Break-glass:** a CLI command in the container (`dokument admin reset-oidc` / `create-admin-token`) for when the IdP is broken.
 - **Local development:** Aspire runs Keycloak with a `dokument` realm. Its test users are alice (admin), bob (user) and carol (no groups); each password is the username.
+  - The realm's `dokument` client allows the web callback, Scalar's page and the app's callback at `http://localhost:5173`. A phone can't reach `localhost`, so signing in from a device needs `PUBLIC_URL` and the realm's redirect URIs at an address the phone can reach.
   - The API reference (Scalar, `${PUBLIC_URL}/scalar/`, proxied by Vite) has an Authorize button. It signs in at Keycloak through the token endpoint, and its requests then carry a bearer session, which is listed under active devices.
 - **Built in M0:** login, sessions, CSRF and active devices. **Still to come:**
   - API keys and the break-glass CLI
   - auth audit events, with the audit table in M1
   - the quota claim (§17.1), right after the admin settings page
-  - the mobile hand-off, in M5
+- **Built in M5:** the app's sign-in through the token endpoint and the callback page, device names, the session proof and the bearer token on the live hub.
 
 ---
 
@@ -776,22 +779,28 @@ These are better in React DOM than through React Native Web.
 
 ### 15.3 Mobile app (React Native)
 
+Expo (SDK 58) with Expo Router and NativeWind on the shared tokens, in `apps/mobile`. It reuses `@dokument/api`, `@dokument/core` and `@dokument/i18n`, the web's query keys, and the same live notices. Development builds only, no Expo Go, since the scanner and share target need native code. The app id is `io.github.elmaxe.dokumentsystem` and the scheme `dokumentsystem`; CI builds a debug APK, and there is no store listing yet (decision 37).
+
 - **Onboarding:**
-  1. Enter the server URL.
-  2. Log in via OIDC in the system browser.
-  3. Optionally add a **secondary URL** for automatic LAN/WAN switching (on home Wi-Fi, use the local URL), as Immich does.
-- **Core:** browse, preview, search, share, upload, versions, trash.
+  1. Enter the server's address. The app checks `GET /api/v1/server/info` names Dokumentsystem before going on. The address must be https, except in development builds.
+  2. Sign in at the IdP in the system browser (an auth session, so the browser's sign-in is reused) with PKCE, back through the callback page (§5), then redeem the code at the token endpoint.
+  3. Optionally add a **local address** in Settings → Addresses.
+- **Main and local address (decision 37):** the app uses the local address whenever the server there proves it holds the app's session (§5, session proof), and the main address otherwise. It checks on start, when the app comes back to the front and when the network changes, with a 1.5 s timeout, starting on the main address so nothing waits. No Wi-Fi names, so no location permission. The local address may be plain http (iOS allows local networking, Android allows cleartext); the token is only sent there after a proof.
+- **Places:** a navigation bar with My files, Shared with me, Search and Recent; Starred and Settings from the account sheet, and Trash once file actions arrive. Shared with me says "Sharing is coming" until M4. Lists show folders, then files as a grid or a list, sorted by name, modified or size, kept per phone. Thumbnails load with the session header and are cached on disk by version.
+- **Viewers:** images natively; PDFs with the web's pdf.js as an Expo DOM component, which keeps search marks; text and Markdown as DOM components too; video and audio with expo-video. "Open in another app" downloads the original to the cache and opens the share sheet.
+- **Offline (decision 37):** no pinned files yet. The query cache (listings, Starred, Recent, the account) is kept on the phone for 7 days and shown read-only when offline, with a notice; thumbnails come from the image cache. Opening unseen files, uploads and changes wait for a connection.
 - **Document scanner:** camera → edge detection and perspective correction → multi-page PDF → upload → server OCR. Uses VisionKit on iOS and ML Kit Document Scanner on Android, via `react-native-document-scanner-plugin`.
-- **Share target:** "Share to Dokumentsystem" from other apps. This needs native extensions, which is why we use dev builds.
-- **Offline files:** pin a file or folder to keep a local copy, synced when it changes.
-- **Background uploads:** resumable tus uploads that survive app suspension. Expect iOS limitations.
+- **Share target:** "Share to Dokumentsystem" from other apps, with a folder picker.
+- **Uploads (decision 37):** tus, like the web. They run while the OS lets the app run; when it stops them they pause, and resume from the server's offset when the app is back, with a local notification. Native background transfer comes later.
+- **Settings:** language (on the account, Same as device by default), appearance (Same as device / Light / Dark, on the phone), seconds in times (on the account), addresses, active devices with sign-out per device, versions. Admin pages stay in the browser: the account sheet has "Open admin pages in the browser" (decision 37).
 - **Push notifications (later):** via **ntfy / UnifiedPush** to avoid depending on Google and Apple. The in-app notification center works without it.
+- **Built so far (M5):** onboarding and sign-in, address switching with the proof, My files and folders, Starred, Recent, the account sheet with storage, Settings with addresses and active devices, Open in another app and stars, the offline cache, live updates. Viewers, uploads with the scanner and share target, search, trash and file actions come next, then sharing after M4.
 
 ### 15.4 Live updates
 
 Changes made in one tab or on one device show up in the person's other open clients without a refresh (decision 25).
 
-- **Transport:** one SignalR hub at `/api/v1/live`, server to client only. The web client tries WebSockets, then Server-Sent Events, then long polling. It signs in with the session cookie and sends `X-CSRF-Token` on SignalR's own POSTs; mobile will use the bearer token (M5). Reverse proxies must pass WebSocket upgrades on `/api/v1/live`; without them the client falls back to SSE or long polling and still works.
+- **Transport:** one SignalR hub at `/api/v1/live`, server to client only. The web client tries WebSockets, then Server-Sent Events, then long polling. It signs in with the session cookie and sends `X-CSRF-Token` on SignalR's own POSTs. The app sends its bearer token, which SignalR puts in the `access_token` query for WebSockets; the hub is the only place the server reads it there (§5). The app is connected only while it is in front, and refetches what's on screen when it comes back. Reverse proxies must pass WebSocket upgrades on `/api/v1/live`; without them the client falls back to SSE or long polling and still works.
 - **Notices travel through Postgres.** Whatever changes data (API, purge, worker) runs `pg_notify('dokument_live', …)` on its own connection, inside its transaction, so a notice is sent on commit and dropped on rollback. The server `LISTEN`s on a dedicated connection and forwards each notice to the SignalR groups `user:{id}`. This also lets the worker's thumbnail jobs reach clients without a second channel, and works with several server instances.
 - **Notices are thin:** a list of topics and an optional origin, never ids, names or sizes. Clients refetch through the normal API, so permission checks live in one place and nothing private travels on the socket.
 
@@ -814,7 +823,7 @@ Changes made in one tab or on one device show up in the person's other open clie
   - A folder that is trashed or deleted while open shows an empty state with "Open trash" and "Go to My files".
   - After 30 s without a connection, a banner says changes from other devices will show up when it's back.
   - When a session is ended from another device, or signed out in another tab, its clients get `signedOut` and go to the sign-in page ("You were signed out because this session was ended"). The server closes those connections 2 s later.
-- **Out of scope for now:** live progress of other devices' uploads, presence ("who else is looking"), the notification center (§20) and the mobile client (M5).
+- **Out of scope for now:** live progress of other devices' uploads, presence ("who else is looking") and the notification center (§20).
 
 ---
 
@@ -1086,7 +1095,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, the web viewer for images, PDFs, text and browser-playable media, the admin Jobs page with per-file processing status (decision 27), the CodeMirror 6 text viewer and formatted Markdown (decision 31), video posters, audio cover art and playable copies with the admin's Video and audio section (decision 32), and Office previews through Gotenberg (decision 33). M2 is complete; PDF page thumbnails and free search inside a document in the viewer come later. |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Then details and text in the file info, with corrections search uses (§13.6, decision 28). Tags with keyword rules came next (§13.4, decision 29). Then filing rules that move tagged files (§13.6, decision 30). |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
-| **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
+| **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching. **Built so far:** the app's foundation (§15.3): sign-in through the token endpoint and callback page, main and local addresses with the session proof, My files, Starred, Recent, Settings, active devices, the offline cache and live updates (decision 37). |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback, transcription of audio and video into searchable, timed text |
 | **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders), PDF split and merge through Gotenberg (§10.3) |
@@ -1131,6 +1140,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 32 | Video and audio | 2026-10-25: ffprobe in the thumbnail stage stores `blob_media` per blob and plans playback by what every current browser plays (direct / remux / transcode); posters from the most typical frame 10 % in, cover art for audio; one MP4 copy per blob only when needed, streams copied when they play, otherwise H.264/AAC at CRF 23 fitted to 1080p (admin: 720p, 1080p or original), HDR tone-mapped, `+faststart`, no HLS; copies made in the background by default, or when opened, or never; failures not retried; HEVC-capable browsers get the original first; progress polled, not pushed (§10.3, §14) |
 | 33 | Office previews | 2026-10-25: Gotenberg is optional, its URL an admin setting with a Test button (empty = off); the thumbnail stage converts Office and OpenDocument files by MIME type with the bytes checked, one page per sheet, and keeps one PDF per blob that the viewer shows with pdf.js and a "shown as PDF" note; page 1 makes the thumbnails; refused files fail without retries, an unreachable Gotenberg retries; turning it on queues documents uploaded while it was off; .doc/.xls/.ppt text comes from the PDF (§10.3, §14) |
 | 36 | Theme setting | 2026-10-27: Same as device / Light / Dark on the Settings page, Same as device by default; saved per device in `localStorage`, not on the account, and applied by an inline script before first paint (§16.5) |
+| 37 | Mobile app (M5) | 2026-10-28: the IdP redirects to an https callback page that hands the code to `dokumentsystem://signed-in`, so IdPs only need ordinary redirect URIs; the local address is used when it proves the session (HMAC of a nonce keyed by the stored token hash, checked on start, foreground and network change, 1.5 s timeout), with no Wi-Fi names or location; PDFs through the web's pdf.js as an Expo DOM component; uploads pause when the OS stops the app and resume from the tus offset; no pinned offline files, a 7-day query cache and the thumbnail cache instead; no admin pages in the app; app id `io.github.elmaxe.dokumentsystem`, scheme `dokumentsystem`, a debug APK from CI and no store listing (§5, §15.3, §15.4) |
 
 ## 26. Open questions
 

@@ -45,19 +45,29 @@ export default function Addresses() {
 
   const checked = route.checkedAt ? format.date(new Date(route.checkedAt), true) : null;
   const status = (() => {
-    if (!checked) return { text: t("mobile.addresses.notChecked"), className: "text-on-surface-variant" };
+    if (!checked)
+      return { text: t("mobile.addresses.notChecked"), className: "text-on-surface-variant" };
     switch (route.local) {
       case "verified":
         return { text: t("mobile.addresses.inUse", { date: checked }), className: "text-success" };
       case "wrong-server":
-        return { text: t("mobile.addresses.wrongServer", { date: checked }), className: "text-error" };
+        return {
+          text: t("mobile.addresses.wrongServer", { date: checked }),
+          className: "text-error",
+        };
       default:
-        return { text: t("mobile.addresses.notAnswering", { date: checked }), className: "text-on-surface-variant" };
+        return {
+          text: t("mobile.addresses.notAnswering", { date: checked }),
+          className: "text-on-surface-variant",
+        };
     }
   })();
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1 bg-surface">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      className="flex-1 bg-surface"
+    >
       <TopBar title={t("mobile.addresses.title")} back />
       <ScrollView
         keyboardShouldPersistTaps="handled"
@@ -103,7 +113,13 @@ export default function Addresses() {
           <View className="flex-row flex-wrap gap-2">
             {server.localUrl && draft.trim() === server.localUrl ? (
               <>
-                <Button label={t("mobile.addresses.test")} variant="tonal" icon="refresh" onPress={() => void test()} busy={busy} />
+                <Button
+                  label={t("mobile.addresses.test")}
+                  variant="tonal"
+                  icon="refresh"
+                  onPress={() => void test()}
+                  busy={busy}
+                />
                 <Button
                   label={t("mobile.addresses.remove")}
                   variant="text"
@@ -114,7 +130,13 @@ export default function Addresses() {
                 />
               </>
             ) : (
-              <Button label={t("mobile.addresses.add")} variant="tonal" icon="add" onPress={() => void add()} busy={busy} />
+              <Button
+                label={t("mobile.addresses.add")}
+                variant="tonal"
+                icon="add"
+                onPress={() => void add()}
+                busy={busy}
+              />
             )}
           </View>
         </Section>

@@ -6,7 +6,11 @@ import { Icon, type IconName } from "../../../src/ui/Icon";
 import { OfflineNotice } from "../../../src/ui/OfflineNotice";
 import { Text } from "../../../src/ui/Text";
 
-const tabs: { name: string; label: "myFiles" | "sharedWithMe" | "search" | "recent"; icon: IconName }[] = [
+const tabs: {
+  name: string;
+  label: "myFiles" | "sharedWithMe" | "search" | "recent";
+  icon: IconName;
+}[] = [
   { name: "index", label: "myFiles", icon: "folder" },
   { name: "shared", label: "sharedWithMe", icon: "folder_shared" },
   { name: "search", label: "search", icon: "search" },
@@ -39,14 +43,20 @@ export default function TabsLayout() {
                   }}
                   className="h-20 flex-1 items-center justify-center gap-1"
                 >
-                  <View className={`h-8 w-16 items-center justify-center rounded-full ${selected ? "bg-secondary-container" : ""}`}>
+                  <View
+                    className={`h-8 w-16 items-center justify-center rounded-full ${selected ? "bg-secondary-container" : ""}`}
+                  >
                     <Icon
                       name={tab.icon}
                       filled={selected}
                       color={selected ? "on-secondary-container" : "on-surface-variant"}
                     />
                   </View>
-                  <Text variant="label-md" numberOfLines={1} className={selected ? "text-on-surface" : "text-on-surface-variant"}>
+                  <Text
+                    variant="label-md"
+                    numberOfLines={1}
+                    className={selected ? "text-on-surface" : "text-on-surface-variant"}
+                  >
                     {t(`nav.${tab.label}`)}
                   </Text>
                 </Pressable>

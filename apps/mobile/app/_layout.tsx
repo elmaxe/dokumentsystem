@@ -1,5 +1,9 @@
 import "../global.css";
-import { AlbertSans_400Regular, AlbertSans_500Medium, AlbertSans_600SemiBold } from "@expo-google-fonts/albert-sans";
+import {
+  AlbertSans_400Regular,
+  AlbertSans_500Medium,
+  AlbertSans_600SemiBold,
+} from "@expo-google-fonts/albert-sans";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
@@ -62,7 +66,12 @@ function Navigation({ ready }: { ready: boolean }) {
   return (
     <>
       <StatusBar style={theme.scheme === "dark" ? "light" : "dark"} />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.color("surface") } }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.color("surface") },
+        }}
+      >
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(app)" />
         </Stack.Protected>

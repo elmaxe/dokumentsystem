@@ -36,14 +36,20 @@ export default function Welcome() {
       queryClient.setQueryData(["find", parsed.url], found);
       await chooseServer(parsed.url);
     } catch (failure) {
-      const reason = failure instanceof SignInError && failure.reason === "notDokument" ? "notDokument" : "unreachable";
+      const reason =
+        failure instanceof SignInError && failure.reason === "notDokument"
+          ? "notDokument"
+          : "unreachable";
       setError(t(`mobile.welcome.errors.${reason}`));
       setBusy(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1 bg-surface">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      className="flex-1 bg-surface"
+    >
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }}

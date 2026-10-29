@@ -6,5 +6,12 @@ import { useTheme } from "../../src/state/theme";
 export default function SignedInLayout() {
   const theme = useTheme();
   useLiveUpdates();
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.color("surface") } }} />;
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: theme.color("surface") },
+      }}
+    />
+  );
 }

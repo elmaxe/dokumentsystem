@@ -61,7 +61,11 @@ export default function Settings() {
           <Card>
             <NavRow
               icon="translate"
-              label={account.language ? languageNames[account.language] : t("mobile.settings.languageDevice")}
+              label={
+                account.language
+                  ? languageNames[account.language]
+                  : t("mobile.settings.languageDevice")
+              }
               onPress={() => setChoosingLanguage(true)}
             />
           </Card>
@@ -82,7 +86,9 @@ export default function Settings() {
             label={t("settings.time.seconds")}
             hint={t("settings.time.example", { example: format.date(new Date()) })}
             value={account.showSeconds}
-            onChange={(value) => void save(account.setShowSeconds(value), t("account.settingFailed"))}
+            onChange={(value) =>
+              void save(account.setShowSeconds(value), t("account.settingFailed"))
+            }
           />
         </Section>
         <Section title={t("mobile.settings.connection")}>
@@ -90,7 +96,11 @@ export default function Settings() {
             <NavRow
               icon="router"
               label={t("mobile.settings.addresses")}
-              value={route.using === "local" ? t("mobile.settings.usingLocal") : t("mobile.settings.usingMain")}
+              value={
+                route.using === "local"
+                  ? t("mobile.settings.usingLocal")
+                  : t("mobile.settings.usingMain")
+              }
               valueClassName={route.using === "local" ? "text-success" : undefined}
               onPress={() => router.push("/settings/addresses")}
               divider
@@ -98,7 +108,11 @@ export default function Settings() {
             <NavRow
               icon="devices"
               label={t("mobile.settings.devices")}
-              value={sessions.data ? t("mobile.settings.devicesCount", { count: sessions.data.length }) : undefined}
+              value={
+                sessions.data
+                  ? t("mobile.settings.devicesCount", { count: sessions.data.length })
+                  : undefined
+              }
               onPress={() => router.push("/settings/devices")}
             />
           </Card>
@@ -113,14 +127,25 @@ export default function Settings() {
           </Text>
         </Section>
       </ScrollView>
-      <Sheet open={choosingLanguage} onClose={() => setChoosingLanguage(false)} title={t("account.language")}>
+      <Sheet
+        open={choosingLanguage}
+        onClose={() => setChoosingLanguage(false)}
+        title={t("account.language")}
+      >
         {(["device", "sv", "en"] as const).map((choice) => {
           const selected = (account.language ?? "device") === choice;
           return (
             <SheetAction
               key={choice}
-              icon={<Icon name={selected ? "check" : "radio_button_unchecked"} color={selected ? "primary" : "outline"} />}
-              label={choice === "device" ? t("mobile.settings.languageDevice") : languageNames[choice]}
+              icon={
+                <Icon
+                  name={selected ? "check" : "radio_button_unchecked"}
+                  color={selected ? "primary" : "outline"}
+                />
+              }
+              label={
+                choice === "device" ? t("mobile.settings.languageDevice") : languageNames[choice]
+              }
               selected={selected}
               onPress={() => {
                 setChoosingLanguage(false);

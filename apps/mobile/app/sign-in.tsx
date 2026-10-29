@@ -22,7 +22,12 @@ export default function SignIn() {
   const { state, signedIn, changeServer } = useSession();
   const url = state.status === "signedOut" ? (state.server?.mainUrl ?? "") : "";
   const ended = state.status === "signedOut" && state.ended;
-  const found = useQuery({ queryKey: ["find", url], queryFn: () => findServer(url), enabled: !!url, retry: false });
+  const found = useQuery({
+    queryKey: ["find", url],
+    queryFn: () => findServer(url),
+    enabled: !!url,
+    retry: false,
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,8 +96,12 @@ export default function SignIn() {
         )}
       </View>
       {ended ? <Notice tone="warning" icon="warning" text={t("live.sessionEnded")} /> : null}
-      {found.isError ? <Notice tone="error" icon="error" text={t("mobile.signIn.unreachable")} /> : null}
-      {found.data && !found.data.auth.enabled ? <Notice tone="warning" icon="warning" text={t("auth.notConfigured")} /> : null}
+      {found.isError ? (
+        <Notice tone="error" icon="error" text={t("mobile.signIn.unreachable")} />
+      ) : null}
+      {found.data && !found.data.auth.enabled ? (
+        <Notice tone="warning" icon="warning" text={t("auth.notConfigured")} />
+      ) : null}
       {error ? <Notice tone="error" icon="error" text={error} /> : null}
       <Text variant="body-lg" className="text-on-surface-variant">
         {provider ? t("mobile.signIn.hint", { provider }) : t("mobile.signIn.hintGeneric")}
@@ -100,7 +109,12 @@ export default function SignIn() {
       <View className="flex-1" />
       <View className="gap-2">
         {found.isError ? (
-          <Button label={t("mobile.tryAgain")} variant="tonal" icon="refresh" onPress={() => void found.refetch()} />
+          <Button
+            label={t("mobile.tryAgain")}
+            variant="tonal"
+            icon="refresh"
+            onPress={() => void found.refetch()}
+          />
         ) : (
           <Button
             label={provider ? t("auth.signInWith", { provider }) : t("auth.signIn")}
@@ -110,7 +124,11 @@ export default function SignIn() {
             disabled={!found.data?.auth.enabled}
           />
         )}
-        <Button label={t("mobile.signIn.otherServer")} variant="text" onPress={() => void changeServer()} />
+        <Button
+          label={t("mobile.signIn.otherServer")}
+          variant="text"
+          onPress={() => void changeServer()}
+        />
       </View>
     </ScrollView>
   );

@@ -2,14 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "lib": [
-      "ES2023",
-      "DOM"
-    ],
-    "types": [
-      "react-native",
-      "node"
-    ],
+    "lib": ["ES2023", "DOM"],
+    "types": ["react-native", "node"],
     "allowJs": false
   },
   "include": [

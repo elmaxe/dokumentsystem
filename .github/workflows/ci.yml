@@ -27,6 +27,36 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  android:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @dokument/tokens build
+      # The native project is generated from app.config.ts, never committed (docs/design.md §15.3, decision 37).
+      - name: Generate the Android project
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --platform android --no-install
+      - name: Build the debug APK
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dokumentsystem-debug-apk
+          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
   dotnet:
     name: .NET
     runs-on: ubuntu-latest

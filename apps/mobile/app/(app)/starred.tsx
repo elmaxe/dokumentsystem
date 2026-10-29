@@ -16,7 +16,8 @@ export default function Starred() {
   const { t } = useTranslation();
   const starred = useQuery(starredQuery);
   const [selected, setSelected] = useState<NodeDto | null>(null);
-  const openFolder = (node: NodeDto) => router.push({ pathname: "/folder/[id]", params: { id: node.id } });
+  const openFolder = (node: NodeDto) =>
+    router.push({ pathname: "/folder/[id]", params: { id: node.id } });
 
   return (
     <View className="flex-1 bg-surface">
@@ -30,7 +31,11 @@ export default function Starred() {
         onRefresh={() => void starred.refetch()}
         empty={
           starred.isPending ? undefined : (
-            <EmptyState icon="star" title={t("files.empty.starredTitle")} text={t("files.empty.starredText")} />
+            <EmptyState
+              icon="star"
+              title={t("files.empty.starredTitle")}
+              text={t("files.empty.starredText")}
+            />
           )
         }
       />

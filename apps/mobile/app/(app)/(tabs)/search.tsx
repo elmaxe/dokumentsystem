@@ -10,7 +10,11 @@ export default function Search() {
   return (
     <View className="flex-1 bg-surface">
       <TopBar title={t("nav.search")} actions={<AccountButton />} />
-      <EmptyState icon="search" title={t("mobile.searchSoon.title")} text={t("mobile.searchSoon.text")} />
+      <EmptyState
+        icon="search"
+        title={t("mobile.searchSoon.title")}
+        text={t("mobile.searchSoon.text")}
+      />
     </View>
   );
 }

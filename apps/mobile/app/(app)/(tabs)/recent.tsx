@@ -20,7 +20,8 @@ export default function Recent() {
   const [selected, setSelected] = useState<NodeDto | null>(null);
   const items = useMemo(() => recent.data?.items ?? [], [recent.data]);
   const activity = useMemo(() => new Map(items.map((item) => [item.node.id, item])), [items]);
-  const openFolder = (node: NodeDto) => router.push({ pathname: "/folder/[id]", params: { id: node.id } });
+  const openFolder = (node: NodeDto) =>
+    router.push({ pathname: "/folder/[id]", params: { id: node.id } });
 
   return (
     <View className="flex-1 bg-surface">
@@ -30,7 +31,9 @@ export default function Recent() {
         keepOrder
         meta={(node) => {
           const item = activity.get(node.id);
-          return item ? t(`files.activity.${item.action}`, { date: format.date(item.at, true) }) : format.date(node.modifiedAt);
+          return item
+            ? t(`files.activity.${item.action}`, { date: format.date(item.at, true) })
+            : format.date(node.modifiedAt);
         }}
         onOpenFolder={openFolder}
         onOpenFile={setSelected}
@@ -39,7 +42,11 @@ export default function Recent() {
         onRefresh={() => void recent.refetch()}
         empty={
           recent.isPending ? undefined : (
-            <EmptyState icon="schedule" title={t("files.empty.recentTitle")} text={t("files.empty.recentText")} />
+            <EmptyState
+              icon="schedule"
+              title={t("files.empty.recentTitle")}
+              text={t("files.empty.recentText")}
+            />
           )
         }
       />

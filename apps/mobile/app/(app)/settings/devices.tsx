@@ -47,7 +47,10 @@ export default function Devices() {
   return (
     <View className="flex-1 bg-surface">
       <TopBar title={t("mobile.devices.title")} back />
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 24 }} contentContainerClassName="gap-4 px-4 pt-4">
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        contentContainerClassName="gap-4 px-4 pt-4"
+      >
         <Text variant="body-md" className="text-on-surface-variant">
           {t("mobile.devices.intro")}
         </Text>
@@ -55,7 +58,11 @@ export default function Devices() {
         {sessions.isPending ? <ActivityIndicator color={theme.color("primary")} /> : null}
         <Card>
           {sorted.map((session, index) => {
-            const name = session.deviceName ?? (session.kind === "cookie" ? t("mobile.devices.browser") : t("mobile.devices.unnamed"));
+            const name =
+              session.deviceName ??
+              (session.kind === "cookie"
+                ? t("mobile.devices.browser")
+                : t("mobile.devices.unnamed"));
             return (
               <View
                 key={session.id}
@@ -64,10 +71,15 @@ export default function Devices() {
                 <Icon name={session.kind === "cookie" ? "computer" : "smartphone"} />
                 <View className="flex-1">
                   <Text className="text-on-surface">{name}</Text>
-                  <Text variant="body-sm" className={session.current ? "text-success" : "text-on-surface-variant"}>
+                  <Text
+                    variant="body-sm"
+                    className={session.current ? "text-success" : "text-on-surface-variant"}
+                  >
                     {session.current
                       ? t("mobile.devices.thisDevice")
-                      : t("mobile.devices.lastUsed", { date: format.date(session.lastSeenAt, true) })}
+                      : t("mobile.devices.lastUsed", {
+                          date: format.date(session.lastSeenAt, true),
+                        })}
                   </Text>
                 </View>
                 <Button

@@ -10,7 +10,11 @@ export default function Shared() {
   return (
     <View className="flex-1 bg-surface">
       <TopBar title={t("nav.sharedWithMe")} actions={<AccountButton />} />
-      <EmptyState icon="folder_shared" title={t("mobile.sharingSoon.title")} text={t("mobile.sharingSoon.text")} />
+      <EmptyState
+        icon="folder_shared"
+        title={t("mobile.sharingSoon.title")}
+        text={t("mobile.sharingSoon.text")}
+      />
     </View>
   );
 }

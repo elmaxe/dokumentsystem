@@ -15,7 +15,8 @@ const config: ExpoConfig = {
     infoPlist: {
       // The local address is often plain http on a home network (§15.3).
       NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
-      NSLocalNetworkUsageDescription: "Connects to your Dokumentsystem server at its local address.",
+      NSLocalNetworkUsageDescription:
+        "Connects to your Dokumentsystem server at its local address.",
     },
   },
   android: {
