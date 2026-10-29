@@ -10,7 +10,7 @@
 // and worker's traces, metrics and logs show up in the dashboard. Outside Aspire it stays off until that variable is
 // set (docs/design.md §22.1).
 
-using System.Net.NetworkInformation;
+using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Configuration;
 
@@ -20,6 +20,9 @@ var builder = DistributedApplication.CreateBuilder(args);
 // addresses and everything signs in at that address. Keycloak names its issuer after the address it's asked at, so the
 // server must use the same one. Pass `-- --LanHost=192.168.1.20` when the guess picks the wrong network.
 var lanHost = builder.Configuration["LanHost"] ?? Lan.Address() ?? "localhost";
+Console.WriteLine(
+    $"Sign-in and the mobile app use http://{lanHost}:5173 (Keycloak at http://{lanHost}:8180)."
+);
 
 var dataRoot = Path.GetFullPath(Path.Combine(builder.AppHostDirectory, "../../.data"));
 
@@ -34,12 +37,19 @@ var postgres = builder
 var database = postgres.AddDatabase("Dokument", databaseName: "dokument");
 
 // The realm, client and test users are imported on every start, so the dev IdP needs no setup or volume.
+#pragma warning disable ASPIRECERTIFICATES001 // WithoutHttpsCertificate is still marked experimental.
 var keycloak = builder
     .AddKeycloak("keycloak", port: 8180)
     .WithEndpoint("http", endpoint => endpoint.TargetHost = "0.0.0.0")
+    // Plain http: Aspire otherwise serves Keycloak with the ASP.NET dev certificate where one is trusted, and that only
+    // covers localhost, so a phone would refuse it.
+    .WithoutHttpsCertificate()
+    // The dashboard links the address everything signs in at.
+    .WithUrlForEndpoint("http", url => url.Url = $"http://{lanHost}:8180")
     .WithRealmImport("keycloak")
     // The realm allows the app's sign-in page at this address too.
     .WithEnvironment("DOKUMENT_LAN_WEB_URL", $"http://{lanHost}:5173");
+#pragma warning restore ASPIRECERTIFICATES001
 
 // Office previews (docs/design.md §14). Each role gets the address it reaches Gotenberg at as GOTENBERG_URL, which wins
 // over the admin setting. Long documents take a while; the worker waits up to 3 minutes.
@@ -146,25 +156,31 @@ builder.Build().Run();
 static class Lan
 {
     /// <summary>
-    /// The IPv4 address of the network that has a gateway, which leaves out Docker's and WSL's bridges. Null when
-    /// there's no network, and then everything stays on localhost.
+    /// The IPv4 address this machine reaches other networks from: a UDP socket "connected" to a public address picks
+    /// it from the routing table without sending anything. That skips Docker's, WSL's and VPN-less bridges on every OS.
+    /// Null when there's no network, and then everything stays on localhost.
     /// </summary>
-    internal static string? Address() =>
-        NetworkInterface
-            .GetAllNetworkInterfaces()
-            .Where(nic =>
-                nic.OperationalStatus == OperationalStatus.Up
-                && nic.NetworkInterfaceType
-                    is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
-            )
-            .Select(nic => nic.GetIPProperties())
-            .Where(ip =>
-                ip.GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetwork)
-            )
-            .SelectMany(ip => ip.UnicastAddresses)
-            .Select(unicast => unicast.Address)
-            .FirstOrDefault(address => address.AddressFamily == AddressFamily.InterNetwork)
-            ?.ToString();
+    internal static string? Address()
+    {
+        try
+        {
+            using var socket = new Socket(
+                AddressFamily.InterNetwork,
+                SocketType.Dgram,
+                ProtocolType.Udp
+            );
+            socket.Connect("8.8.8.8", 53);
+            return
+                socket.LocalEndPoint is IPEndPoint { Address: var address }
+                && !IPAddress.IsLoopback(address)
+                ? address.ToString()
+                : null;
+        }
+        catch (SocketException)
+        {
+            return null;
+        }
+    }
 }
 
 static class Unix
