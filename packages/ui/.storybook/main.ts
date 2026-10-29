@@ -5,6 +5,8 @@ const config: StorybookConfig = {
   framework: "@storybook/react-vite",
   stories: ["../src/**/*.stories.tsx"],
   addons: ["@storybook/addon-a11y"],
+  // sample.webm: 30 s of a running clock and a tone, for the video player.
+  staticDirs: ["./public"],
   core: { disableTelemetry: true },
   viteFinal(config) {
     config.plugins = [...(config.plugins ?? []), tailwindcss()];

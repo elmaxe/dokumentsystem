@@ -31,6 +31,9 @@ internal sealed partial class ContentBackfill(
                 queued += await content.EnqueueSkippedAsync(time.GetUtcNow(), stoppingToken);
             }
 
+            queued += await scope
+                .ServiceProvider.GetRequiredService<TranscriptService>()
+                .EnqueueMissingAsync(time.GetUtcNow(), stoppingToken);
             if (queued > 0)
             {
                 LogQueued(logger, queued);
@@ -64,7 +67,7 @@ internal sealed partial class ContentBackfill(
 
     [LoggerMessage(
         Level = LogLevel.Information,
-        Message = "Queued {Count} metadata and text jobs for existing files"
+        Message = "Queued {Count} metadata, text and transcribe jobs for existing files"
     )]
     private static partial void LogQueued(ILogger logger, int count);
 

@@ -105,8 +105,8 @@ const extensions: [RegExp, FileKind][] = [
   [/\.(xlsx?|ods|csv|numbers)$/i, "sheet"],
   [/\.(pptx?|odp|key)$/i, "slides"],
   [/\.(jpe?g|png|gif|webp|heic|avif|dng|svg)$/i, "image"],
-  [/\.(mp4|mov|mkv|webm|avi)$/i, "video"],
-  [/\.(mp3|m4a|flac|wav|ogg|opus)$/i, "audio"],
+  [/\.(mp4|m4v|mov|mkv|webm|avi|wmv|mpe?g|mts|m2ts|flv|3gp|3g2)$/i, "video"],
+  [/\.(mp3|m4a|aac|flac|wav|aiff?|ogg|oga|opus|wma|amr|awb|caf|ape|wv)$/i, "audio"],
   [/\.(zip|7z|rar|tar|gz)$/i, "archive"],
   [/\.(txt|md|json|xml|log)$/i, "text"],
 ];

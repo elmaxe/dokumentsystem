@@ -1,0 +1,38 @@
+[project]
+name = "dokument-ml"
+version = "0.0.0"
+description = "Dokumentsystem's machine learning service (docs/design.md §11)"
+license = "AGPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.118.0",
+  "uvicorn[standard]==0.37.0",
+  "python-multipart==0.0.20",
+  "faster-whisper==1.2.1",
+  # faster-whisper 1.2.1 passes an argument PyAV 16+ removed.
+  "av==15.1.0",
+  "ctranslate2==4.8.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.4.2", "httpx==0.28.1", "ruff==0.13.3"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["dokument_ml"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.File", "fastapi.Form", "fastapi.Depends"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
