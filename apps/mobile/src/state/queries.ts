@@ -79,6 +79,8 @@ export const drive = {
     send(api().POST(starred ? "/api/v1/nodes/star" : "/api/v1/nodes/unstar", { body: { ids } })),
   /** Tells the server the person opened a file, for their Recent page. Not audited (§18). */
   opened: (id: string) => send(api().POST("/api/v1/nodes/{id}/opened", { params: { path: { id } } })),
+  /** Asks for a playable copy now, ahead of background work. Refused when copies are turned off (§14). */
+  requestPlayable: (id: string) => unwrap(api().POST("/api/v1/nodes/{id}/playable", { params: { path: { id } } })),
   endSession: (id: string) => send(api().DELETE("/api/v1/sessions/{id}", { params: { path: { id } } })),
   signOut: () => send(api().POST("/api/v1/auth/logout")),
 };

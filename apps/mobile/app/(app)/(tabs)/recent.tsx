@@ -7,7 +7,7 @@ import { View } from "react-native";
 import { useFormat } from "../../../src/state/format";
 import { recentQuery } from "../../../src/state/queries";
 import { EmptyState } from "../../../src/ui/EmptyState";
-import { FileList } from "../../../src/ui/FileList";
+import { FileList, openFile } from "../../../src/ui/FileList";
 import { ItemSheet } from "../../../src/ui/ItemSheet";
 import { AccountButton } from "../../../src/ui/ListActions";
 import { TopBar } from "../../../src/ui/TopBar";
@@ -37,7 +37,7 @@ export default function Recent() {
             : format.date(node.modifiedAt);
         }}
         onOpenFolder={openFolder}
-        onOpenFile={setSelected}
+        onOpenFile={openFile}
         onMore={setSelected}
         refreshing={recent.isRefetching}
         onRefresh={() => void recent.refetch()}

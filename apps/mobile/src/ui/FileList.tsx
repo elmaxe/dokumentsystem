@@ -1,6 +1,7 @@
 import type { NodeDto } from "@dokument/api";
 import { isPaged, sortItems } from "@dokument/core";
 import { Image } from "expo-image";
+import { router } from "expo-router";
 import { useMemo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { FlatList, Pressable, RefreshControl, View } from "react-native";
@@ -13,6 +14,10 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { Text } from "./Text";
 
+/** Opens a file's preview full screen. */
+export const openFile = (node: NodeDto) =>
+  router.push({ pathname: "/file/[id]", params: { id: node.id } });
+
 type Row =
   | { type: "heading"; key: string; label: string }
   | { type: "folders"; key: string; nodes: NodeDto[] }
@@ -24,7 +29,7 @@ const pairs = (nodes: NodeDto[]) =>
 
 /**
  * Folders, then files, as a grid or a list (docs/design.md §16.4). Rows are flattened so long folders scroll
- * smoothly; a tap on a file opens its actions until the viewers arrive.
+ * smoothly. A tap opens a file, a long press or the more button its actions.
  */
 export function FileList({
   nodes,
@@ -62,7 +67,13 @@ export function FileList({
     const sorted = keepOrder
       ? nodes
       : sortItems(
-          nodes.map((node) => ({ node, name: node.name, kind: kindOfNode(node), modified: node.modifiedAt, size: node.size ?? undefined })),
+          nodes.map((node) => ({
+            node,
+            name: node.name,
+            kind: kindOfNode(node),
+            modified: node.modifiedAt,
+            size: node.size ?? undefined,
+          })),
           prefs.sort,
           i18n.language,
         ).map((item) => item.node);
@@ -72,14 +83,22 @@ export function FileList({
       ...(folders.length
         ? [
             { type: "heading", key: "h-folders", label: t("files.folders") } as Row,
-            ...pairs(folders).map((pair): Row => ({ type: "folders", key: `f-${pair[0]!.id}`, nodes: pair })),
+            ...pairs(folders).map((pair): Row => ({
+              type: "folders",
+              key: `f-${pair[0]!.id}`,
+              nodes: pair,
+            })),
           ]
         : []),
       ...(files.length
         ? [
             { type: "heading", key: "h-files", label: t("files.files") } as Row,
             ...((view ?? prefs.view) === "grid"
-              ? pairs(files).map((pair): Row => ({ type: "tiles", key: `t-${pair[0]!.id}`, nodes: pair }))
+              ? pairs(files).map((pair): Row => ({
+                  type: "tiles",
+                  key: `t-${pair[0]!.id}`,
+                  nodes: pair,
+                }))
               : files.map((node): Row => ({ type: "file", key: node.id, node }))),
           ]
         : []),
@@ -95,14 +114,22 @@ export function FileList({
       ListEmptyComponent={empty}
       refreshControl={
         onRefresh ? (
-          <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={theme.color("primary")} />
+          <RefreshControl
+            refreshing={!!refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.color("primary")}
+          />
         ) : undefined
       }
       renderItem={({ item: row }) => {
         switch (row.type) {
           case "heading":
             return (
-              <Text variant="title-sm" accessibilityRole="header" className="mb-2 mt-4 text-on-surface-variant">
+              <Text
+                variant="title-sm"
+                accessibilityRole="header"
+                className="mb-2 mt-4 text-on-surface-variant"
+              >
                 {row.label}
               </Text>
             );
@@ -110,7 +137,12 @@ export function FileList({
             return (
               <View className="mb-3 flex-row gap-3">
                 {row.nodes.map((node) => (
-                  <FolderTile key={node.id} node={node} onPress={() => onOpenFolder(node)} onLongPress={() => onMore(node)} />
+                  <FolderTile
+                    key={node.id}
+                    node={node}
+                    onPress={() => onOpenFolder(node)}
+                    onLongPress={() => onMore(node)}
+                  />
                 ))}
                 {row.nodes.length === 1 ? <View className="flex-1" /> : null}
               </View>
@@ -119,20 +151,41 @@ export function FileList({
             return (
               <View className="mb-3 flex-row gap-3">
                 {row.nodes.map((node) => (
-                  <FileTile key={node.id} node={node} meta={meta} onPress={() => onOpenFile(node)} onMore={() => onMore(node)} />
+                  <FileTile
+                    key={node.id}
+                    node={node}
+                    meta={meta}
+                    onPress={() => onOpenFile(node)}
+                    onMore={() => onMore(node)}
+                  />
                 ))}
                 {row.nodes.length === 1 ? <View className="flex-1" /> : null}
               </View>
             );
           case "file":
-            return <FileRow node={row.node} meta={meta} onPress={() => onOpenFile(row.node)} onMore={() => onMore(row.node)} />;
+            return (
+              <FileRow
+                node={row.node}
+                meta={meta}
+                onPress={() => onOpenFile(row.node)}
+                onMore={() => onMore(row.node)}
+              />
+            );
         }
       }}
     />
   );
 }
 
-function FolderTile({ node, onPress, onLongPress }: { node: NodeDto; onPress: () => void; onLongPress: () => void }) {
+function FolderTile({
+  node,
+  onPress,
+  onLongPress,
+}: {
+  node: NodeDto;
+  onPress: () => void;
+  onLongPress: () => void;
+}) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -163,11 +216,21 @@ function useMeta(meta?: (node: NodeDto) => string) {
   };
 }
 
-function Thumbnail({ node, size, className }: { node: NodeDto; size: "small" | "medium"; className: string }) {
+function Thumbnail({
+  node,
+  size,
+  className,
+}: {
+  node: NodeDto;
+  size: "small" | "medium";
+  className: string;
+}) {
   const source = thumbnailSource(node, size);
   const kind = kindOfNode(node);
   return (
-    <View className={`items-center justify-center overflow-hidden bg-surface-container-high ${className}`}>
+    <View
+      className={`items-center justify-center overflow-hidden bg-surface-container-high ${className}`}
+    >
       {source ? (
         <Image
           source={source}
@@ -268,7 +331,11 @@ function FileRow({
           {metaOf(node)}
         </Text>
       </View>
-      <IconButton icon="more_vert" label={t("files.moreActionsFor", { name: node.name })} onPress={onMore} />
+      <IconButton
+        icon="more_vert"
+        label={t("files.moreActionsFor", { name: node.name })}
+        onPress={onMore}
+      />
     </Pressable>
   );
 }

@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 import { starredQuery } from "../../src/state/queries";
 import { EmptyState } from "../../src/ui/EmptyState";
-import { FileList } from "../../src/ui/FileList";
+import { FileList, openFile } from "../../src/ui/FileList";
 import { ItemSheet } from "../../src/ui/ItemSheet";
 import { ListActions } from "../../src/ui/ListActions";
 import { TopBar } from "../../src/ui/TopBar";
@@ -25,7 +25,7 @@ export default function Starred() {
       <FileList
         nodes={starred.data?.items.map((item) => item.node) ?? []}
         onOpenFolder={openFolder}
-        onOpenFile={setSelected}
+        onOpenFile={openFile}
         onMore={setSelected}
         refreshing={starred.isRefetching}
         onRefresh={() => void starred.refetch()}

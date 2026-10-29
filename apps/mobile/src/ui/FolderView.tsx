@@ -7,7 +7,7 @@ import { ActivityIndicator, View } from "react-native";
 import { folderQuery } from "../state/queries";
 import { useTheme } from "../state/theme";
 import { EmptyState } from "./EmptyState";
-import { FileList } from "./FileList";
+import { FileList, openFile } from "./FileList";
 import { ItemSheet } from "./ItemSheet";
 import { ListActions } from "./ListActions";
 import { Notice } from "./Notice";
@@ -37,7 +37,7 @@ export function FolderView({ folderId }: { folderId: string | null }) {
         <FileList
           nodes={listing.data.items}
           onOpenFolder={openFolder}
-          onOpenFile={setSelected}
+          onOpenFile={openFile}
           onMore={setSelected}
           refreshing={listing.isRefetching}
           onRefresh={() => void listing.refetch()}
