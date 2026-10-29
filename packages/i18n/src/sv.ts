@@ -693,6 +693,15 @@ export const sv: Strings = {
   },
   settings: {
     title: "Inställningar",
+    appearance: {
+      title: "Utseende",
+      system: "Samma som enheten",
+      nowLight: "Nu ljust",
+      nowDark: "Nu mörkt",
+      light: "Ljust",
+      dark: "Mörkt",
+      note: "Sparas på den här enheten, så en telefon och en dator kan ha olika.",
+    },
     time: {
       title: "Datum och tid",
       seconds: "Visa sekunder i tider",

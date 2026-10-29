@@ -688,6 +688,15 @@ export const en = {
   },
   settings: {
     title: "Settings",
+    appearance: {
+      title: "Appearance",
+      system: "Same as device",
+      nowLight: "Now light",
+      nowDark: "Now dark",
+      light: "Light",
+      dark: "Dark",
+      note: "Saved on this device, so a phone and a computer can differ.",
+    },
     time: {
       title: "Date and time",
       seconds: "Show seconds in times",
