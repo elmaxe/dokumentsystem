@@ -11,13 +11,15 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: Number(process.env.PORT ?? 5173),
+    // Objects rather than plain targets, which would rewrite the Host header: the server builds its redirect URIs from
+    // the address the browser or phone used.
     proxy: {
       // WebSockets too, for live updates (docs/design.md §15.4).
       "/api": { target: apiTarget, ws: true },
-      "/health": apiTarget,
+      "/health": { target: apiTarget },
       // The API reference, so it signs in and calls the API at the same public URL as the app.
-      "/scalar": apiTarget,
-      "/openapi": apiTarget,
+      "/scalar": { target: apiTarget },
+      "/openapi": { target: apiTarget },
     },
   },
 });

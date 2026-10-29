@@ -245,8 +245,10 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 - **Rate limiting:** 20 login starts per minute per IP.
 - **Break-glass:** a CLI command in the container (`dokument admin reset-oidc` / `create-admin-token`) for when the IdP is broken.
 - **Local development:** Aspire runs Keycloak with a `dokument` realm. Its test users are alice (admin), bob (user) and carol (no groups); each password is the username.
-  - The realm's `dokument` client allows the web callback, Scalar's page and the app's callback at `http://localhost:5173`. A phone can't reach `localhost`, so signing in from a device needs `PUBLIC_URL` and the realm's redirect URIs at an address the phone can reach.
-  - The API reference (Scalar, `${PUBLIC_URL}/scalar/`, proxied by Vite) has an Authorize button. It signs in at Keycloak through the token endpoint, and its requests then carry a bearer session, which is listed under active devices.
+  - Keycloak and Vite listen on all addresses, so a phone on the same network can use the dev server. The AppHost finds this machine's network address (`--LanHost` overrides it) and lists `http://<address>:5173` on the web resource; that is the server address to type in the app.
+  - Everything signs in at Keycloak on that address, because Keycloak names its issuer after the address it's asked at. Aspire sets no `PUBLIC_URL`: Vite's proxy keeps the Host header, so redirect URIs follow the address each device used. The browser stays on `http://localhost:5173`, since plain http elsewhere isn't a secure context.
+  - The realm's `dokument` client allows the web callback, Scalar's page and the app's callback at `http://localhost:5173`, and the app's callback at the network address.
+  - The API reference (Scalar, `http://localhost:5173/scalar/`, proxied by Vite) has an Authorize button. It signs in at Keycloak through the token endpoint, and its requests then carry a bearer session, which is listed under active devices.
 - **Built in M0:** login, sessions, CSRF and active devices. **Still to come:**
   - API keys and the break-glass CLI
   - auth audit events, with the audit table in M1
