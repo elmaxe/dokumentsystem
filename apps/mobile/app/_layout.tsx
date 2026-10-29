@@ -1,9 +1,4 @@
 import "../global.css";
-import {
-  AlbertSans_400Regular,
-  AlbertSans_500Medium,
-  AlbertSans_600SemiBold,
-} from "@expo-google-fonts/albert-sans";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
@@ -11,23 +6,20 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/state/i18n";
 import { persistOptions, queryClient } from "../src/state/queryClient";
 import { SessionProvider, useSession } from "../src/state/session";
 import { ThemeProvider, useTheme } from "../src/state/theme";
+import { webFonts } from "../src/ui/Text";
 
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
-    AlbertSans_400Regular,
-    AlbertSans_500Medium,
-    AlbertSans_600SemiBold,
-    MaterialSymbolsRounded: require("../assets/fonts/MaterialSymbolsRounded.ttf"),
-    MaterialSymbolsRoundedFilled: require("../assets/fonts/MaterialSymbolsRoundedFilled.ttf"),
-  });
+  // The app has its fonts built in (app.config.ts); only the web build loads them.
+  const [fontsLoaded] = useFonts(Platform.OS === "web" ? webFonts : {});
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

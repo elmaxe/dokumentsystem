@@ -894,7 +894,7 @@ One JSON source, `docs/design-system/tokens.json`, is read at build time by `pac
 
 Every text pair meets WCAG AA (4.5:1) in both themes. Icons, borders and the focus ring meet 3:1.
 
-**Typography:** **Albert Sans** (SIL OFL) for all UI text, with the latin-ext subset for å, ä and ö. **IBM Plex Mono** only for checksums, keys, job ids and the text viewer. The same font files are bundled in the app with `expo-font`.
+**Typography:** **Albert Sans** (SIL OFL) for all UI text, with the latin-ext subset for å, ä and ö. **IBM Plex Mono** only for checksums, keys, job ids and the text viewer. The same font files are built into the app by `expo-font`'s config plugin, so nothing loads at startup (the web build still loads them).
 
 | Style | Size / line | Weight | Use |
 |---|---|---|---|

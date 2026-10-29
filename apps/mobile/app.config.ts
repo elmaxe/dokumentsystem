@@ -1,7 +1,18 @@
 import type { ExpoConfig } from "expo/config";
+import path from "node:path";
 
 // The app id and scheme are decision 37 in docs/design.md. The scheme is where the server's sign-in page hands the
 // IdP's code back to the app (§5).
+const albertSans = (face: string) =>
+  path.relative(
+    __dirname,
+    require.resolve(`@expo-google-fonts/albert-sans/${face}/AlbertSans_${face}.ttf`),
+  );
+const icons = [
+  "assets/fonts/MaterialSymbolsRounded.ttf",
+  "assets/fonts/MaterialSymbolsRoundedFilled.ttf",
+];
+
 const config: ExpoConfig = {
   name: "Dokumentsystem",
   slug: "dokumentsystem",
@@ -25,6 +36,34 @@ const config: ExpoConfig = {
   web: { bundler: "metro", output: "single" },
   plugins: [
     "expo-router",
+    // Built into the app rather than loaded at startup (docs/design.md §16.2): Albert Sans as one family with three
+    // weights, and the icon fonts, which Android names by file and iOS by the name inside (the same, see icons.py).
+    [
+      "expo-font",
+      {
+        android: {
+          fonts: [
+            {
+              fontFamily: "AlbertSans",
+              fontDefinitions: [
+                { path: albertSans("400Regular"), weight: 400 },
+                { path: albertSans("500Medium"), weight: 500 },
+                { path: albertSans("600SemiBold"), weight: 600 },
+              ],
+            },
+            ...icons,
+          ],
+        },
+        ios: {
+          fonts: [
+            albertSans("400Regular"),
+            albertSans("500Medium"),
+            albertSans("600SemiBold"),
+            ...icons,
+          ],
+        },
+      },
+    ],
     "expo-secure-store",
     "expo-localization",
     "expo-web-browser",
