@@ -9,7 +9,7 @@ import { recentQuery } from "../../../src/state/queries";
 import { EmptyState } from "../../../src/ui/EmptyState";
 import { FileList } from "../../../src/ui/FileList";
 import { ItemSheet } from "../../../src/ui/ItemSheet";
-import { ListActions } from "../../../src/ui/ListActions";
+import { AccountButton } from "../../../src/ui/ListActions";
 import { TopBar } from "../../../src/ui/TopBar";
 
 /** What the person opened, downloaded or uploaded lately, newest first (docs/design.md §13.3). */
@@ -25,10 +25,11 @@ export default function Recent() {
 
   return (
     <View className="flex-1 bg-surface">
-      <TopBar title={t("nav.recent")} actions={<ListActions account sort={false} />} />
+      <TopBar title={t("nav.recent")} actions={<AccountButton />} />
       <FileList
         nodes={items.map((item) => item.node)}
         keepOrder
+        view="list"
         meta={(node) => {
           const item = activity.get(node.id);
           return item

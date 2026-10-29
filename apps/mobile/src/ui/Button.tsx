@@ -65,6 +65,7 @@ export function IconButton({
   filled,
   color = "on-surface-variant",
   disabled,
+  compact,
 }: {
   icon: IconName;
   label: string;
@@ -72,6 +73,8 @@ export function IconButton({
   filled?: boolean;
   color?: ColorToken;
   disabled?: boolean;
+  /** 40 px with a larger hit area, for tight rows such as grid tiles. */
+  compact?: boolean;
 }) {
   return (
     <Pressable
@@ -79,11 +82,11 @@ export function IconButton({
       accessibilityLabel={label}
       disabled={disabled}
       onPress={onPress}
-      hitSlop={4}
-      className={`h-touch w-touch items-center justify-center rounded-full active:bg-surface-container-highest ${disabled ? "opacity-40" : ""}`}
+      hitSlop={compact ? 8 : 4}
+      className={`${compact ? "h-10 w-10" : "h-touch w-touch"} items-center justify-center rounded-full active:bg-surface-container-highest ${disabled ? "opacity-40" : ""}`}
     >
       <View>
-        <Icon name={icon} filled={filled} color={color} />
+        <Icon name={icon} filled={filled} color={color} size={compact ? 20 : 24} />
       </View>
     </Pressable>
   );

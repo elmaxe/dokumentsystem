@@ -10,7 +10,7 @@ import { IconButton } from "./Button";
 import { SortSheet } from "./SortSheet";
 
 /** The top bar's actions on file lists: grid or list, sort, and, on top-level places, the account. */
-export function ListActions({ account, sort = true }: { account?: boolean; sort?: boolean }) {
+export function ListActions({ account }: { account?: boolean }) {
   const { t } = useTranslation();
   const prefs = useListPrefs();
   const [sorting, setSorting] = useState(false);
@@ -21,7 +21,7 @@ export function ListActions({ account, sort = true }: { account?: boolean; sort?
         label={prefs.view === "grid" ? t("files.listView") : t("files.gridView")}
         onPress={() => setListPrefs({ view: prefs.view === "grid" ? "list" : "grid" })}
       />
-      {sort ? <IconButton icon="sort" label={t("files.sortBy")} onPress={() => setSorting(true)} /> : null}
+      <IconButton icon="sort" label={t("files.sortBy")} onPress={() => setSorting(true)} />
       {account ? <AccountButton /> : null}
       <SortSheet open={sorting} onClose={() => setSorting(false)} />
     </>

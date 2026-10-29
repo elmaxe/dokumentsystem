@@ -37,6 +37,7 @@ export function FileList({
   empty,
   meta,
   keepOrder,
+  view,
 }: {
   nodes: NodeDto[];
   onOpenFolder: (node: NodeDto) => void;
@@ -50,6 +51,8 @@ export function FileList({
   meta?: (node: NodeDto) => string;
   /** Keeps the order given, such as most recent first, instead of the chosen sort. */
   keepOrder?: boolean;
+  /** A fixed look, such as a list for Recent, whose lines say more than a tile has room for. */
+  view?: "grid" | "list";
 }) {
   const { t, i18n } = useTranslation();
   const prefs = useListPrefs();
@@ -75,13 +78,13 @@ export function FileList({
       ...(files.length
         ? [
             { type: "heading", key: "h-files", label: t("files.files") } as Row,
-            ...(prefs.view === "grid"
+            ...((view ?? prefs.view) === "grid"
               ? pairs(files).map((pair): Row => ({ type: "tiles", key: `t-${pair[0]!.id}`, nodes: pair }))
               : files.map((node): Row => ({ type: "file", key: node.id, node }))),
           ]
         : []),
     ];
-  }, [nodes, keepOrder, prefs, i18n.language, t]);
+  }, [nodes, keepOrder, view, prefs, i18n.language, t]);
 
   return (
     <FlatList
@@ -207,7 +210,7 @@ function FileTile({
       className="min-w-0 flex-1 overflow-hidden rounded-md border border-outline-variant bg-surface-container-lowest active:opacity-80"
     >
       <Thumbnail node={node} size="medium" className="h-32" />
-      <View className="flex-row items-center gap-1.5 py-2 pl-2.5">
+      <View className="flex-row items-center gap-1.5 py-2 pl-2.5 pr-1">
         <FileTypeIcon kind={kindOfNode(node)} size={20} />
         <View className="min-w-0 flex-1">
           <View className="flex-row items-center gap-0.5">
@@ -220,7 +223,12 @@ function FileTile({
             {metaOf(node)}
           </Text>
         </View>
-        <IconButton icon="more_vert" label={t("files.moreActionsFor", { name: node.name })} onPress={onMore} />
+        <IconButton
+          icon="more_vert"
+          label={t("files.moreActionsFor", { name: node.name })}
+          onPress={onMore}
+          compact
+        />
       </View>
     </Pressable>
   );

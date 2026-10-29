@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Modal, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import { useTheme } from "../state/theme";
 import { Text } from "./Text";
 
 /** A bottom sheet, which replaces dialogs and menus on phones (docs/design.md §16.3). */
@@ -18,9 +19,11 @@ export function Sheet({
 }) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  const theme = useTheme();
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View className="flex-1 justify-end">
+      {/* A Modal renders outside the themed tree, so it sets the theme's variables again. */}
+      <View style={[{ flex: 1 }, theme.vars]} className="justify-end">
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("common.close")}

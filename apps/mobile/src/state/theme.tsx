@@ -17,6 +17,8 @@ type ThemeContext = {
   scheme: Scheme;
   /** A token's colour in the current theme, for props that don't take class names (icons, the status bar). */
   color: (token: ColorToken) => string;
+  /** The theme's colour variables, for content rendered outside the tree, such as a Modal's. */
+  vars: (typeof schemeVars)[Scheme];
 };
 
 const Context = createContext<ThemeContext | null>(null);
@@ -43,6 +45,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       },
       scheme,
       color: (token) => tokens.color[token][scheme],
+      vars: schemeVars[scheme],
     }),
     [preference, scheme],
   );

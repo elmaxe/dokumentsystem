@@ -85,7 +85,7 @@ export default function Addresses() {
             </View>
           </View>
         </Section>
-        <Section title={t("mobile.addresses.local")}>
+        <View className="gap-2">
           <TextField
             label={t("mobile.addresses.local")}
             placeholder={t("mobile.addresses.localPlaceholder")}
@@ -139,7 +139,7 @@ export default function Addresses() {
               />
             )}
           </View>
-        </Section>
+        </View>
         <Notice icon="info" text={t("mobile.addresses.explain")} />
       </ScrollView>
     </KeyboardAvoidingView>
