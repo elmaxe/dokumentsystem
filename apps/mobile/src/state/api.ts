@@ -16,10 +16,11 @@ let onUnauthorized: (() => void) | null = null;
 export function connect(baseUrl: string, token: string) {
   const client = createApiClient({ baseUrl, token, clientId });
   client.use({
+    // Returns nothing, which keeps the response: returning it would fail openapi-fetch's `instanceof Response` check,
+    // because Expo's fetch answers with its own Response class.
     onResponse({ response }) {
       // The session was ended somewhere else or expired: the app goes back to signing in.
       if (response.status === 401) onUnauthorized?.();
-      return response;
     },
   });
   connection = { client, baseUrl, token };
