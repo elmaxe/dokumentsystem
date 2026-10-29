@@ -33,7 +33,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["apps/mobile/*.config.js"],
+    files: ["apps/mobile/*.config.js", "apps/mobile/plugins/*.js"],
     languageOptions: { sourceType: "commonjs", globals: globals.node },
     rules: { "@typescript-eslint/no-require-imports": "off" },
   },

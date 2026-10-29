@@ -818,6 +818,7 @@ Expo (SDK 58) with Expo Router and NativeWind on the shared tokens, in `apps/mob
   - Text and Markdown as a DOM component too, from the first megabyte (a range request). Markdown is GitHub's flavour without raw HTML, and images from the web are left out; links open in the browser.
   - Video and audio with expo-video and the system's controls.
   - "Open in another app" downloads the original to the cache and opens the share sheet.
+- **Splash and fonts:** fonts are built into the app by expo-font's config plugin. On Android the splash screen is the platform's (expo-splash-screen) with an animated vector drawable as its icon, set by the app's own config plugin. For now that's Android's starter-kit animation, until the app has its own mark. The background is `surface` in light and dark.
 - **Offline (decision 37):** no pinned files yet. The query cache (listings, Starred, Recent, the account) is kept on the phone for 7 days and shown read-only when offline, with a notice; thumbnails come from the image cache. Opening unseen files, uploads and changes wait for a connection.
 - **Document scanner:** camera → edge detection and perspective correction → multi-page PDF → upload → server OCR. Uses VisionKit on iOS and ML Kit Document Scanner on Android, via `react-native-document-scanner-plugin`.
 - **Share target:** "Share to Dokumentsystem" from other apps, with a folder picker.
