@@ -499,6 +499,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/words": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The words recognized on one page of a scan or photo, with their boxes, for the viewer to show and select, and which pages have any. What was read, not corrections. */
+        get: operations["GetRecognizedWords"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/text/{pageNo}": {
         parameters: {
             query?: never;
@@ -1959,6 +1976,21 @@ export interface components {
         RecentListing: {
             items: components["schemas"]["RecentItem"][];
         };
+        RecognizedWordDto: {
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            height: number;
+            text: string;
+        };
+        RecognizedWordsDto: {
+            pages: number[];
+            words: components["schemas"]["RecognizedWordDto"][];
+        };
         RenameRequest: {
             name: string;
         };
@@ -3039,6 +3071,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileTextDto"];
+                };
+            };
+        };
+    };
+    GetRecognizedWords: {
+        parameters: {
+            query?: {
+                page?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecognizedWordsDto"];
                 };
             };
         };

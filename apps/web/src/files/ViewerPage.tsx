@@ -30,6 +30,7 @@ import {
   starredQuery,
   toItem,
   transcriptQuery,
+  wordsQuery,
 } from "./drive";
 import { FileDetailsPanel } from "./FileDetailsPanel";
 import { lastSearchResults, matchesQuery } from "../search/search";
@@ -121,6 +122,8 @@ export function ViewerPage({
   const [panel, setPanel] = useState<{ open: boolean; tab: DetailsTab }>({ open: false, tab: "info" });
   const format = useFormat();
   const current = details.data?.node.currentVersionId ?? null;
+  // On while stepping between files, off the next time the viewer opens (§14).
+  const [textShown, setTextShown] = useState(false);
 
   // A newer version uploaded elsewhere doesn't replace what the person is reading: the open version stays until they
   // ask for the newest (§15.4). Their own uploads and restores show at once, since no notice comes for them.
@@ -145,6 +148,9 @@ export function ViewerPage({
   const shownVersion = pin?.versionId ?? current;
   const newer = !!pin && !!current && pin.versionId !== current;
   const gone = details.isError && details.error instanceof ApiError && details.error.status === 404;
+  // Which pages have recognized words, with page 1's; served for the current version only.
+  const showsWords = !!details.data && shownVersion === current && ["image", "pdf"].includes(previewOf(details.data.node, current, false).type);
+  const words = useQuery({ ...wordsQuery(fileId, current, 1), enabled: showsWords });
 
   // For the person's Recent page only; opening a preview is never audited (§18).
   useEffect(() => {
@@ -285,6 +291,16 @@ export function ViewerPage({
         ]}
         onAction={(id) => void setStar(id === "star")}
         marks={marks}
+        recognized={
+          showsWords && words.data
+            ? {
+                pages: words.data.pages,
+                wordsOn: async (page) => (await queryClient.fetchQuery(wordsQuery(fileId, current, page))).words,
+              }
+            : undefined
+        }
+        textShown={textShown}
+        onTextShownChange={setTextShown}
         transcript={spoken}
         onTranscriptRedo={() => void redoTranscript()}
         captions={

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { FileItem } from "../lib/files";
 import { thumbnails } from "../mockup/thumbnails";
+import type { PageWord } from "@dokument/core";
 import { FileViewer, type FileViewerProps, type PreviewSource } from "./FileViewer";
 
 /** A real, multi-page PDF built on the fly, so the story runs pdf.js exactly as the app does. */
@@ -135,6 +136,46 @@ const meeting: FileViewerProps["transcript"] = {
   })),
 };
 
+/**
+ * A photo of a receipt, drawn in a monospaced font so each word's box is known exactly: what the server's text
+ * recognition returns for it, as fractions of the picture.
+ */
+function receipt(): { src: string; words: PageWord[] } {
+  const lines = [
+    "MATBUTIKEN HORNSTULL",
+    "Org.nr 556000-0000",
+    "2025-09-14       16:42",
+    "",
+    "Mjölk 1,5% 1 l   15,90",
+    "Kaffe 450 g      64,90",
+    "Bananer 1,12 kg  27,89",
+    "Havregryn        21,50",
+    "",
+    "TOTALT          130,19",
+    "Kort            130,19",
+    "",
+    "   Tack för besöket",
+  ];
+  const [width, height, size, left, top, step] = [520, 640, 22, 64, 80, 36];
+  const char = size * 0.6;
+  const words: PageWord[] = lines.flatMap((line, row) =>
+    [...line.matchAll(/\S+/g)].map((match) => ({
+      x: (left + match.index * char - 2) / width,
+      y: (top + row * step - size * 0.8) / height,
+      width: (match[0].length * char + 4) / width,
+      height: (size * 1.05) / height,
+      text: match[0],
+    })),
+  );
+  const text = lines
+    .map((line, row) => `<text x="${left}" y="${top + row * step}" xml:space="preserve">${line}</text>`)
+    .join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#faf8f2"/><g font-family="Courier New, monospace" font-size="${size}" fill="#2a2620">${text}</g></svg>`;
+  return { src: URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })), words };
+}
+
+const receiptPhoto = receipt();
+
 const textUrl = (body: string) => URL.createObjectURL(new Blob([body], { type: "text/plain" }));
 
 const files: Record<string, { item: FileItem; preview: () => PreviewSource; extra?: Partial<FileViewerProps> }> = {
@@ -162,6 +203,11 @@ const files: Record<string, { item: FileItem; preview: () => PreviewSource; extr
   image: {
     item: { id: "1", name: "Abisko-2025.jpg", kind: "image", modified: "2026-10-20T10:00:00Z", owner: "Alice" },
     preview: () => ({ type: "image", src: thumbnails.mountains }),
+  },
+  receipt: {
+    item: { id: "13", name: "Kvitto 2025-09-14.jpg", kind: "image", modified: "2026-09-14T16:45:00Z", owner: "Alice" },
+    preview: () => ({ type: "image", src: receiptPhoto.src }),
+    extra: { recognized: { pages: [1], wordsOn: () => Promise.resolve(receiptPhoto.words) } },
   },
   pdf: {
     item: { id: "2", name: "Hyresavtal-2026.pdf", kind: "pdf", modified: "2026-10-01T10:00:00Z", owner: "Alice" },
@@ -229,6 +275,7 @@ function Viewer({ file }: { file: keyof typeof files }) {
   const [preview] = useState(() => new Map(order.map((key) => [key, files[key]!.preview()])));
   const index = order.indexOf(current);
   const { item, extra } = files[current]!;
+  const [textShown, setTextShown] = useState(false);
   return (
     <FileViewer
       item={item}
@@ -243,6 +290,8 @@ function Viewer({ file }: { file: keyof typeof files }) {
       onAction={() => {}}
       onPrevious={index > 0 ? () => setCurrent(order[index - 1]!) : undefined}
       onNext={index < order.length - 1 ? () => setCurrent(order[index + 1]!) : undefined}
+      textShown={textShown}
+      onTextShownChange={setTextShown}
       {...extra}
     />
   );
@@ -272,6 +321,8 @@ export const StillListening: Story = { args: { file: "listening" } };
 /** Our own controls over the picture: ticks for the hits, captions from the transcript (CC), speed, volume, full screen. */
 export const Video: Story = { args: { file: "video" } };
 export const Pdf: Story = { args: { file: "pdf" } };
+/** A photo with recognized words: the Text button shows them, ready to select and copy (§14). */
+export const RecognizedText: Story = { args: { file: "receipt" } };
 export const Markdown: Story = { args: { file: "markdown" } };
 export const Code: Story = { args: { file: "code" } };
 export const Preparing: Story = { args: { file: "preparing" } };
