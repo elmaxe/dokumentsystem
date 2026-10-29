@@ -41,13 +41,14 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-          cache: gradle
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @dokument/tokens build
       # The native project is generated from app.config.ts, never committed (docs/design.md §15.3, decision 37).
       - name: Generate the Android project
         working-directory: apps/mobile
         run: pnpm exec expo prebuild --platform android --no-install
+      # Set up after prebuild: the Gradle files it caches by don't exist until then.
+      - uses: gradle/actions/setup-gradle@v4
       - name: Build the debug APK
         working-directory: apps/mobile/android
         run: ./gradlew assembleDebug --no-daemon
