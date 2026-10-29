@@ -205,7 +205,8 @@ public sealed class FileDetailsTests(PostgresFixture postgres)
             Json.Options,
             TestContext.Current.CancellationToken
         );
-        Assert.Equal(([1], 0), (none!.Pages, none.Words.Count));
+        Assert.Equal([1], none!.Pages);
+        Assert.Empty(none.Words);
 
         // Bob has the same bytes, but Alice's correction is hers.
         Assert.False(Assert.Single((await TextAsync(bob, bobsCopy)).Pages).Edited);
