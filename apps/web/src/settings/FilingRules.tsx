@@ -109,7 +109,15 @@ export function FilingRules() {
                         ) : !rule.enabled ? (
                           t("filing.off")
                         ) : (
-                          t("filing.filedCount", { count: rule.filed, folder: exampleFolder(rule.folder) })
+                          <>
+                            {t("filing.filedCount", { count: rule.filed, folder: exampleFolder(rule.folder) })}
+                            {rule.skipped > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Icon name="group" size={16} />
+                                {t("filing.skipped", { count: rule.skipped })}
+                              </span>
+                            )}
+                          </>
                         )}
                       </span>
                     </span>

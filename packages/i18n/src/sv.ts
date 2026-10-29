@@ -5,6 +5,8 @@ export const sv: Strings = {
     name: "Dokumentsystem",
   },
   nav: {
+    newCount_one: "{{count}} ny",
+    newCount_other: "{{count}} nya",
     label: "Huvudmeny",
     myFiles: "Mina filer",
     sharedWithMe: "Delade med mig",
@@ -58,6 +60,8 @@ export const sv: Strings = {
     other: "Fil",
   },
   files: {
+    new_badge: "Ny",
+    viewOnlyHere: "Du kan bara visa den här mappen. Be {{name}} att göra dig till redigerare.",
     new: "Nytt",
     newFolder: "Ny mapp",
     uploadFiles: "Ladda upp filer",
@@ -84,6 +88,9 @@ export const sv: Strings = {
     sortBy: "Sortera efter",
     showDetails: "Visa detaljer",
     columns: {
+      sharedBy: "Delad av",
+      sharedAt: "Delad",
+      access: "Din åtkomst",
       name: "Namn",
       owner: "Ägare",
       modified: "Ändrad",
@@ -102,6 +109,7 @@ export const sv: Strings = {
     },
     empty: {
       folderTitle: "Mappen är tom",
+      folderViewOnlyText: "Filer som läggs till här visas för dig också.",
       folderText: "Släpp filer här, eller välj Nytt för att ladda upp eller skapa en mapp.",
       dropTitle: "Släpp för att ladda upp till {{folder}}",
       dropText: "Filer och mappar kontrolleras för dubbletter innan de laddas upp.",
@@ -136,6 +144,13 @@ export const sv: Strings = {
     deleteForever: "Radera för alltid",
   },
   toasts: {
+    shareAdded: "Delad med {{name}}",
+    shareChanged: "{{name}} är nu {{role}}",
+    shareRemoved: "Slutade dela med {{name}}",
+    left: "Du lämnade ”{{name}}”",
+    sharedWithYou: "{{who}} delade ”{{name}}” med dig",
+    sharedWithYouMany_one: "{{count}} nytt objekt delat med dig",
+    sharedWithYouMany_other: "{{count}} nya objekt delade med dig",
     tagsChanged_one: "Taggar ändrade på {{count}} fil",
     tagsChanged_other: "Taggar ändrade på {{count}} filer",
     tagRemoved: "Tog bort ”{{tag}}” från {{name}}",
@@ -326,6 +341,22 @@ export const sv: Strings = {
     review: "Granska",
   },
   share: {
+    newRole: "Roll för personer du lägger till: {{role}}",
+    matches: "Personer",
+    noMatches: "Ingen med det namnet eller den e-postadressen har loggat in än.",
+    onlyOwner: "Bara {{name}} kan ändra vem som har åtkomst.",
+    inherited: {
+      viewer: "Läsare i ”{{folder}}”, så även här",
+      editor: "Redigerare i ”{{folder}}”, så även här",
+    },
+    rolesHint: "Läsare kan öppna, söka och ladda ner. Redigerare kan också ladda upp, byta namn, flytta, tagga, redigera information och flytta till papperskorgen.",
+    leave: "Lämna",
+    leaveTitle: "Lämna ”{{name}}”?",
+    leaveConfirm: "Du ser inte ”{{name}}” längre förrän {{owner}} delar den med dig igen.",
+    ownerFolder: {
+      viewer: "{{name}}s mapp · du kan visa",
+      editor: "{{name}}s mapp · du kan redigera",
+    },
     title: "Dela ”{{name}}”",
     help: "Om delning",
     addPeople: "Lägg till personer med namn eller e-post",
@@ -527,6 +558,7 @@ export const sv: Strings = {
     inTrash: "{{size}} av det i papperskorgen",
   },
   trash: {
+    trashedBy: "Flyttades till papperskorgen av {{name}}",
     columns: {
       from: "Ursprunglig plats",
       deleted: "Borttagen",
@@ -709,6 +741,8 @@ export const sv: Strings = {
     },
   },
   filing: {
+    skipped_one: "Lämnade {{count}} fil där den var: flytten skulle dölja den för personer den är delad med",
+    skipped_other: "Lämnade {{count}} filer där de var: flytten skulle dölja dem för personer de är delade med",
     title: "Arkiveringsregler",
     intro: "Flytta dina filer till en mapp när de får en tagg. Varje regel flyttar en fil en gång: flyttar du den någon annanstans stannar den där. Första regeln som passar gäller.",
     add: "Lägg till regel",
@@ -1098,6 +1132,12 @@ export const sv: Strings = {
     },
   },
   dialogs: {
+    accessLost: {
+      title: "Ändra vem som kan se det?",
+      text_one: "{{names}} kan se det här nu, genom mappen det ligger i. Efter flytten kan de inte det.",
+      text_other: "{{names}} kan se de här nu, genom mapparna de ligger i. Efter flytten kan de inte det.",
+      move: "Flytta",
+    },
     newFolder: {
       title: "Ny mapp",
       label: "Mappens namn",
@@ -1175,6 +1215,8 @@ export const sv: Strings = {
     action: "Taggar",
   },
   errors: {
+    forbidden: "Du kan bara visa det här. Be ägaren att göra dig till redigerare.",
+    ownerOnly: "Bara ägaren kan göra det.",
     generic: "Något gick fel. Försök igen.",
     nameTaken: "Det finns redan något med det namnet här.",
     invalidName: "Namn får inte vara tomma, ”.” eller ”..”, eller innehålla snedstreck.",

@@ -3,6 +3,8 @@ export const en = {
     name: "Dokumentsystem",
   },
   nav: {
+    newCount_one: "{{count}} new",
+    newCount_other: "{{count}} new",
     label: "Main",
     myFiles: "My files",
     sharedWithMe: "Shared with me",
@@ -56,6 +58,8 @@ export const en = {
     other: "File",
   },
   files: {
+    new_badge: "New",
+    viewOnlyHere: "You can only view this folder. Ask {{name}} to make you an editor.",
     new: "New",
     newFolder: "New folder",
     uploadFiles: "Upload files",
@@ -82,6 +86,9 @@ export const en = {
     sortBy: "Sort by",
     showDetails: "Show details",
     columns: {
+      sharedBy: "Shared by",
+      sharedAt: "Shared",
+      access: "Your access",
       name: "Name",
       owner: "Owner",
       modified: "Modified",
@@ -100,6 +107,7 @@ export const en = {
     },
     empty: {
       folderTitle: "This folder is empty",
+      folderViewOnlyText: "Files added here show up for you too.",
       folderText: "Drop files here, or choose New to upload or make a folder.",
       dropTitle: "Drop to upload to {{folder}}",
       dropText: "Files and folders are checked for duplicates before they upload.",
@@ -134,6 +142,13 @@ export const en = {
     deleteForever: "Delete forever",
   },
   toasts: {
+    shareAdded: "Shared with {{name}}",
+    shareChanged: "{{name}} is now {{role}}",
+    shareRemoved: "Stopped sharing with {{name}}",
+    left: "You left “{{name}}”",
+    sharedWithYou: "{{who}} shared “{{name}}” with you",
+    sharedWithYouMany_one: "{{count}} new item shared with you",
+    sharedWithYouMany_other: "{{count}} new items shared with you",
     tagsChanged_one: "Tags changed on {{count}} file",
     tagsChanged_other: "Tags changed on {{count}} files",
     tagRemoved: "Removed “{{tag}}” from {{name}}",
@@ -321,6 +336,22 @@ export const en = {
     review: "Review",
   },
   share: {
+    newRole: "Role for people you add: {{role}}",
+    matches: "People",
+    noMatches: "Nobody with that name or email has signed in yet.",
+    onlyOwner: "Only {{name}} can change who has access.",
+    inherited: {
+      viewer: "Viewer of “{{folder}}”, so here too",
+      editor: "Editor of “{{folder}}”, so here too",
+    },
+    rolesHint: "Viewers can open, search and download. Editors can also upload, rename, move, tag, edit details and move to the trash.",
+    leave: "Leave",
+    leaveTitle: "Leave “{{name}}”?",
+    leaveConfirm: "You'll stop seeing “{{name}}” until {{owner}} shares it with you again.",
+    ownerFolder: {
+      viewer: "{{name}}'s folder · you can view",
+      editor: "{{name}}'s folder · you can edit",
+    },
     title: "Share “{{name}}”",
     help: "About sharing",
     addPeople: "Add people by name or email",
@@ -522,6 +553,7 @@ export const en = {
     inTrash: "{{size}} of it in the trash",
   },
   trash: {
+    trashedBy: "Moved to the trash by {{name}}",
     columns: {
       from: "Original location",
       deleted: "Deleted",
@@ -704,6 +736,8 @@ export const en = {
     },
   },
   filing: {
+    skipped_one: "Left {{count}} file where it was: moving it would hide it from people it's shared with",
+    skipped_other: "Left {{count}} files where they were: moving them would hide them from people they're shared with",
     title: "Filing rules",
     intro: "Move your files to a folder when they get a tag. Each rule moves a file once: if you move it somewhere else, it stays there. The first rule that matches wins.",
     add: "Add rule",
@@ -1092,6 +1126,12 @@ export const en = {
     },
   },
   dialogs: {
+    accessLost: {
+      title: "Change who can see it?",
+      text_one: "{{names}} can see this now, through the folder it's in. After the move they can't.",
+      text_other: "{{names}} can see these now, through the folders they're in. After the move they can't.",
+      move: "Move",
+    },
     newFolder: {
       title: "New folder",
       label: "Folder name",
@@ -1169,6 +1209,8 @@ export const en = {
     action: "Tags",
   },
   errors: {
+    forbidden: "You can only view this. Ask the owner to make you an editor.",
+    ownerOnly: "Only the owner can do that.",
     generic: "Something went wrong. Try again.",
     nameTaken: "There's already something with that name here.",
     invalidName: "Names can't be empty, “.” or “..”, or contain slashes.",

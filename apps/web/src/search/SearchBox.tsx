@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { pathLabel, toItem } from "../files/drive";
 import { suggestQuery, type SearchParams } from "./search";
+import { useRootName } from "../files/sharing";
 
 /**
  * The search bar in the top bar (docs/design.md §16.4). As someone types it suggests names that match; Enter searches
@@ -24,6 +25,7 @@ export function SearchBox({
   className?: string;
 }) {
   const { t } = useTranslation();
+  const rootName = useRootName();
   const navigate = useNavigate();
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -114,7 +116,7 @@ export function SearchBox({
           id={listId}
           query={value.trim()}
           terms={suggest.data?.terms ?? []}
-          suggestions={items.map((s) => ({ item: toItem(s.node), location: pathLabel(t("nav.myFiles"), s.path) }))}
+          suggestions={items.map((s) => ({ item: toItem(s.node), location: pathLabel(rootName(s.node.ownerId), s.path) }))}
           active={active}
           onActiveChange={setActive}
           onSearch={() => search()}

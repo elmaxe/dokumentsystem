@@ -32,27 +32,79 @@ public sealed class DriveService(
     private IQueryable<Node> Live(Actor actor) =>
         db.Nodes.VisibleTo(actor).Where(n => n.TrashedAt == null);
 
-    public async Task<Node> GetAsync(Actor actor, Guid id, CancellationToken ct = default) =>
-        await Live(actor).Include(n => n.CurrentVersion).SingleOrDefaultAsync(n => n.Id == id, ct)
-        ?? throw DriveException.NotFound();
+    /// <summary>A live node the person can see, checking that their role allows <paramref name="access"/>.</summary>
+    public async Task<Node> GetAsync(
+        Actor actor,
+        Guid id,
+        CancellationToken ct = default,
+        Access access = Access.View
+    )
+    {
+        var node =
+            await Live(actor)
+                .Include(n => n.CurrentVersion)
+                .SingleOrDefaultAsync(n => n.Id == id, ct)
+            ?? throw DriveException.NotFound();
+        await DemandAsync(actor, node, access, ct);
+        return node;
+    }
 
-    /// <summary>The folder with this id, or null for the root.</summary>
-    public async Task<Node?> GetFolderAsync(Actor actor, Guid? id, CancellationToken ct = default)
+    /// <summary>Throws unless the person's role on a node they can see allows <paramref name="access"/>.</summary>
+    public async Task DemandAsync(Actor actor, Node node, Access access, CancellationToken ct)
+    {
+        if (access == Access.View || node.OwnerId == actor.UserId)
+        {
+            return;
+        }
+
+        if (access == Access.Own || await RoleAsync(actor, node, ct) < access)
+        {
+            throw DriveException.Forbidden(access);
+        }
+    }
+
+    /// <summary>What the person may do with a node: own it, or the highest role a share on it or a folder above gives them.</summary>
+    public async Task<Access?> RoleAsync(Actor actor, Node node, CancellationToken ct)
+    {
+        if (node.OwnerId == actor.UserId)
+        {
+            return Access.Own;
+        }
+
+        var role = await db
+            .Nodes.Where(n => n.Id == node.Id)
+            .Select(n => NodeAccess.SharedRole(actor.UserId, n.Path))
+            .SingleAsync(ct);
+        return role == 0 ? null : (Access)role;
+    }
+
+    /// <summary>The folder with this id, or null for the root of the person's own My files.</summary>
+    public async Task<Node?> GetFolderAsync(
+        Actor actor,
+        Guid? id,
+        CancellationToken ct = default,
+        Access access = Access.View
+    )
     {
         if (id is not { } folderId)
         {
             return null;
         }
 
-        var node = await GetAsync(actor, folderId, ct);
+        var node = await GetAsync(actor, folderId, ct, access);
         return node.IsFolder
             ? node
             : throw new DriveException(DriveError.InvalidRequest, "That is a file, not a folder.");
     }
 
-    public async Task<Node> GetFileAsync(Actor actor, Guid id, CancellationToken ct = default)
+    public async Task<Node> GetFileAsync(
+        Actor actor,
+        Guid id,
+        CancellationToken ct = default,
+        Access access = Access.View
+    )
     {
-        var node = await GetAsync(actor, id, ct);
+        var node = await GetAsync(actor, id, ct, access);
         return node.IsFolder
             ? throw new DriveException(DriveError.InvalidRequest, "That is a folder, not a file.")
             : node;
@@ -65,16 +117,26 @@ public sealed class DriveService(
     )
     {
         await GetFolderAsync(actor, folderId, ct);
-        return await Live(actor)
+
+        // The top of My files holds only the person's own things; what others share shows in Shared with me.
+        var children = folderId is null
+            ? db.Nodes.OwnedBy(actor).Where(n => n.TrashedAt == null)
+            : Live(actor);
+        return await children
             .Include(n => n.CurrentVersion)
             .Where(n => n.ParentId == folderId)
             .ToListAsync(ct);
     }
 
-    /// <summary>The folders above each node, root first, keyed by node id. One query however many nodes.</summary>
+    /// <summary>
+    /// The folders above each node, root first, keyed by node id. One query however many nodes. With
+    /// <paramref name="viewer"/>, only the folders that person can see: someone a folder is shared with sees the path
+    /// from that folder down, never the owner's folders above it.
+    /// </summary>
     public async Task<Dictionary<Guid, List<Node>>> AncestorsAsync(
         IReadOnlyCollection<Node> nodes,
-        CancellationToken ct = default
+        CancellationToken ct = default,
+        Actor? viewer = null
     )
     {
         var chains = nodes.ToDictionary(
@@ -82,11 +144,15 @@ public sealed class DriveService(
             n => n.Path.Split('.')[..^1].Select(label => Guid.ParseExact(label, "N")).ToList()
         );
         var ids = chains.Values.SelectMany(c => c).Distinct().ToList();
-        var byId = await db
-            .Nodes.AsNoTracking()
+        var visible = viewer is null ? db.Nodes : db.Nodes.VisibleTo(viewer);
+        var byId = await visible
+            .AsNoTracking()
             .Where(n => ids.Contains(n.Id))
             .ToDictionaryAsync(n => n.Id, ct);
-        return chains.ToDictionary(c => c.Key, c => c.Value.Select(id => byId[id]).ToList());
+        return chains.ToDictionary(
+            c => c.Key,
+            c => c.Value.Where(byId.ContainsKey).Select(id => byId[id]).ToList()
+        );
     }
 
     /// <summary>
@@ -138,7 +204,7 @@ public sealed class DriveService(
     )
     {
         var folderName = ParseName(name);
-        var parent = await GetFolderAsync(actor, parentId, ct);
+        var parent = await GetFolderAsync(actor, parentId, ct, Access.Edit);
         var ownerId = parent?.OwnerId ?? actor.UserId;
         await EnsureNameFreeAsync(ownerId, parentId, folderName, except: null, ct);
 
@@ -175,9 +241,9 @@ public sealed class DriveService(
     )
     {
         var requested = paths.Select(p => (Path: p, Names: ParsePath(p))).ToList();
-        var parent = await GetFolderAsync(actor, parentId, ct);
+        var parent = await GetFolderAsync(actor, parentId, ct, Access.Edit);
         var ownerId = parent?.OwnerId ?? actor.UserId;
-        await EnsureQuotaFitsAsync(ownerId, bytes, ct);
+        await EnsureQuotaFitsAsync(ownerId, bytes, ct, actor);
 
         // Every folder named, and the folders above them, shallowest first, keyed by their case-insensitive path.
         var all = requested
@@ -295,7 +361,7 @@ public sealed class DriveService(
     )
     {
         var newName = ParseName(name);
-        var node = await GetAsync(actor, id, ct);
+        var node = await GetAsync(actor, id, ct, Access.Edit);
         if (node.Name == newName)
         {
             return node;
@@ -323,9 +389,9 @@ public sealed class DriveService(
         CancellationToken ct = default
     )
     {
-        var node = await GetAsync(actor, id, ct);
-        var target = await GetFolderAsync(actor, folderId, ct);
-        if (node.ParentId == folderId)
+        var node = await GetAsync(actor, id, ct, Access.Edit);
+        var target = await GetFolderAsync(actor, folderId, ct, Access.Edit);
+        if (node.ParentId == folderId && (folderId is not null || node.OwnerId == actor.UserId))
         {
             return node;
         }
@@ -338,7 +404,7 @@ public sealed class DriveService(
             );
         }
 
-        if (target is not null && target.OwnerId != node.OwnerId)
+        if ((target?.OwnerId ?? actor.UserId) != node.OwnerId)
         {
             throw new DriveException(
                 DriveError.InvalidRequest,
@@ -395,7 +461,7 @@ public sealed class DriveService(
         CancellationToken ct = default
     )
     {
-        var node = await GetFileAsync(actor, id, ct);
+        var node = await GetFileAsync(actor, id, ct, Access.Edit);
         var old =
             await db
                 .FileVersions.AsNoTracking()
@@ -453,7 +519,7 @@ public sealed class DriveService(
         CancellationToken ct = default
     )
     {
-        var node = await GetFileAsync(actor, id, ct);
+        var node = await GetFileAsync(actor, id, ct, Access.Own);
         var version =
             await db.FileVersions.SingleOrDefaultAsync(
                 v => v.NodeId == node.Id && v.Id == versionId,
@@ -600,12 +666,12 @@ public sealed class DriveService(
         var name = file.Name;
         if (file.TargetNodeId is { } targetId)
         {
-            existing = await GetFileAsync(actor, targetId, ct);
+            existing = await GetFileAsync(actor, targetId, ct, Access.Edit);
             ownerId = existing.OwnerId;
         }
         else
         {
-            var parent = await GetFolderAsync(actor, file.FolderId, ct);
+            var parent = await GetFolderAsync(actor, file.FolderId, ct, Access.Edit);
             ownerId = parent?.OwnerId ?? actor.UserId;
             existing = await FindByNameAsync(ownerId, file.FolderId, name, ct);
             if (existing is not null)
@@ -800,7 +866,12 @@ public sealed class DriveService(
     }
 
     /// <summary>Reserves quota for an upload (§8.1). Fails when the owner's quota can't hold it.</summary>
-    internal async Task ReserveQuotaAsync(Guid ownerId, long bytes, CancellationToken ct)
+    internal async Task ReserveQuotaAsync(
+        Guid ownerId,
+        long bytes,
+        CancellationToken ct,
+        Actor? actor = null
+    )
     {
         var defaultQuota = (await settings.GetAsync(SettingKeys.Storage, ct)).DefaultQuota.Bytes;
         var reserved = await db
@@ -818,15 +889,17 @@ public sealed class DriveService(
             );
         if (reserved == 0)
         {
-            throw new DriveException(
-                DriveError.QuotaExceeded,
-                "There isn't enough storage left for this file."
-            );
+            throw await QuotaExceededAsync(ownerId, actor, "this file", ct);
         }
     }
 
     /// <summary>Checks, without reserving anything, that <paramref name="bytes"/> more would fit in the owner's quota.</summary>
-    internal async Task EnsureQuotaFitsAsync(Guid ownerId, long bytes, CancellationToken ct)
+    internal async Task EnsureQuotaFitsAsync(
+        Guid ownerId,
+        long bytes,
+        CancellationToken ct,
+        Actor? actor = null
+    )
     {
         if (bytes <= 0)
         {
@@ -846,11 +919,34 @@ public sealed class DriveService(
         );
         if (!fits)
         {
-            throw new DriveException(
+            throw await QuotaExceededAsync(ownerId, actor, "these files", ct);
+        }
+    }
+
+    /// <summary>Files added to someone else's folder use their storage (§9), so the message names whose is full.</summary>
+    private async Task<DriveException> QuotaExceededAsync(
+        Guid ownerId,
+        Actor? actor,
+        string what,
+        CancellationToken ct
+    )
+    {
+        if (actor is null || actor.UserId == ownerId)
+        {
+            return new DriveException(
                 DriveError.QuotaExceeded,
-                "There isn't enough storage left for these files."
+                $"There isn't enough storage left for {what}."
             );
         }
+
+        var owner = await db
+            .Users.Where(u => u.Id == ownerId)
+            .Select(u => u.DisplayName)
+            .SingleAsync(ct);
+        return new DriveException(
+            DriveError.QuotaExceeded,
+            $"There isn't enough space left in {owner}'s storage for {what}."
+        );
     }
 
     internal Task SettleQuotaAsync(

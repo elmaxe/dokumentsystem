@@ -58,6 +58,18 @@ public static class AuditActions
     /// <summary>An admin added, changed or deleted a keyword rule (§13.4).</summary>
     public const string TagRuleChange = "admin.tag_rule";
 
+    /// <summary>The owner shared a file or folder with someone (§9), naming the person and the role.</summary>
+    public const string ShareGrant = "share.grant";
+
+    /// <summary>The owner changed someone's role on a share.</summary>
+    public const string ShareChange = "share.change";
+
+    /// <summary>The owner stopped sharing with someone.</summary>
+    public const string ShareRevoke = "share.revoke";
+
+    /// <summary>Someone left a share from Shared with me.</summary>
+    public const string ShareLeave = "share.leave";
+
     /// <summary>A person added, changed, reordered or deleted one of their own filing rules (§13.6).</summary>
     public const string FilingRuleChange = "filing_rule.change";
 }

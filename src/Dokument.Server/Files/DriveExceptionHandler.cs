@@ -22,6 +22,7 @@ public sealed class DriveExceptionHandler(IProblemDetailsService problems) : IEx
         var (status, title) = drive.Error switch
         {
             DriveError.NotFound => (StatusCodes.Status404NotFound, "Not found"),
+            DriveError.Forbidden => (StatusCodes.Status403Forbidden, "Not allowed"),
             DriveError.NameTaken => (StatusCodes.Status409Conflict, "Name already taken"),
             DriveError.QuotaExceeded => (
                 StatusCodes.Status413PayloadTooLarge,

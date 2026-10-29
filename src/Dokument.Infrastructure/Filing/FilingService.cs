@@ -15,7 +15,8 @@ namespace Dokument.Infrastructure.Filing;
 
 /// <param name="Filed">Files the rule moved that weren't moved back with Undo.</param>
 /// <param name="Running">The rule is filing the files that already had its tag.</param>
-public sealed record FilingRuleSummary(FilingRule Rule, int Filed, bool Running);
+/// <param name="Skipped">Files the rule left where they were, because the folder would hide them from people they are shared with.</param>
+public sealed record FilingRuleSummary(FilingRule Rule, int Filed, int Skipped, bool Running);
 
 /// <param name="Folder">Where it would go, as "Kvitton / 2026".</param>
 public sealed record FilingExample(Guid NodeId, string Name, string? MimeType, string Folder);
@@ -64,11 +65,18 @@ public sealed class FilingService(
             .OrderBy(r => r.Position)
             .ToListAsync(ct);
         var ids = rules.Select(r => (Guid?)r.Id).ToList();
-        var filed = await db
+        var counts = await db
             .NodeFilings.Where(f => ids.Contains(f.RuleId) && f.UndoneAt == null)
-            .GroupBy(f => f.RuleId)
-            .Select(g => new { g.Key, Count = g.Count() })
-            .ToDictionaryAsync(g => g.Key!.Value, g => g.Count, ct);
+            .GroupBy(f => new { f.RuleId, f.Skipped })
+            .Select(g => new
+            {
+                g.Key.RuleId,
+                g.Key.Skipped,
+                Count = g.Count(),
+            })
+            .ToListAsync(ct);
+        var filed = counts.Where(c => !c.Skipped).ToDictionary(c => c.RuleId!.Value, c => c.Count);
+        var skipped = counts.Where(c => c.Skipped).ToDictionary(c => c.RuleId!.Value, c => c.Count);
         var subjects = rules.Select(r => r.Id.ToString()).ToList();
         var running = (
             await db
@@ -84,6 +92,7 @@ public sealed class FilingService(
             .Select(r => new FilingRuleSummary(
                 r,
                 filed.GetValueOrDefault(r.Id),
+                skipped.GetValueOrDefault(r.Id),
                 running.Contains(r.Id.ToString())
             ))
             .ToList();
@@ -306,7 +315,7 @@ public sealed class FilingService(
     {
         var since = after ?? time.GetUtcNow() - RecentWindow;
         var rows = await db
-            .NodeFilings.Where(f => f.FiledAt > since && f.UndoneAt == null)
+            .NodeFilings.Where(f => f.FiledAt > since && f.UndoneAt == null && !f.Skipped)
             .Join(
                 db.Nodes.Include(n => n.CurrentVersion),
                 f => f.NodeId,
@@ -346,7 +355,10 @@ public sealed class FilingService(
         var node = await drive.GetFileAsync(actor, nodeId, ct);
         var filing =
             node.OwnerId == actor.UserId
-                ? await db.NodeFilings.SingleOrDefaultAsync(f => f.NodeId == nodeId, ct)
+                ? await db.NodeFilings.SingleOrDefaultAsync(
+                    f => f.NodeId == nodeId && !f.Skipped,
+                    ct
+                )
                 : null;
         if (filing is null)
         {

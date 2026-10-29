@@ -296,6 +296,38 @@ public sealed class FilingTests(PostgresFixture postgres)
         );
     }
 
+    [Fact]
+    public async Task A_rule_leaves_a_file_where_people_it_is_shared_with_see_it()
+    {
+        await using var app = await DokumentApp.StartAsync(postgres, FastWorker);
+        using var alice = await SignInAsync(app, Alice);
+        using var bob = await SignInAsync(app, Bob);
+        var family = await CreateFolderAsync(alice, null, "Familjen");
+        var bobId = (await DokumentApp.GetSessionAsync(bob)).User.Id;
+        (
+            await alice.PostAsJsonAsync(
+                $"/api/v1/nodes/{family.Id}/shares",
+                new ShareRequest(bobId, Dokument.Domain.Sharing.ShareRole.Editor),
+                TestContext.Current.CancellationToken
+            )
+        ).EnsureSuccessStatusCode();
+
+        // Bob adds a receipt to Alice's shared folder; her rule would move it where he can't see it.
+        var shared = await UploadAsync(bob, "kvitto.pdf", TestFiles.TextPdf("Hej"), family.Id);
+        var own = await UploadAsync(alice, "eget.pdf", TestFiles.TextPdf("Eget"), null);
+        await CreateRuleAsync(alice, new FilingRuleRequest("receipt", "Kvitton"));
+        await TagAsync(bob, [shared], "receipt");
+        await TagAsync(alice, [own], "receipt");
+        await WaitForWorkerAsync(app);
+
+        Assert.Equal(family.Id, await ParentAsync(app, shared));
+        Assert.Equal(await FolderAsync(app, alice, ["Kvitton"]), await ParentAsync(app, own));
+        var rule = Assert.Single(await RulesAsync(alice));
+        Assert.Equal(1, rule.Filed);
+        Assert.Equal(1, rule.Skipped);
+        Assert.Equal(["eget.pdf"], (await RecentAsync(alice)).Select(f => f.Name));
+    }
+
     private static Task<HttpResponseMessage> PostRuleAsync(
         HttpClient client,
         FilingRuleRequest request

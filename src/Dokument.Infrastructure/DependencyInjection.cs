@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddSingleton<PurgeSignal>();
         services.AddScoped<TrashService>();
         services.AddScoped<StarService>();
+        services.AddScoped<Sharing.ShareService>();
         services.AddScoped<RecentFiles>();
         services.AddScoped<JobQueue>();
         services.AddScoped<JobMonitor>();

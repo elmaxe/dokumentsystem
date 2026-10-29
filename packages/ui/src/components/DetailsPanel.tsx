@@ -32,7 +32,10 @@ export type DetailsPanelProps = {
   tab: DetailsTab;
   onTabChange: (tab: DetailsTab) => void;
   onClose: () => void;
+  /** The owner's way to the share dialog; without it the Sharing tab names the owner instead. */
   onManageAccess?: () => void;
+  /** For people it's shared with directly: stop seeing it. */
+  onLeave?: () => void;
   /** Shows a star toggle in the header, filled when the item is starred. */
   onStarChange?: (starred: boolean) => void;
   versions?: VersionHistoryProps;
@@ -63,6 +66,7 @@ export function DetailsPanel({
   onTabChange,
   onClose,
   onManageAccess,
+  onLeave,
   onStarChange,
   versions,
   tags,
@@ -166,7 +170,7 @@ export function DetailsPanel({
             </p>
             <ul className="m-0 flex list-none flex-col p-0">
               {details.people.map((person) => (
-                <li key={person.email} className="flex min-w-0 items-center gap-3 py-2">
+                <li key={person.id ?? person.email} className="flex min-w-0 items-center gap-3 py-2">
                   <Avatar name={person.name} tone={person.tone} />
                   <span className="min-w-0 flex-1 truncate">
                     {person.you ? t("share.you", { name: person.name }) : person.name}
@@ -177,9 +181,20 @@ export function DetailsPanel({
                 </li>
               ))}
             </ul>
-            <Button variant="outlined" icon="person_add" onClick={onManageAccess} className="self-start">
-              {t("details.manageAccess")}
-            </Button>
+            {onManageAccess ? (
+              <Button variant="outlined" icon="person_add" onClick={onManageAccess} className="self-start">
+                {t("details.manageAccess")}
+              </Button>
+            ) : (
+              <p className="m-0 text-body-sm text-on-surface-variant">
+                {t("share.onlyOwner", { name: details.people.find((p) => p.role === "owner")?.name ?? item.owner })}
+              </p>
+            )}
+            {onLeave && (
+              <Button variant="text" icon="person_remove" onClick={onLeave} className="self-start">
+                {t("share.leave")}
+              </Button>
+            )}
           </Tabs.Content>
           {!folder && (
             <Tabs.Content value="versions" className="outline-none">

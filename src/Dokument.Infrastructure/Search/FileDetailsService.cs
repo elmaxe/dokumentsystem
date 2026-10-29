@@ -170,7 +170,7 @@ public sealed class FileDetailsService(
         CancellationToken ct = default
     )
     {
-        var node = await drive.GetFileAsync(actor, id, ct);
+        var node = await drive.GetFileAsync(actor, id, ct, Access.Edit);
         var version = node.CurrentVersion!;
         var title = Normalize(edit.Title, VersionDetails.MaxTitleLength, "title");
         var description = Normalize(
@@ -353,7 +353,7 @@ public sealed class FileDetailsService(
         CancellationToken ct = default
     )
     {
-        var node = await drive.GetFileAsync(actor, id, ct);
+        var node = await drive.GetFileAsync(actor, id, ct, Access.Edit);
         var version = node.CurrentVersion!;
         text = text.Replace("\r\n", "\n").Replace('\0', ' ');
         if (text.Length > MaxPageLength)
@@ -437,7 +437,7 @@ public sealed class FileDetailsService(
         CancellationToken ct = default
     )
     {
-        var node = await drive.GetFileAsync(actor, id, ct);
+        var node = await drive.GetFileAsync(actor, id, ct, Access.Edit);
         var version = node.CurrentVersion!;
         var correction = await db.ContentPages.SingleOrDefaultAsync(
             p => p.VersionId == version.Id && p.PageNo == pageNo && p.PageNo > 0,

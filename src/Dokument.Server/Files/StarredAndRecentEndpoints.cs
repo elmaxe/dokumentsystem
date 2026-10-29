@@ -1,3 +1,4 @@
+using Dokument.Application.Files;
 using Dokument.Domain.Files;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Live;
@@ -74,7 +75,7 @@ public static class StarredAndRecentEndpoints
     {
         var nodes = await stars.ListAsync(context.Actor(), ct);
         var dtos = await mapper.MapAsync(nodes, ct);
-        var paths = await PathsAsync(drive, nodes, ct);
+        var paths = await PathsAsync(drive, nodes, context.Actor(), ct);
         return TypedResults.Ok(
             new StarredListing(
                 nodes.Select((n, i) => new StarredItem(dtos[i], paths[n.Id])).ToList()
@@ -109,7 +110,7 @@ public static class StarredAndRecentEndpoints
         var entries = await recent.ListAsync(context.Actor(), ct);
         var nodes = entries.Select(e => e.Node).ToList();
         var dtos = await mapper.MapAsync(nodes, ct);
-        var paths = await PathsAsync(drive, nodes, ct);
+        var paths = await PathsAsync(drive, nodes, context.Actor(), ct);
         return TypedResults.Ok(
             new RecentListing(
                 entries
@@ -122,9 +123,10 @@ public static class StarredAndRecentEndpoints
     private static async Task<Dictionary<Guid, List<PathEntry>>> PathsAsync(
         DriveService drive,
         List<Node> nodes,
+        Actor viewer,
         CancellationToken ct
     ) =>
-        (await drive.AncestorsAsync(nodes, ct)).ToDictionary(
+        (await drive.AncestorsAsync(nodes, ct, viewer)).ToDictionary(
             a => a.Key,
             a => a.Value.Select(f => new PathEntry(f.Id, f.Name.Value)).ToList()
         );

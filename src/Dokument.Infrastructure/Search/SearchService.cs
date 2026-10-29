@@ -25,6 +25,7 @@ public sealed record SearchRequest(
     Guid? FolderId = null,
     bool Starred = false,
     IReadOnlyList<string>? Tags = null,
+    SearchOwner? Owner = null,
     SearchSort Sort = SearchSort.Relevance,
     int Offset = 0,
     int Limit = 50
@@ -148,6 +149,7 @@ public sealed class SearchService(DokumentDbContext db)
                             Camera = null,
                             Taken = new(null, null),
                             Starred = false,
+                            Owner = null,
                             Tags = [],
                         },
                         ct
@@ -250,6 +252,7 @@ public sealed class SearchService(DokumentDbContext db)
                 request.ModifiedBefore ?? query.Modified.To
             ),
             Starred = request.Starred || query.Starred,
+            Owner = request.Owner ?? query.Owner,
             Tags =
             [
                 .. query
@@ -306,6 +309,13 @@ public sealed class SearchService(DokumentDbContext db)
                 db.Stars.Any(s => s.UserId == actor.UserId && s.NodeId == n.Id)
             );
         }
+
+        nodes = query.Owner switch
+        {
+            SearchOwner.Me => nodes.Where(n => n.OwnerId == actor.UserId),
+            SearchOwner.Others => nodes.Where(n => n.OwnerId != actor.UserId),
+            _ => nodes,
+        };
 
         // Inside a folder: the chip names one; in:"name" means any folder with that name.
         var folders = new List<Node>();

@@ -82,11 +82,13 @@ export type MoveDialogProps = {
   /** What is being moved, for the title and to keep folders from being moved into themselves. */
   items: { id: string; name: string }[];
   startIn: string | null;
+  /** For someone else's files: the top folder the person can see, which the move stays inside (§9). */
+  root?: { id: string; name: string } | null;
   onMove: (folderId: string | null) => Promise<void>;
 };
 
 /** Picks a destination folder by browsing, starting where the items are now. Key it per use, like NameDialog. */
-export function MoveDialog({ open, onOpenChange, items, startIn, onMove }: MoveDialogProps) {
+export function MoveDialog({ open, onOpenChange, items, startIn, root, onMove }: MoveDialogProps) {
   const { t } = useTranslation();
   const [folderId, setFolderId] = useState<string | null>(startIn);
   const [busy, setBusy] = useState(false);
@@ -94,7 +96,9 @@ export function MoveDialog({ open, onOpenChange, items, startIn, onMove }: MoveD
 
   const moving = new Set(items.map((item) => item.id));
   const folders = (listing.data?.items ?? []).filter((item) => item.kind === "folder");
-  const path = [{ id: "root", name: t("nav.myFiles") }, ...(listing.data?.path ?? [])];
+  const path = root
+    ? (listing.data?.path ?? [root])
+    : [{ id: "root", name: t("nav.myFiles") }, ...(listing.data?.path ?? [])];
 
   return (
     <Dialog

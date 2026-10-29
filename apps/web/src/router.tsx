@@ -8,7 +8,6 @@ import { AppShell } from "./AppShell";
 import { FilesPage } from "./files/FilesPage";
 import { TrashPage } from "./files/TrashPage";
 import { ViewerPage } from "./files/ViewerPage";
-import { PlacePage } from "./PlacePage";
 import { validateSearchParams } from "./search/search";
 import { SearchPage } from "./search/SearchPage";
 import { SettingsPage } from "./settings/SettingsPage";
@@ -83,13 +82,7 @@ const trashRoute = createRoute({ getParentRoute: () => authenticatedRoute, path:
 
 const settingsRoute = createRoute({ getParentRoute: () => authenticatedRoute, path: "/settings", component: SettingsPage });
 
-const sharedRoute = createRoute({
-  getParentRoute: () => authenticatedRoute,
-  path: "/shared",
-  component: () => <PlacePage place="shared" />,
-});
-
-const placeRoutes = (["recent", "starred"] as const).map((place) =>
+const placeRoutes = (["shared", "recent", "starred"] as const).map((place) =>
   createRoute({
     getParentRoute: () => authenticatedRoute,
     path: `/${place}`,
@@ -141,7 +134,7 @@ const signInRoute = createRoute({
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminJobsRoute, adminTagsRoute, adminSettingsRoute]), trashRoute, settingsRoute, sharedRoute, searchRoute, ...placeRoutes]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminJobsRoute, adminTagsRoute, adminSettingsRoute]), trashRoute, settingsRoute, searchRoute, ...placeRoutes]), signInRoute]),
     context: { queryClient },
   });
 }

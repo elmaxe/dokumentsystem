@@ -12,9 +12,18 @@ public sealed record DateRange(DateTimeOffset? From, DateTimeOffset? To)
 /// <summary>
 /// What someone typed in the search bar (docs/design.md §13.3), taken apart: words, "exact phrases", -excluded words,
 /// and operators such as <c>type:pdf</c>, <c>tag:receipt</c>, <c>in:Kvitton</c>, <c>after:2025-01-01</c>, <c>camera:fujifilm</c>,
-/// <c>taken:2024</c> and <c>is:starred</c>. The filter chips are the same operators. Words are split the way the index
+/// <c>taken:2024</c>, <c>is:starred</c>, <c>owner:me</c> and <c>is:shared</c>. The filter chips are the same operators. Words are split the way the index
 /// splits text (on anything that isn't a letter or digit) and lowercased. Unknown operators are searched as words.
 /// </summary>
+public enum SearchOwner
+{
+    /// <summary>The person's own files.</summary>
+    Me,
+
+    /// <summary>Files other people shared with them.</summary>
+    Others,
+}
+
 public sealed partial record SearchQuery
 {
     public const int MaxTerms = 20;
@@ -33,6 +42,9 @@ public sealed partial record SearchQuery
     public DateRange Taken { get; init; } = new(null, null);
     public bool Starred { get; init; }
 
+    /// <summary>Only the person's own files (<c>owner:me</c>), or only those shared with them (<c>is:shared</c>).</summary>
+    public SearchOwner? Owner { get; init; }
+
     /// <summary>Tag keys every result must have, as in <c>tag:receipt</c> or <c>tag:"tax 2026"</c> (§13.4).</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
 
@@ -46,6 +58,7 @@ public sealed partial record SearchQuery
         || Camera is not null
         || !Taken.IsEmpty
         || Starred
+        || Owner is not null
         || Tags.Count > 0;
 
     /// <summary>The words to mark in snippets and the viewer: the terms and the phrases' words.</summary>
@@ -128,6 +141,10 @@ public sealed partial record SearchQuery
                 return Day(value) is { } taken ? query with { Taken = taken } : null;
             case "is" when value.Equals("starred", StringComparison.OrdinalIgnoreCase):
                 return query with { Starred = true };
+            case "is" when value.Equals("shared", StringComparison.OrdinalIgnoreCase):
+                return query with { Owner = SearchOwner.Others };
+            case "owner" when value.Equals("me", StringComparison.OrdinalIgnoreCase):
+                return query with { Owner = SearchOwner.Me };
             case "tag":
                 return Dokument.Domain.Tags.TagName.TryCreate(value, out var tag, out _)
                     ? query with

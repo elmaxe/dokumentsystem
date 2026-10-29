@@ -1,9 +1,11 @@
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Settings;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 
 namespace Dokument.Server.Files;
 
@@ -54,6 +56,7 @@ public static class TrashEndpoints
         DriveService drive,
         NodeDtoMapper mapper,
         SettingsStore settings,
+        DokumentDbContext db,
         CancellationToken ct
     )
     {
@@ -62,6 +65,15 @@ public static class TrashEndpoints
         var nodes = entries.Select(e => e.Node).ToList();
         var dtos = await mapper.MapAsync(nodes, ct);
         var ancestors = await drive.AncestorsAsync(nodes, ct);
+        var trashers = nodes
+            .Select(n => n.TrashedBy)
+            .OfType<Guid>()
+            .Where(id => id != actor.UserId)
+            .Distinct()
+            .ToList();
+        var trasherNames = await db
+            .Users.Where(u => trashers.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
         return TypedResults.Ok(
             new TrashListing(
                 entries
@@ -75,7 +87,10 @@ public static class TrashEndpoints
                                 e.Node.TrashedAt!.Value,
                                 e.DeleteAt,
                                 e.ItemCount,
-                                e.Bytes
+                                e.Bytes,
+                                e.Node.TrashedBy is { } by
+                                    ? trasherNames.GetValueOrDefault(by)
+                                    : null
                             )
                     )
                     .ToList(),

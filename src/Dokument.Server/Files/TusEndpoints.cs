@@ -222,7 +222,7 @@ public static class TusEndpoints
                 ]
                     .Where(n => n.Id != nodeId)
                     .ToList();
-                var matches = await FileEndpoints.MatchesAsync(drive, others, ct);
+                var matches = await FileEndpoints.MatchesAsync(drive, others, actor, ct);
                 duplicates = others.Select(n => matches[n.Id]).ToList();
             }
         }

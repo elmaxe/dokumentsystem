@@ -685,6 +685,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The people the signed-in person can share with: everyone who has signed in and isn't disabled, by name or email, at most 50. */
+        get: operations["ListPeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Who can see a file or folder and why: its owner and everyone it or a folder above it is shared with. */
+        get: operations["GetAccess"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Owner only. Shares with a person, or changes the role they have on this node directly. The role must be more than a folder above already gives them. */
+        post: operations["ShareNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shares/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["ChangeShare"];
+        post?: never;
+        /** @description The owner stops sharing with someone, or the person leaves. */
+        delete: operations["RemoveShare"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Ends the signed-in person's own share on this node. */
+        post: operations["LeaveShare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Something shared with the person was opened, so it is no longer New. */
+        post: operations["MarkShareSeen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shared-with-me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The top-most things shared with the person, newest share first. Folders inside a listed one are reached from it. */
+        get: operations["ListSharedWithMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/move-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Who would no longer see these items if they moved to the folder, so the client can ask first. */
+        post: operations["CheckMove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -692,7 +828,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Files and folders whose name, text or metadata match. `q` takes words, "exact phrases", -excluded words and the operators type:, in:, after:, before:, camera:, taken:, tag: and is:starred; the other parameters are the filter chips and override the operators. A word also finds files with a tag that has it. */
+        /** @description Files and folders whose name, text or metadata match. `q` takes words, "exact phrases", -excluded words and the operators type:, in:, after:, before:, camera:, taken:, tag:, is:starred, owner:me and is:shared; the other parameters are the filter chips and override the operators. A word also finds files with a tag that has it. */
         get: operations["Search"];
         put?: never;
         post?: never;
@@ -1472,6 +1608,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccessDto: {
+            owner: components["schemas"]["PersonDto"];
+            yourAccess: components["schemas"]["NodeRole"];
+            people: components["schemas"]["AccessPersonDto"][];
+        };
+        AccessPersonDto: {
+            person: components["schemas"]["PersonDto"];
+            role: components["schemas"]["ShareRole"];
+            /** Format: uuid */
+            shareId: null | string;
+            inheritedRole: null | components["schemas"]["ShareRole"];
+            inheritedFrom: null | components["schemas"]["PathEntry"];
+        };
         ActiveStepDto: {
             step: components["schemas"]["FileStep"];
             running: boolean;
@@ -1507,6 +1656,9 @@ export interface components {
         AuthConfig: {
             enabled: boolean;
             providerName: null | string;
+        };
+        ChangeShareRequest: {
+            role: components["schemas"]["ShareRole"];
         };
         ChangeTagsRequest: {
             ids: string[];
@@ -1682,6 +1834,8 @@ export interface components {
             enabled: boolean;
             /** Format: int32 */
             filed: number;
+            /** Format: int32 */
+            skipped: number;
             running: boolean;
         };
         FilingRuleListing: {
@@ -1842,6 +1996,14 @@ export interface components {
         MlSettingsDto: {
             endpoints: components["schemas"]["MlEndpointDto"][];
         };
+        MoveCheckRequest: {
+            ids: string[];
+            /** Format: uuid */
+            folderId: null | string;
+        };
+        MoveCheckResponse: {
+            losingAccess: components["schemas"]["PersonDto"][];
+        };
         MoveRequest: {
             /** Format: uuid */
             folderId: null | string;
@@ -1884,12 +2046,16 @@ export interface components {
             tags: components["schemas"]["TagDto"][];
             media: null | components["schemas"]["MediaDto"];
             shownAsPdf: boolean;
+            access: components["schemas"]["NodeRole"];
+            shared: boolean;
         };
         NodeIdsRequest: {
             ids: string[];
         };
         /** @enum {unknown} */
         NodeKind: "folder" | "file";
+        /** @enum {unknown} */
+        NodeRole: "viewer" | "editor" | "owner";
         OfficeSettingsDto: {
             gotenbergUrl: null | string;
             configured: boolean;
@@ -1913,6 +2079,12 @@ export interface components {
         };
         PauseQueueRequest: {
             paused: boolean;
+        };
+        PersonDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            email: null | string;
         };
         PlaceDto: {
             /** Format: double */
@@ -1972,6 +2144,8 @@ export interface components {
         ScannerSettingsDto: {
             address: null | string;
         };
+        /** @enum {unknown} */
+        SearchOwner: "me" | "others" | null;
         SearchResponse: {
             results: components["schemas"]["SearchResultDto"][];
             /** Format: int32 */
@@ -2021,6 +2195,20 @@ export interface components {
         SetPreferencesRequest: {
             showSeconds: boolean;
         };
+        SharedItemDto: {
+            node: components["schemas"]["NodeDto"];
+            /** Format: date-time */
+            sharedAt: string;
+            role: components["schemas"]["ShareRole"];
+            new: boolean;
+        };
+        ShareRequest: {
+            /** Format: uuid */
+            userId: string;
+            role: components["schemas"]["ShareRole"];
+        };
+        /** @enum {unknown} */
+        ShareRole: "viewer" | "editor";
         SignInInfo: {
             enabled: boolean;
             providerName: null | string;
@@ -2225,6 +2413,7 @@ export interface components {
             itemCount: number;
             /** Format: int64 */
             size: number;
+            trashedBy: null | string;
         };
         TrashListing: {
             items: components["schemas"]["TrashItem"][];
@@ -3301,6 +3490,206 @@ export interface operations {
             };
         };
     };
+    ListPeople: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonDto"][];
+                };
+            };
+        };
+    };
+    GetAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessDto"];
+                };
+            };
+        };
+    };
+    ShareNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessDto"];
+                };
+            };
+        };
+    };
+    ChangeShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeShareRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessDto"];
+                };
+            };
+        };
+    };
+    RemoveShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    LeaveShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MarkShareSeen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ListSharedWithMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedItemDto"][];
+                };
+            };
+        };
+    };
+    CheckMove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveCheckResponse"];
+                };
+            };
+        };
+    };
     Search: {
         parameters: {
             query?: {
@@ -3311,6 +3700,7 @@ export interface operations {
                 folderId?: string;
                 starred?: boolean;
                 tag?: string[];
+                owner?: components["schemas"]["SearchOwner"];
                 sort?: components["schemas"]["SearchSort"];
                 offset?: number;
                 limit?: number;

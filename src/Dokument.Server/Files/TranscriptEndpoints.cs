@@ -1,3 +1,4 @@
+using Dokument.Application.Files;
 using Dokument.Domain.Files;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Search;
@@ -93,7 +94,7 @@ public static class TranscriptEndpoints
         CancellationToken ct
     )
     {
-        var file = await drive.GetFileAsync(context.Actor(), id, ct);
+        var file = await drive.GetFileAsync(context.Actor(), id, ct, Access.Edit);
         if (
             file.CurrentVersion is not { } version
             || await db.BlobMedia.SingleOrDefaultAsync(m => m.BlobHash == version.BlobHash, ct)

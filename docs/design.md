@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.33** · Last updated: 2026-10-29
+> Status: **Draft v0.36** · Last updated: 2026-10-29
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -257,6 +257,7 @@ nodes(id, owner_id, parent_id NULL, kind {folder|file}, name, name_key,
       path ltree,                 -- ids (hex, no dashes) from the top down, for subtree queries
       current_version_id NULL,    -- files only
       created_at, modified_at, trashed_at NULL, trashed_root_id NULL,
+      trashed_by NULL,            -- who moved it to the trash, when it was someone it's shared with (§9)
       UNIQUE NULLS NOT DISTINCT (owner_id, parent_id, name_key) WHERE trashed_at IS NULL)
 
 file_versions(id, node_id, version_no, blob_hash, size, mime_type, original_name,
@@ -303,14 +304,17 @@ effective_node_tags  -- a view: node_tags, plus the current version's blob_tags 
 
 filing_rules(id, owner_id, tag, tag_key, folder_template, position, enabled, active_since, created_at, updated_at,
              UNIQUE (owner_id, tag_key))      -- each person's own: "receipt" → Kvitton/{year} (§13.6)
-node_filings(node_id PK, rule_id NULL, tag, from_folder_id NULL, to_folder_id NULL, filed_at, undone_at NULL)
-                                              -- a file is filed once; moving it back, or Undo, sticks
+node_filings(node_id PK, rule_id NULL, tag, from_folder_id NULL, to_folder_id NULL, filed_at, undone_at NULL,
+             skipped)                         -- a file is filed once; moving it back, or Undo, sticks.
+                                              -- skipped: left in place because the move would hide it (§13.6)
 
 stars(user_id, node_id, starred_at, PRIMARY KEY (user_id, node_id))   -- each person's own (§15.2)
 recent_files(user_id, node_id, at, action {opened|downloaded|uploaded|restored},
              PRIMARY KEY (user_id, node_id))     -- one row per person and file, overwritten; private, not audit
 
-shares(id, node_id, grantee_user_id, role {viewer|editor}, created_by, created_at, expires_at NULL)
+shares(id, node_id, grantee_user_id, role {viewer|editor}, created_by, created_at, seen_at NULL,
+       UNIQUE (node_id, grantee_user_id))   -- seen_at: opened since it was shared, so no longer New (§9)
+shared_role(user, path) → 0|1|2              -- SQL function: the highest share on the path's nodes (§9)
 links(id, node_id, token_hash, role {viewer}, allow_download, password_hash NULL,
       expires_at NULL, created_by, created_at, revoked_at NULL)
 
@@ -447,19 +451,29 @@ On disk, identical bytes are always stored once per person (§6, §7). On top of
 
 ## 9. Permissions and sharing
 
+Sharing with people is built (decision 39). Public links and notifications follow in their own PRs.
+
 - **Roles:** `owner` (implicit, one per node), `editor`, `viewer`.
-  - **Viewer:** see, preview, download (unless a link disallows it).
-  - **Editor:** viewer, plus upload, new version, rename, move within the shared tree, trash.
-  - **Owner:** editor, plus share, permanently delete, transfer ownership.
-- **Inheritance:** a grant on a folder applies to its whole subtree.
-  - A grant lower down can only **add** rights; it can never remove inherited ones. Same rule as Drive, and easy to reason about.
-- **Effective permission:** the highest role among the grants on the node and its ancestors (via `path`), or ownership. It's a single SQL query, and the same predicate is reused in search.
-- **Quota attribution:** files uploaded into someone else's shared folder are **owned by, and count against, the folder owner**.
-  - The uploader is recorded on the version.
+  - **Viewer:** see, preview, search, download, and star for themselves.
+  - **Editor:** viewer, plus upload, new version, restore a version, new folder, rename, move within the owner's files, tags, details and text edits, redo a transcript, and move to the trash.
+  - **Owner:** editor, plus share, Keep forever, the trash itself (restore, delete forever), and later transfer ownership.
+- **Only the owner shares.** Editors can't add people or change roles; they see who has access, and the dialog says "Only Alice can change who has access."
+- **Inheritance:** a share on a folder applies to its whole subtree.
+  - A share lower down can only **add** rights; it can never remove inherited ones. The dialog won't offer a role below what a folder above gives, and the server refuses one ("Bob is already an editor through a folder above this one").
+- **Effective permission:** ownership, or the highest share on the node and its ancestors. One SQL function, `shared_role(user, path)`, joins `shares` to the nodes whose `path` contains the node's; `NodeAccess.With(actor, View|Edit|Own)` uses it for browsing, the viewer, downloads, search, tags, details and every change. Refusals are 403 `forbidden`.
+- **Quota attribution:** files and folders added to someone else's folder are **owned by, and count against, the folder owner**.
+  - The uploader is recorded on the version. A full quota names whose storage it is.
   - This prevents "your files are stranded in my account" problems.
-- **"Shared with me":** a virtual view listing the top-level nodes shared directly with the user. Users can "add a shortcut to My files" (a shortcut node) without copying.
-- **Public links:** viewer-only (upload-capable "file request" links come later), with optional password, expiry and allow-download flag. Access goes through `/s/{token}` and is rate-limited. Every access is audited.
-- **Groups:** not in v1. User-to-user grants are enough for a family. The model leaves room for `grantee_group_id` later.
+- **Trash:** an editor's "Move to trash" moves it to the **owner's** trash, which records who did it (`trashed_by`, shown as "Moved to the trash by Bob"). The editor's Undo still works; otherwise only the owner restores or deletes it.
+- **Moves** stay within one owner's files. A move that would hide something from people who see it now (it leaves a shared folder for one they aren't in) asks first: "Bob can see this now, through the folder it's in. After the move they can't." (`POST /nodes/move-check`).
+- **"Shared with me":** a page listing the top-most things shared with the person, newest first, with Shared by, Shared and Your access. Folders inside a listed folder are reached from it, not listed again. Unopened items are marked **New**, with a count on the nav item; opening one marks it seen. **No shortcuts in My files** (decision 39): Shared with me plus Star cover quick access, and My files stays the person's own. In someone else's folder, the breadcrumbs start at "Shared with me" and the top folder the person can see (nothing above it is shown), with "Alice's folder · you can view" under them, and the nav highlights Shared with me.
+- **Leave:** someone with a share on the item itself can leave it ("Leave" in Shared with me and in the Sharing tab). Leaving or losing access also drops their stars and Recent rows for anything they can no longer see.
+- **The people picker** lists everyone who has signed in and isn't disabled, matched by name or email (`GET /people?q=`, at most 50). Nobody is invited by email address yet.
+- **The share dialog** (owner) adds people as Viewer or Editor, lists the owner and everyone with access, labels roles from a folder above ("Editor of “Projects”, so here too", naming the folder only when the person can see it), and changes or removes this item's own shares. Everyone else sees the same list read-only. The Sharing tab of the details panel shows the same list with "Manage access" for the owner and "Leave" where it applies.
+- **Live updates:** a new topic `shares` goes to the owner and the person on grant, change, remove and leave; the person's open app refetches and says "Alice shared “Projects” with you" (§15.4).
+- **Public links (next PR):** viewer-only (upload-capable "file request" links come later), with optional password, expiry and allow-download flag; links never expire unless a date is set. Access goes through `/s/{token}` and is rate-limited. Every access is audited.
+- **Notifications (the PR after):** in-app and email when something is shared with you.
+- **Groups:** not in v1. User-to-user shares are enough for a small group. The model leaves room for `grantee_group_id` later.
 
 ---
 
@@ -663,7 +677,7 @@ Built in M3 (decision 26). Two BM25 indexes, created in the migration with pg_se
 ### 13.3 Query
 
 - **The search bar** suggests names as someone types (`GET /search/suggest`, no text, ~6 rows). Enter opens the search page, `/search?q=…`, with its filters in the URL so a search can be bookmarked.
-- **The query language:** words, `"exact phrases"`, `-excluded` words and the operators `type:` (pdf, doc, sheet, slides, image, video, audio, text, archive, folder), `in:` (folders with that name, and everything below), `after:` and `before:` (modified), `camera:`, `taken:` (a year, month or day), `tag:` (a tag, `tag:"tax 2026"` for one with spaces) and `is:starred`. Unknown operators are searched as words. The chips on the search page (Type, Modified, In, Starred, Tag, and a Relevance / Last modified sort) set the same filters. Queries are capped at 20 words.
+- **The query language:** words, `"exact phrases"`, `-excluded` words and the operators `type:` (pdf, doc, sheet, slides, image, video, audio, text, archive, folder), `in:` (folders with that name, and everything below), `after:` and `before:` (modified), `camera:`, `taken:` (a year, month or day), `tag:` (a tag, `tag:"tax 2026"` for one with spaces), `is:starred`, `owner:me` (only the person's own files) and `is:shared` (only files someone else shared with them). Unknown operators are searched as words. The chips on the search page (Type, Modified, In, Starred, Tag, and a Relevance / Last modified sort) set the same filters. Queries are capped at 20 words.
 - **Matching:** every word must match, in the name, the text, the metadata or the file's tags (§13.4). In text a word matches its Swedish or English stem or, from 5 letters, one typo; in names a word matches whole (boosted), as a prefix, with one typo from 5 letters, or by its 3-grams. Phrases match the unstemmed text in order.
 - **Ranking:** the name's BM25 score, weighted ×2, plus the best page's. At most 1000 candidates are ranked; that is plenty for a person's own files.
 - **Results are files, not pages** (`GET /search`). Each has its best page: the page number ("Page 2 of 5", "Slide 3 of 12"), how many pages matched, where the hit was (name, text, a scan or photo's recognized text, or the file's details), and a snippet. The snippet is about 220 characters of plain text around the most hits, with the hits as `[start, end)` offsets, never HTML, so file content can't inject markup.
@@ -681,7 +695,7 @@ Built in M3 (decision 26). Two BM25 indexes, created in the migration with pg_se
 Built after M3 (decision 29).
 
 - **A tag is a word or a few words on a file**, such as "receipt" or "tax 2026": at most 50 characters, trimmed, NFC, no commas or line breaks. Two tags are the same when they match ignoring case (`tag_key`); the first spelling used on files the person can see, or a rule's, is kept, so "Receipt" joins "receipt". Files only: a tag on a folder would raise whether it applies to everything inside.
-- **Tags are shared:** everyone who can see a file sees its tags (not per person, unlike stars). Anyone who can change the file adds and removes them: the owner now, editors with sharing (M4). Suggestions and counts only ever come from files the person can see, so a tag on someone's private file never shows.
+- **Tags are shared:** everyone who can see a file sees its tags (not per person, unlike stars). Anyone who can change the file adds and removes them: the owner and editors (§9). Suggestions and counts only ever come from files the person can see, so a tag on someone's private file never shows.
 - **Sources:** `user` (someone added it), `rule` (an admin's keyword rule matched the text) and `ml` (the ML service, M7). Automatic tags look different, tinted with a small icon, and say on hover which rule added them.
 - **Automatic tags belong to the bytes** (`blob_tags`), like text: identical files get them once, and a new version gets those of its own bytes once its text is read. Tags people add belong to the file (`node_tags`) and stay through new versions. A tag someone adds that a rule also gives is theirs, so it stays if the rule stops matching.
 - **Removing an automatic tag** is recorded for that file (`node_tag_removals`) and sticks when rules run again and through new versions. The details panel says "Removed from this file: receipt · Put back"; adding the tag again lifts the removal. What a file shows is the `effective_node_tags` view.
@@ -704,7 +718,7 @@ Built after M3 (decision 28). The details panel's Info tab shows what the worker
 - **Editing the text** works one page at a time, so a long scan never becomes one huge text box. Text the same as what was read drops the correction, and "Use the text read from the file" does too (`PUT` and `DELETE /nodes/{id}/text/{page}`). Text can be added to a page where nothing was read, up to the file's page count (one page for files without pages). A page holds at most 200,000 characters, the text stage's own cap.
 - **Edits belong to the file version, never to the bytes** (§6): what was read is keyed by blob and shared by everyone with the same bytes, so fixing your copy must not change someone else's. A new upload starts with the previous version's details edits, but not its text corrections, because new bytes have new text. Restoring a version brings back that version's edits, text included. "Read all files again" or a better recognizer replaces what was read underneath and leaves the edits alone. The original is never changed (§1), and Download still gives the exact bytes.
 - **Search uses the edits.** An edited page replaces the read page of the same number for that version only; the version's page 0 holds the edited title and description and adds to what was read, so the file's own title still matches. An edited date wins over the camera's in `taken:`, and a partial date counts from its first day ("1974-07" matches `taken:1974` and `taken:1974-07`). The viewer still marks hits on a corrected scan from the read word boxes, so words people changed are found but not marked.
-- **Who:** everyone who can open the file sees its details and text; everyone who can change it (the owner now, editors once sharing lands) can edit them. Link viewers (M4) won't see the place. Each save writes a `file.details_edit` audit event naming the fields, or `file.text_edit` naming the page, never the text, and sends a live notice (`files`), so other tabs refresh.
+- **Who:** everyone who can open the file sees its details and text; everyone who can change it (the owner and editors, §9) can edit them. Link viewers (M4) won't see the place. Each save writes a `file.details_edit` audit event naming the fields, or `file.text_edit` naming the page, never the text, and sends a live notice (`files`), so other tabs refresh.
 - **Later:** opening the text dialog from the viewer on the page being shown, and writing edits into an exported copy's EXIF.
 
 ---
@@ -717,6 +731,7 @@ Built after tags (decision 30). The case: upload a receipt, and it ends up in `K
 - **Folders** are a path from the top of My files, folders separated by `/`, which may hold `{year}` and `{month}` (`Kvitton/{year}`, `Räkningar/{year}/{month}`). The month is two digits, so the folders sort in order. Other `{…}` are refused, and every folder must make a valid name. The date is the date taken people gave the version (§13.5, as written, so a scan dated "1974" goes to 1974), else when the photo was taken (`blob_metadata`), else the file's modified time on the device it came from, else when the version was uploaded, on the server's clock (`TZ`). Missing folders are made; a folder name held by a file stops the filing; a file name already taken in the folder is numbered as an upload would ("kvitto (1).pdf").
 - **When it runs:** a `file` job (subject: the node id, concurrency 1) runs the owner's rules on one file. It's queued when a file gets a tag (`POST /nodes/tags`), when a keyword rule tags its bytes (after the text or metadata stage, or when an admin changes a rule), and when a file gets new bytes (upload, new version, restore, copy), since bytes that already have tags may match at once. Only files whose owner has a rule on, not in the trash, and not filed before, are queued.
 - **Only tags got while the rule was on:** the `effective_node_tags` view says since when a file has each tag (when someone added it, or when its current bytes got it or were uploaded, whichever is later), and a rule matches a tag only from its `active_since` (made, turned back on, or given another tag). So a new rule doesn't move the files that already have its tag, unless the person ticks "Also file the N files that have this tag now", which queues a `filing-rule` job for those. Keyword rules keep the tags blobs already had when they run again, so their time stays.
+- **Shared folders:** rules only ever move the owner's files, and never out of sight of someone a file is shared with. If the move would take a file out of a folder shared with someone into one they aren't in, the file stays where it is, a `node_filings` row with `skipped` records it so it isn't tried again, and the rule's line in Settings says "Left 1 file where it was: moving it would hide it from people it's shared with". A file an editor adds to the owner's folder is filed by the owner's rules.
 - **Once, and reversibly:** a file is filed at most once, by whichever rule (`node_filings`, one row per file). If the person moves it back or elsewhere, or presses Undo, it stays there. The move is a `node.move` in the audit log with the actor `system`, naming the rule and the tag (and the new name if it was numbered); folders it makes are `folder.create` by the system. Deleting a rule leaves its files where they are.
 - **Telling the person:** the worker sends a `filings` live notice. The web app waits for notices to settle (0.8 s), fetches `GET /filings/recent?after=` (the person's filings after the last ones shown, still where the rule put them) and shows one snackbar wherever the person is: "Filed IMG_4471.jpg in Kvitton / 2026", or "Filed 3 files in Kvitton / 2026", with Undo (`POST /filings/{id}/undo`, which moves each back where it was, or to the top of My files if that folder is gone). The upload tray doesn't say it, since a tag can arrive minutes after an upload (OCR). The Activity tab shows the move once it lists audit events.
 - **Order:** rules are ordered (Move up and Move down in a rule's menu); the first enabled rule that matches wins, so a file with two tags moves once.
@@ -818,8 +833,9 @@ Changes made in one tab or on one device show up in the person's other open clie
   | `storage` | anything that changes usage, a quota or the default quota | the storage meter |
   | `account` | language or preferences, filing rules | the session, filing rules |
   | `filings` | a filing rule moved files (§13.6) | filing rules, and the "Filed" snackbar |
+  | `shares` | a share granted, changed, removed or left (§9) | Shared with me, who has access, listings, search; and the "shared with you" snackbar |
 
-- **Who hears what:** notices go to the owner of the changed items (and the person who made the change, when that's someone else). Sharing (M4) will add the people with access. A change to the default quota goes to everyone.
+- **Who hears what:** notices go to the owner of the changed items (and the person who made the change, when that's someone else). A `files` notice to someone also goes to everyone they share anything with: notices carry no ids, so that is simpler than working out who can see each changed path, and each client refetches only what it shows and may see. A change to the default quota goes to everyone.
 - **Echo skip:** each tab makes a random client id and sends it as `X-Dokument-Client` on its mutations and tus requests. The server passes it on as the notice's origin (only if it is at most 64 letters, digits and dashes), and the tab that made the change skips that notice, since it has already updated itself.
 - **Reconnects:** the client retries for as long as it is open (at once, 2 s, 5 s, 10 s, then every 30 s), and refetches everything after any gap, since notices aren't queued. If the server loses its `LISTEN` connection, it reconnects with backoff and then tells every client to refetch everything.
 - **In the web app:**
@@ -975,7 +991,7 @@ People who are managed in an IdP can get their storage from it instead of from t
   - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`), tags added or removed (`file.tags_change`, naming the tags), filing rules added, changed, reordered or deleted (`filing_rule.change`)
   - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), and filing rules moving files (`node.move`, `folder.create`, naming the rule, §13.6), with the actor kind `system`
   - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged. (Each person's Recent page remembers their own opens in `recent_files`, which nobody else sees and which isn't part of the audit log, §15.2.)
-  - sharing: share granted/changed/revoked, link created/accessed/revoked
+  - sharing: share granted, changed, revoked or left (`share.grant`, `share.change`, `share.revoke`, `share.leave`, naming the person and role); later link created/accessed/revoked
   - admin: settings changed, quota changed, keyword rule added, changed or deleted (`admin.tag_rule`), user disabled
 - **Partitioned by month** (from M6; M1 ships a plain table with indexes on `at` and `(target_node_id, at)`). An admin setting controls retention (default 1 year).
 - **Views:**
@@ -1100,7 +1116,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, folder uploads and live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, the web viewer for images, PDFs, text and browser-playable media, the admin Jobs page with per-file processing status (decision 27), the CodeMirror 6 text viewer and formatted Markdown (decision 31), video posters, audio cover art and playable copies with the admin's Video and audio section (decision 32), and Office previews through Gotenberg (decision 33). M2 is complete; PDF page thumbnails and free search inside a document in the viewer come later. |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Then details and text in the file info, with corrections search uses (§13.6, decision 28). Tags with keyword rules came next (§13.4, decision 29). Then filing rules that move tagged files (§13.6, decision 30). |
-| **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications |
+| **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications. **Built so far:** sharing with people, Shared with me, role-aware menus, editors adding to the owner's storage and trash, the move warning, search operators and live updates (decision 39). Public links and notifications are next. |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback. Transcription of audio and video into searchable, timed text is pulled ahead as the ML image's first piece, right after the M2 video work (§11.1, decision 34) |
@@ -1146,6 +1162,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 32 | Video and audio | 2026-10-25: ffprobe in the thumbnail stage stores `blob_media` per blob and plans playback by what every current browser plays (direct / remux / transcode); posters from the most typical frame 10 % in, cover art for audio; one MP4 copy per blob only when needed, streams copied when they play, otherwise H.264/AAC at CRF 23 fitted to 1080p (admin: 720p, 1080p or original), HDR tone-mapped, `+faststart`, no HLS; copies made in the background by default, or when opened, or never; failures not retried; HEVC-capable browsers get the original first; progress polled, not pushed (§10.3, §14) |
 | 33 | Office previews | 2026-10-25: Gotenberg is optional, its URL an admin setting with a Test button (empty = off); the thumbnail stage converts Office and OpenDocument files by MIME type with the bytes checked, one page per sheet, and keeps one PDF per blob that the viewer shows with pdf.js and a "shown as PDF" note; page 1 makes the thumbnails; refused files fail without retries, an unreachable Gotenberg retries; turning it on queues documents uploaded while it was off; .doc/.xls/.ppt text comes from the PDF (§10.3, §14) |
 | 34 | Transcription ahead of M7 | 2026-10-25: speech to text is built as the ML image's first piece, right after the M2 video/audio work (it needs ffmpeg in the worker), superseding decision 26's "waits for M7". faster-whisper with VAD behind `POST /transcribe`, streamed segments; Swedish/English detected per file; 16 kHz Opus sent, never originals; timed transcript pages (`start_ms`/`end_ms`, word times); no jobs without an ML URL, waiting when it's down; no Whisper in the worker image; hits play from 10 s before, transcript panel, captions from the transcript (§6, §10.2, §11.1, §13.3) |
+| 39 | Sharing with people (M4) | 2026-10-29: only the owner shares; no shortcuts in My files (Shared with me plus Star instead); the people picker lists everyone who has signed in; links never expire unless a date is set; built in three PRs: people, links, notifications. Access is one SQL function over `path`; editors' additions and trash belong to the owner; filing rules don't move files out of sight of people they're shared with (§9) |
 | 36 | Theme setting | 2026-10-27: Same as device / Light / Dark on the Settings page, Same as device by default; saved per device in `localStorage`, not on the account, and applied by an inline script before first paint (§16.5) |
 
 ## 26. Open questions

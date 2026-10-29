@@ -16,6 +16,8 @@ export type NavRailProps = {
   quota: number | null;
   /** What emptying the trash would free, in bytes. */
   trash?: number;
+  /** A count on a destination, such as new items in Shared with me. */
+  badges?: Partial<Record<Place, number>>;
   /** auto collapses to 88px under 1200px and expands to 256px with the storage meter above (§16.3). */
   mode?: "auto" | "expanded" | "collapsed";
   className?: string;
@@ -29,6 +31,7 @@ export function NavRail({
   used,
   quota,
   trash,
+  badges,
   mode = "auto",
   className,
 }: NavRailProps) {
@@ -67,6 +70,7 @@ export function NavRail({
           icon={place.icon}
           label={t(place.key)}
           active={place.id === active}
+          badge={badges?.[place.id]}
           onClick={() => onNavigate(place.id)}
         />
       ))}
@@ -86,13 +90,16 @@ export function RailItem({
   icon,
   label,
   active,
+  badge,
   onClick,
 }: {
   icon: string;
   label: string;
   active: boolean;
+  badge?: number;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -111,11 +118,24 @@ export function RailItem({
           active ? "bg-secondary-container text-on-secondary-container" : "group-hover:bg-on-surface/8 rail-expanded:group-hover:bg-transparent",
         )}
       >
-        <Icon name={icon} filled={active} />
+        <span className="relative inline-flex">
+          <Icon name={icon} filled={active} />
+          {!!badge && (
+            <span className="absolute -top-1 -right-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[11px] leading-none font-medium text-on-error rail-expanded:hidden">
+              {badge}
+            </span>
+          )}
+        </span>
       </span>
-      <span className="max-w-full text-center leading-4 rail-expanded:truncate rail-expanded:text-left rail-expanded:leading-5">
+      <span className="max-w-full text-center leading-4 rail-expanded:flex-1 rail-expanded:truncate rail-expanded:text-left rail-expanded:leading-5">
         {label}
       </span>
+      {!!badge && (
+        <span className="hidden min-w-5 rounded-full bg-primary px-1.5 text-center text-label-sm text-on-primary rail-expanded:inline">
+          {badge}
+        </span>
+      )}
+      {!!badge && <span className="sr-only">{t("nav.newCount", { count: badge })}</span>}
     </button>
   );
 }

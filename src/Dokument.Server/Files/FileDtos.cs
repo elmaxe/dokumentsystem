@@ -20,6 +20,8 @@ namespace Dokument.Server.Files;
 /// <param name="Tags">The file's tags, by name: the ones people added and the automatic ones nobody removed (§13.4).</param>
 /// <param name="Media">For video and audio files, once the worker has looked at them. Null for everything else.</param>
 /// <param name="ShownAsPdf">Whether <c>/nodes/{id}/preview</c> serves a PDF made of the file, for Office documents.</param>
+/// <param name="Access">What the person asking may do: own it, edit it or only view it (§9).</param>
+/// <param name="Shared">For the owner: whether this node itself is shared with someone. Always false for others.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -40,7 +42,9 @@ public sealed record NodeDto(
     List<ActiveStepDto> Processing,
     List<TagDto> Tags,
     MediaDto? Media,
-    bool ShownAsPdf
+    bool ShownAsPdf,
+    NodeRole Access,
+    bool Shared
 )
 {
     public static NodeDto From(
@@ -52,7 +56,9 @@ public sealed record NodeDto(
         IReadOnlyDictionary<ContentHash, List<ActiveStep>> processing,
         IReadOnlyDictionary<Guid, List<TagView>> tags,
         IReadOnlyDictionary<ContentHash, MediaState> media,
-        IReadOnlySet<ContentHash> documents
+        IReadOnlySet<ContentHash> documents,
+        IReadOnlyDictionary<Guid, NodeRole> roles,
+        IReadOnlySet<Guid> shared
     ) =>
         new(
             node.Id,
@@ -92,8 +98,18 @@ public sealed record NodeDto(
                     m.Progress
                 )
                 : null,
-            node.CurrentVersion is { } converted && documents.Contains(converted.BlobHash)
+            node.CurrentVersion is { } converted && documents.Contains(converted.BlobHash),
+            roles.GetValueOrDefault(node.Id, NodeRole.Viewer),
+            shared.Contains(node.Id)
         );
+}
+
+/// <summary>What the signed-in person may do with a node (§9).</summary>
+public enum NodeRole
+{
+    Viewer,
+    Editor,
+    Owner,
 }
 
 /// <summary>A processing step that hasn't finished yet.</summary>
@@ -241,13 +257,15 @@ public sealed record NodeIdsRequest(List<Guid> Ids);
 /// <param name="DeleteAt">When the purge job deletes it forever (§12).</param>
 /// <param name="ItemCount">For a folder, how many things went to the trash with it.</param>
 /// <param name="Size">Bytes of the current versions, a folder's contents included.</param>
+/// <param name="TrashedBy">Who trashed it, when that was someone the folder is shared with rather than the owner.</param>
 public sealed record TrashItem(
     NodeDto Node,
     List<PathEntry> Path,
     DateTimeOffset TrashedAt,
     DateTimeOffset DeleteAt,
     int ItemCount,
-    long Size
+    long Size,
+    string? TrashedBy
 );
 
 /// <param name="FreeableBytes">The storage that emptying the trash would free.</param>
