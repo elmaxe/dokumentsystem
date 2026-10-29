@@ -23,6 +23,7 @@ const sourceIcons: Record<TextPageSource, string> = {
   ocr: "document_scanner",
   added: "edit_note",
   metadata: "info",
+  transcript: "graphic_eq",
 };
 
 /** A small label on a detail or a page: where text came from, or that someone edited it. */

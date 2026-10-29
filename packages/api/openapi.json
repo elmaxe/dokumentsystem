@@ -1858,6 +1858,95 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/transcript": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "What's said in a video or audio file, line by line with times.",
+        "operationId": "GetTranscript",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/transcript/redo": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Transcribes the file again from the start, ahead of the background work, e.g. after the admin picked another model. The old transcript stays until the new run starts. 409 when the file isn't transcribed (no sound, speech to text off, or no ML service).",
+        "operationId": "RedoTranscript",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/captions.vtt": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "The transcript as WebVTT captions, for the player's CC button. 404 until there is one.",
+        "operationId": "GetCaptions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/v1/uploads/{id}": {
       "get": {
         "tags": [
@@ -2446,6 +2535,88 @@
         }
       }
     },
+    "/api/v1/admin/settings/transcription": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Turning it on, or including videos, queues the recordings not transcribed yet, in the background.",
+        "operationId": "AdminPutTranscriptionSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTranscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/transcription/progress": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminGetTranscriptionProgress",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionProgress"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/transcription/redo": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Transcribes every stored recording again, in the background, e.g. after picking another model. Old transcripts stay searchable until each is redone.",
+        "operationId": "AdminRedoAllTranscripts",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionProgress"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/storage": {
       "get": {
         "tags": [
@@ -2950,6 +3121,7 @@
           "textRecognition",
           "videos",
           "office",
+          "transcription",
           "signIn"
         ],
         "type": "object",
@@ -2977,6 +3149,9 @@
           },
           "office": {
             "$ref": "#/components/schemas/OfficeSettingsDto"
+          },
+          "transcription": {
+            "$ref": "#/components/schemas/TranscriptionSettingsDto"
           },
           "signIn": {
             "$ref": "#/components/schemas/SignInInfo"
@@ -4197,6 +4372,7 @@
           "metadata",
           "text",
           "transcode",
+          "transcribe",
           "tagRule",
           "file",
           "filingRule"
@@ -4307,7 +4483,8 @@
           "text",
           "ocr",
           "metadata",
-          "tag"
+          "tag",
+          "transcript"
         ]
       },
       "MediaDto": {
@@ -4370,7 +4547,8 @@
       "MlEndpointStatus": {
         "required": [
           "url",
-          "status"
+          "status",
+          "fromEnvironment"
         ],
         "type": "object",
         "properties": {
@@ -4379,6 +4557,9 @@
           },
           "status": {
             "$ref": "#/components/schemas/ProbeResult"
+          },
+          "fromEnvironment": {
+            "type": "boolean"
           }
         }
       },
@@ -4649,7 +4830,8 @@
         "required": [
           "pageNo",
           "source",
-          "boxes"
+          "boxes",
+          "times"
         ],
         "type": "object",
         "properties": {
@@ -4669,6 +4851,13 @@
                 "format": "double"
               }
             }
+          },
+          "times": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
           }
         }
       },
@@ -4677,7 +4866,8 @@
           "text",
           "ocr",
           "metadata",
-          "added"
+          "added",
+          "transcript"
         ]
       },
       "PathEntry": {
@@ -5002,7 +5192,8 @@
           "pageNo",
           "pageCount",
           "pagesWithHits",
-          "snippet"
+          "snippet",
+          "atMs"
         ],
         "type": "object",
         "properties": {
@@ -5045,6 +5236,13 @@
                 "$ref": "#/components/schemas/SnippetDto"
               }
             ]
+          },
+          "atMs": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -5746,6 +5944,143 @@
           "ready"
         ]
       },
+      "TranscriptDto": {
+        "required": [
+          "state",
+          "language",
+          "model",
+          "durationMs",
+          "doneMs",
+          "lines"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/TranscriptState"
+          },
+          "language": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "model": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "durationMs": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "doneMs": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TranscriptLineDto"
+            }
+          }
+        }
+      },
+      "TranscriptionProgress": {
+        "required": [
+          "done",
+          "waiting",
+          "waitingSeconds",
+          "running",
+          "failed"
+        ],
+        "type": "object",
+        "properties": {
+          "done": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waiting": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waitingSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "running": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TranscriptionSettingsDto": {
+        "required": [
+          "enabled",
+          "model",
+          "videos",
+          "models"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "videos": {
+            "type": "boolean"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TranscriptLineDto": {
+        "required": [
+          "startMs",
+          "endMs",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "startMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "endMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "TranscriptState": {
+        "enum": [
+          "none",
+          "waiting",
+          "running",
+          "ready",
+          "noSpeech",
+          "failed"
+        ]
+      },
       "TrashItem": {
         "required": [
           "node",
@@ -5831,6 +6166,25 @@
             "items": {
               "$ref": "#/components/schemas/MlEndpointUpdate"
             }
+          }
+        }
+      },
+      "UpdateTranscriptionRequest": {
+        "required": [
+          "enabled",
+          "model",
+          "videos"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "videos": {
+            "type": "boolean"
           }
         }
       },

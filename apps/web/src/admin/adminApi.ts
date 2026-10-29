@@ -1,4 +1,14 @@
-import type { AdminSettings, AdminUser, CopyStats, MlEndpointStatus, StorageReport, TagRule, TagRulePreview, TextProgress } from "@dokument/api";
+import type {
+  AdminSettings,
+  AdminUser,
+  CopyStats,
+  MlEndpointStatus,
+  StorageReport,
+  TagRule,
+  TagRulePreview,
+  TextProgress,
+  TranscriptionProgress,
+} from "@dokument/api";
 import { queryOptions } from "@tanstack/react-query";
 import { api } from "../api";
 import { send, unwrap } from "../files/drive";
@@ -49,6 +59,13 @@ export const videoCopiesQuery = queryOptions({
   refetchInterval: (query) => ((query.state.data?.waiting ?? 0) > 0 ? 10_000 : false),
 });
 
+/** How far speech to text has come, refreshed while recordings are waiting or being listened to. */
+export const transcriptionProgressQuery = queryOptions({
+  queryKey: ["admin", "transcription-progress"],
+  queryFn: (): Promise<TranscriptionProgress> => unwrap(api.GET("/api/v1/admin/transcription/progress")),
+  refetchInterval: (query) => ((query.state.data?.waiting ?? 0) + (query.state.data?.running ?? 0) > 0 ? 10_000 : false),
+});
+
 export const admin = {
   createTagRule: (tag: string, words: string, enabled: boolean) =>
     unwrap(api.POST("/api/v1/admin/tag-rules", { body: { tag, words, enabled } })),
@@ -70,7 +87,10 @@ export const admin = {
     unwrap(api.PUT("/api/v1/admin/settings/ml", { body: { endpoints } })),
   putTextRecognition: (enabled: boolean) =>
     unwrap(api.PUT("/api/v1/admin/settings/text-recognition", { body: { enabled } })),
+  putTranscription: (enabled: boolean, model: string, videos: boolean) =>
+    unwrap(api.PUT("/api/v1/admin/settings/transcription", { body: { enabled, model, videos } })),
   rereadText: () => unwrap(api.POST("/api/v1/admin/text-recognition/reread")),
+  redoTranscripts: () => unwrap(api.POST("/api/v1/admin/transcription/redo")),
   putVideos: (videos: AdminSettings["videos"]) => unwrap(api.PUT("/api/v1/admin/settings/videos", { body: videos })),
   putOffice: (gotenbergUrl: string | null) => unwrap(api.PUT("/api/v1/admin/settings/office", { body: { gotenbergUrl } })),
   testOffice: (url: string) => unwrap(api.POST("/api/v1/admin/office/test", { body: { url } })),

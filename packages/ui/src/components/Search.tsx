@@ -6,10 +6,11 @@ import { contentsLabel, isFolder, isPaged, type FileItem } from "../lib/files";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { Highlighted } from "./Highlighted";
 import { Icon } from "./Icon";
+import { formatMs } from "../lib/media";
 import { TagStrip, type TagSuggestionItem } from "./Tags";
 
 /** Where the best hit in a file was, as the server says. */
-export type HitSource = "name" | "text" | "ocr" | "metadata" | "tag";
+export type HitSource = "name" | "text" | "ocr" | "metadata" | "tag" | "transcript";
 
 export type SearchResultProps = {
   item: FileItem;
@@ -27,6 +28,8 @@ export type SearchResultProps = {
   pageNo?: number | null;
   pageCount?: number | null;
   pagesWithHits?: number;
+  /** For a hit in what's said in a recording: where it is, in milliseconds. */
+  atMs?: number | null;
   /** A link to the file, so it opens in a new tab with a middle click. */
   href: string;
   onOpen: () => void;
@@ -45,6 +48,7 @@ export function SearchResult({
   pageNo,
   pageCount,
   pagesWithHits = 0,
+  atMs,
   href,
   onOpen,
 }: SearchResultProps) {
@@ -69,6 +73,8 @@ export function SearchResult({
         ? { icon: "info", label: t("search.foundInDetails") }
         : source === "tag"
           ? { icon: "sell", label: t("search.foundInTags") }
+        : source === "transcript"
+          ? { icon: "graphic_eq", label: t("search.foundInSpeech") }
           : null;
   return (
     <a
@@ -103,13 +109,23 @@ export function SearchResult({
               ? contentsLabel(t, item.contents)
               : format.date(item.modified)}
           </span>
-          {page && (
+          {atMs != null ? (
             <>
               <Dot />
-              <span>{page}</span>
+              <span className="inline-flex items-center gap-0.5 font-medium text-primary">
+                <Icon name="play_arrow" filled size={16} />
+                {t("search.at", { time: formatMs(atMs) })}
+              </span>
             </>
+          ) : (
+            page && (
+              <>
+                <Dot />
+                <span>{page}</span>
+              </>
+            )
           )}
-          {pagesWithHits > 1 && (
+          {pagesWithHits > 1 && atMs == null && (
             <>
               <Dot />
               <span>{t("search.pagesWithHits", { count: pagesWithHits })}</span>

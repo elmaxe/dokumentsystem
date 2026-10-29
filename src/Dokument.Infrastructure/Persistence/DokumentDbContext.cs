@@ -39,6 +39,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<EffectiveTag> EffectiveTags => Set<EffectiveTag>();
     public DbSet<FilingRule> FilingRules => Set<FilingRule>();
     public DbSet<NodeFiling> NodeFilings => Set<NodeFiling>();
+    public DbSet<BlobTranscript> BlobTranscripts => Set<BlobTranscript>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -259,6 +260,8 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(p => p.VersionId).HasColumnName("version_id");
             e.Property(p => p.Text).HasColumnName("text");
             e.Property(p => p.Words).HasColumnName("words").HasColumnType("jsonb");
+            e.Property(p => p.StartMs).HasColumnName("start_ms");
+            e.Property(p => p.EndMs).HasColumnName("end_ms");
             e.Property(p => p.EditedBy).HasColumnName("edited_by");
             e.Property(p => p.EditedAt).HasColumnName("edited_at");
 
@@ -296,6 +299,25 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
                 .WithOne()
                 .HasForeignKey<VersionDetails>(d => d.VersionId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BlobTranscript>(e =>
+        {
+            e.ToTable("blob_transcripts");
+            e.HasKey(t => t.BlobHash);
+            e.Property(t => t.BlobHash)
+                .HasColumnName("blob_hash")
+                .HasConversion(ContentHashConverter);
+            e.Property(t => t.Status)
+                .HasColumnName("status")
+                .HasConversion(LowercaseEnum<TranscriptStatus>());
+            e.Property(t => t.Language).HasColumnName("language");
+            e.Property(t => t.Model).HasColumnName("model");
+            e.Property(t => t.Engine).HasColumnName("engine");
+            e.Property(t => t.DurationMs).HasColumnName("duration_ms");
+            e.Property(t => t.DoneMs).HasColumnName("done_ms");
+            e.Property(t => t.Error).HasColumnName("error");
+            e.Property(t => t.UpdatedAt).HasColumnName("updated_at");
         });
 
         modelBuilder.Entity<BlobMetadata>(e =>

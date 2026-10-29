@@ -19,6 +19,7 @@ public sealed record SnippetDto(string Text, List<int[]> Highlights, bool CutSta
 /// <param name="PageNo">The best page, from 1, for files with pages; open the viewer there.</param>
 /// <param name="PageCount">Pages (or slides) in the file, when it has them.</param>
 /// <param name="PagesWithHits">How many pages matched.</param>
+/// <param name="AtMs">For a hit in what's said in a recording, when it's said: play from there.</param>
 public sealed record SearchResultDto(
     NodeDto Node,
     List<PathEntry> Path,
@@ -26,7 +27,8 @@ public sealed record SearchResultDto(
     int? PageNo,
     int? PageCount,
     int PagesWithHits,
-    SnippetDto? Snippet
+    SnippetDto? Snippet,
+    int? AtMs
 );
 
 /// <param name="Total">All matches; <c>results</c> is one page of them.</param>
@@ -51,7 +53,13 @@ public sealed record SuggestResponse(
 );
 
 /// <param name="Boxes">Hits in recognized text, as <c>[x, y, width, height]</c> fractions of the page. Empty for a text layer, which the viewer searches itself.</param>
-public sealed record PageMatchDto(int PageNo, PageSource Source, List<double[]> Boxes);
+/// <param name="Times">Hits in a transcript: when each is said, in milliseconds from the start.</param>
+public sealed record PageMatchDto(
+    int PageNo,
+    PageSource Source,
+    List<double[]> Boxes,
+    List<int> Times
+);
 
 public sealed record MatchesResponse(List<string> Terms, List<PageMatchDto> Pages);
 
@@ -153,7 +161,8 @@ public static class SearchEndpoints
                                         s.CutStart,
                                         s.CutEnd
                                     )
-                                    : null
+                                    : null,
+                                h.AtMs
                             )
                     )
                     .ToList(),
@@ -204,7 +213,9 @@ public static class SearchEndpoints
         return TypedResults.Ok(
             new MatchesResponse(
                 [.. terms],
-                pages.Select(p => new PageMatchDto(p.PageNo, p.Source, [.. p.Boxes])).ToList()
+                pages
+                    .Select(p => new PageMatchDto(p.PageNo, p.Source, [.. p.Boxes], [.. p.Times]))
+                    .ToList()
             )
         );
     }

@@ -1,5 +1,5 @@
 import type { AdminSettings, AdminUser, ProbeResult } from "@dokument/api";
-import { formatBytes } from "@dokument/core";
+import { formatBytes, formatDuration } from "@dokument/core";
 import { Avatar, Banner, Button, Dialog, Icon, IconButton, Progress, Switch, TextField, useSnackbar } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type ReactNode } from "react";
@@ -13,6 +13,7 @@ import {
   storageReportQuery,
   textProgressQuery,
   toGib,
+  transcriptionProgressQuery,
   videoCopiesQuery,
 } from "./adminApi";
 
@@ -23,6 +24,7 @@ const sections = [
   { id: "videos", icon: "movie" },
   { id: "office", icon: "description" },
   { id: "ml", icon: "neurology" },
+  { id: "speech", icon: "graphic_eq" },
   { id: "scanning", icon: "shield" },
   { id: "versions", icon: "history" },
   { id: "signIn", icon: "login" },
@@ -59,6 +61,7 @@ export function AdminSettingsPage() {
           <VideosSection key={`p${settings.dataUpdatedAt}`} settings={settings.data} />
           <OfficeSection key={`o${settings.dataUpdatedAt}`} settings={settings.data} />
           <MlSection key={`m${settings.dataUpdatedAt}`} settings={settings.data} />
+          <SpeechSection key={`s${settings.dataUpdatedAt}`} settings={settings.data} />
           <ScannerSection key={`c${settings.dataUpdatedAt}`} settings={settings.data} />
           <VersionsSection key={`v${settings.dataUpdatedAt}`} settings={settings.data} />
           <SignInSection settings={settings.data} />
@@ -448,6 +451,7 @@ function MlSection({ settings }: { settings: AdminSettings }) {
   const duplicate = rows.some((r) => r.url.replace(/\/+$/, "") === url.trim().replace(/\/+$/, ""));
   const validUrl = /^https?:\/\/[^\s/?#]+[^\s?#]*$/.test(url.trim());
   const firstUp = status.data?.find((s) => s.status.reachable)?.url;
+  const fromEnvironment = status.data?.find((s) => s.fromEnvironment);
 
   const move = (index: number, by: -1 | 1) => {
     const next = [...rows];
@@ -466,7 +470,7 @@ function MlSection({ settings }: { settings: AdminSettings }) {
 
   return (
     <Section id="ml" intro={t("admin.ml.listIntro")}>
-      {rows.length === 0 ? (
+      {rows.length === 0 && !fromEnvironment ? (
         <p className="m-0 text-body-md text-on-surface-variant">{t("admin.ml.empty")}</p>
       ) : (
         <ol className="m-0 flex list-none flex-col gap-2 p-0">
@@ -495,6 +499,16 @@ function MlSection({ settings }: { settings: AdminSettings }) {
               </li>
             );
           })}
+          {fromEnvironment && (
+            <li className="flex flex-wrap items-center gap-3 rounded-md bg-surface-container-lowest py-2 pr-2 pl-4">
+              <Icon name="lock" size={16} className="w-4 text-on-surface-variant" />
+              <div className="flex min-w-0 flex-[1_1_14rem] flex-col">
+                <span className="font-mono text-mono-sm break-all text-on-surface">{fromEnvironment.url}</span>
+                <span className="text-body-sm text-on-surface-variant">{t("admin.ml.fromEnvironment")}</span>
+              </div>
+              <MlStatus probe={fromEnvironment.status} checking={false} inUse={fromEnvironment.url === firstUp} unsaved={false} />
+            </li>
+          )}
         </ol>
       )}
       <form
@@ -540,7 +554,7 @@ function MlSection({ settings }: { settings: AdminSettings }) {
           </Button>
         </div>
       </form>
-      <Banner tone="info">{t("admin.ml.notUsedYet")}</Banner>
+      <Banner tone="info">{t("admin.ml.usedFor")}</Banner>
       <SaveButton
         disabled={busy || !dirty}
         onClick={() => void save(() => admin.putMl(rows.map(({ url, apiKey, keepApiKey }) => ({ url, apiKey, keepApiKey }))))}
@@ -668,6 +682,142 @@ function TextRecognitionSection({ settings }: { settings: AdminSettings }) {
       </div>
     </Section>
   );
+}
+
+/** Speech to text (§11.1): whether recordings are transcribed, with which model, and how far it has come. */
+function SpeechSection({ settings }: { settings: AdminSettings }) {
+  const { t, i18n } = useTranslation();
+  const progress = useQuery(transcriptionProgressQuery);
+  const current = settings.transcription;
+  const [model, setModel] = useState(current.model);
+  const { busy, save } = useSave();
+  const enabledId = useId();
+  const videosId = useId();
+  const ml = useQuery(mlStatusQuery);
+  const hasMl = settings.ml.endpoints.length > 0 || !!ml.data?.some((s) => s.fromEnvironment);
+  const number = (n: number) => n.toLocaleString(i18n.language);
+  const put = (change: Partial<{ enabled: boolean; model: string; videos: boolean }>) => {
+    const next = { enabled: current.enabled, model, videos: current.videos, ...change };
+    if (!busy) void save(() => admin.putTranscription(next.enabled, next.model, next.videos));
+  };
+  const stats = progress.data;
+  const toast = useSnackbar();
+  const queryClient = useQueryClient();
+  const [confirmRedo, setConfirmRedo] = useState(false);
+
+  const redo = async () => {
+    setConfirmRedo(false);
+    try {
+      queryClient.setQueryData(transcriptionProgressQuery.queryKey, await admin.redoTranscripts());
+      toast(t("admin.speech.redoStarted"));
+    } catch {
+      toast(t("errors.generic"));
+    }
+  };
+
+  return (
+    <Section id="speech" intro={t("admin.speech.intro")}>
+      {!hasMl && (
+        <Banner
+          icon="info"
+          action={
+            <Button variant="text" onClick={() => document.getElementById("admin-ml")?.scrollIntoView({ behavior: "smooth" })}>
+              {t("admin.speech.addService")}
+            </Button>
+          }
+        >
+          {t("admin.speech.needsMl")}
+        </Banner>
+      )}
+      <div className="flex items-center gap-4">
+        <label htmlFor={enabledId} className="flex min-w-0 flex-1 cursor-pointer flex-col">
+          <span className="text-title-sm">{t("admin.speech.label")}</span>
+          <span className="text-body-sm text-on-surface-variant">{t("admin.speech.languages")}</span>
+        </label>
+        <Switch id={enabledId} checked={current.enabled} onCheckedChange={(enabled) => put({ enabled })} />
+      </div>
+      <div className="flex items-center gap-4">
+        <label htmlFor={videosId} className="flex min-w-0 flex-1 cursor-pointer flex-col">
+          <span className="text-title-sm">{t("admin.speech.videos")}</span>
+          <span className="text-body-sm text-on-surface-variant">{t("admin.speech.videosHint")}</span>
+        </label>
+        <Switch id={videosId} checked={current.videos} onCheckedChange={(videos) => put({ videos })} />
+      </div>
+      <label className="flex flex-col gap-2">
+        <span className="text-label-lg text-on-surface">{t("admin.speech.model")}</span>
+        <select
+          value={model}
+          onChange={(event) => setModel(event.target.value)}
+          className="h-control max-w-120 rounded-xs border border-outline bg-surface-container-lowest px-3 text-body-lg text-on-surface"
+        >
+          {current.models.map((id) => (
+            <option key={id} value={id}>
+              {modelLabel(t, id)}
+            </option>
+          ))}
+        </select>
+        <span className="max-w-160 text-body-sm text-on-surface-variant">{t("admin.speech.modelHint")}</span>
+      </label>
+      <SaveButton disabled={busy || model === current.model} onClick={() => put({ model })} />
+      {stats && hasMl && (
+        <div className="flex flex-col gap-2 rounded-md bg-surface-container p-4 text-body-md">
+          <span className="flex items-center gap-2 text-title-sm">
+            <Icon name="check_circle" filled className="text-success" size={20} />
+            {t("admin.speech.done", { count: stats.done })}
+          </span>
+          {stats.waiting + stats.running > 0 && (
+            <span className="tabular flex items-center gap-2 text-on-surface-variant">
+              <Icon name="hourglass_top" size={20} />
+              {t("admin.speech.queue", {
+                waiting: number(stats.waiting),
+                running: number(stats.running),
+                length: formatDuration(stats.waitingSeconds),
+              })}
+            </span>
+          )}
+          {stats.failed > 0 && (
+            <span className="flex items-center gap-2 text-on-surface-variant">
+              <Icon name="error" size={20} className="text-error" />
+              {t("admin.speech.failed", { count: stats.failed })}
+            </span>
+          )}
+          <span className="flex items-start gap-2 text-body-sm text-on-surface-variant">
+            <Icon name="info" size={20} />
+            {current.enabled ? t("admin.speech.engine") : t("admin.speech.offNote")}
+          </span>
+        </div>
+      )}
+      {hasMl && current.enabled && (
+        <div className="flex justify-end">
+          <Button variant="outlined" icon="refresh" onClick={() => setConfirmRedo(true)}>
+            {t("admin.speech.redo")}
+          </Button>
+        </div>
+      )}
+      <Dialog
+        open={confirmRedo}
+        onOpenChange={setConfirmRedo}
+        title={t("admin.speech.redoTitle")}
+        description={t("admin.speech.redoText")}
+        width="sm"
+        footer={
+          <>
+            <Button variant="text" onClick={() => setConfirmRedo(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={() => void redo()}>{t("admin.speech.redo")}</Button>
+          </>
+        }
+      />
+    </Section>
+  );
+}
+
+/** A model's name as the admin sees it: what `auto` means, and that KB-Whisper is the Swedish one. */
+function modelLabel(t: ReturnType<typeof useTranslation>["t"], id: string) {
+  if (id === "auto") return t("admin.speech.auto");
+  const kb = /^kb-whisper-(\w+)$/.exec(id);
+  return kb ? t("admin.speech.kbWhisper", { size: kb[1] }) : id;
 }
 
 type VideoSettings = AdminSettings["videos"];

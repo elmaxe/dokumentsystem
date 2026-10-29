@@ -923,6 +923,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What's said in a video or audio file, line by line with times. */
+        get: operations["GetTranscript"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/transcript/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Transcribes the file again from the start, ahead of the background work, e.g. after the admin picked another model. The old transcript stays until the new run starts. 409 when the file isn't transcribed (no sound, speech to text off, or no ML service). */
+        post: operations["RedoTranscript"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/captions.vtt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The transcript as WebVTT captions, for the player's CC button. 404 until there is one. */
+        get: operations["GetCaptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads/{id}": {
         parameters: {
             query?: never;
@@ -1201,6 +1252,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/settings/transcription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Turning it on, or including videos, queues the recordings not transcribed yet, in the background. */
+        put: operations["AdminPutTranscriptionSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/transcription/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminGetTranscriptionProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/transcription/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Transcribes every stored recording again, in the background, e.g. after picking another model. Old transcripts stay searchable until each is redone. */
+        post: operations["AdminRedoAllTranscripts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/storage": {
         parameters: {
             query?: never;
@@ -1418,6 +1519,7 @@ export interface components {
             textRecognition: components["schemas"]["TextRecognitionDto"];
             videos: components["schemas"]["VideoSettingsDto"];
             office: components["schemas"]["OfficeSettingsDto"];
+            transcription: components["schemas"]["TranscriptionSettingsDto"];
             signIn: components["schemas"]["SignInInfo"];
         };
         AdminUser: {
@@ -1721,7 +1823,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "tagRule" | "file" | "filingRule";
+        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "transcribe" | "tagRule" | "file" | "filingRule";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;
@@ -1750,7 +1852,7 @@ export interface components {
             pages: components["schemas"]["PageMatchDto"][];
         };
         /** @enum {unknown} */
-        MatchSource: "name" | "text" | "ocr" | "metadata" | "tag";
+        MatchSource: "name" | "text" | "ocr" | "metadata" | "tag" | "transcript";
         MediaDto: {
             /** Format: double */
             durationSeconds: null | number;
@@ -1768,6 +1870,7 @@ export interface components {
         MlEndpointStatus: {
             url: string;
             status: components["schemas"]["ProbeResult"];
+            fromEnvironment: boolean;
         };
         MlEndpointUpdate: {
             url: string;
@@ -1837,9 +1940,10 @@ export interface components {
             pageNo: number;
             source: components["schemas"]["PageSource"];
             boxes: number[][];
+            times: number[];
         };
         /** @enum {unknown} */
-        PageSource: "text" | "ocr" | "metadata" | "added";
+        PageSource: "text" | "ocr" | "metadata" | "added" | "transcript";
         PathEntry: {
             /** Format: uuid */
             id: string;
@@ -1932,6 +2036,8 @@ export interface components {
             /** Format: int32 */
             pagesWithHits: number;
             snippet: null | components["schemas"]["SnippetDto"];
+            /** Format: int32 */
+            atMs: null | number;
         };
         /** @enum {unknown} */
         SearchSort: "relevance" | "modified";
@@ -2117,6 +2223,43 @@ export interface components {
         TextState: "reading" | "ready" | "empty" | "unsupported" | "unreadable";
         /** @enum {unknown} */
         ThumbnailState: "none" | "pending" | "ready";
+        TranscriptDto: {
+            state: components["schemas"]["TranscriptState"];
+            language: null | string;
+            model: null | string;
+            /** Format: int32 */
+            durationMs: null | number;
+            /** Format: int32 */
+            doneMs: null | number;
+            lines: components["schemas"]["TranscriptLineDto"][];
+        };
+        TranscriptionProgress: {
+            /** Format: int32 */
+            done: number;
+            /** Format: int32 */
+            waiting: number;
+            /** Format: double */
+            waitingSeconds: number;
+            /** Format: int32 */
+            running: number;
+            /** Format: int32 */
+            failed: number;
+        };
+        TranscriptionSettingsDto: {
+            enabled: boolean;
+            model: string;
+            videos: boolean;
+            models: string[];
+        };
+        TranscriptLineDto: {
+            /** Format: int32 */
+            startMs: number;
+            /** Format: int32 */
+            endMs: number;
+            text: string;
+        };
+        /** @enum {unknown} */
+        TranscriptState: "none" | "waiting" | "running" | "ready" | "noSpeech" | "failed";
         TrashItem: {
             node: components["schemas"]["NodeDto"];
             path: components["schemas"]["PathEntry"][];
@@ -2142,6 +2285,11 @@ export interface components {
         };
         UpdateMlSettingsRequest: {
             endpoints: components["schemas"]["MlEndpointUpdate"][];
+        };
+        UpdateTranscriptionRequest: {
+            enabled: boolean;
+            model: string;
+            videos: boolean;
         };
         UploadStatus: {
             /** Format: uuid */
@@ -3588,6 +3736,70 @@ export interface operations {
             };
         };
     };
+    GetTranscript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptDto"];
+                };
+            };
+        };
+    };
+    RedoTranscript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptDto"];
+                };
+            };
+        };
+    };
+    GetCaptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     GetUpload: {
         parameters: {
             query?: never;
@@ -4080,6 +4292,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CopyStats"];
+                };
+            };
+        };
+    };
+    AdminPutTranscriptionSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTranscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionSettingsDto"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminGetTranscriptionProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionProgress"];
+                };
+            };
+        };
+    };
+    AdminRedoAllTranscripts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionProgress"];
                 };
             };
         };

@@ -13,7 +13,7 @@ You need Docker with Compose v2.
    - For sign-in, set `PUBLIC_URL` and the `OIDC_*` values for your identity provider ([design §5](docs/design.md#5-authentication-and-sessions)).
 3. Run `docker compose up -d` and open `http://<nas>:8080`.
 
-Optional services are Compose profiles: `--profile office` (Office previews through Gotenberg), `--profile ml` (machine learning, from roadmap M7) and `--profile clamav` (virus scanning, not used in v1).
+Optional services are Compose profiles: `--profile office` (Office previews through Gotenberg), `--profile ml` (machine learning: speech to text for now; [ml/README.md](ml/README.md)) and `--profile clamav` (virus scanning, not used in v1).
 
 ## Develop
 
