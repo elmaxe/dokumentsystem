@@ -9,6 +9,13 @@ describe("sessionProof", () => {
     const key = createHash("sha256").update(token, "utf8").digest();
     expect(sessionProof(token, nonce)).toBe(createHmac("sha256", key).update(nonce, "utf8").digest("base64url"));
   });
+
+  it("matches the server's proof for the same token and nonce", () => {
+    // The same vector is in the server's SessionTests, so the two sides can't drift apart.
+    expect(sessionProof("ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM", "AAECAwQFBgcICQoLDA0ODw")).toBe(
+      "cWORWj2un_ZELltxcead_sh4P7WuP1g1Y2bEIAMlguw",
+    );
+  });
 });
 
 describe("proofsMatch", () => {

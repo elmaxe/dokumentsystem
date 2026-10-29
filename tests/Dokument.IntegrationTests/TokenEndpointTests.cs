@@ -119,7 +119,7 @@ public sealed class TokenEndpointTests(PostgresFixture postgres)
     }
 
     /// <summary>What Scalar's popup does: sign in at the IdP with PKCE and take the code from the redirect.</summary>
-    private static async Task<(string Code, string Verifier)> SignInAtIdpAsync(
+    internal static async Task<(string Code, string Verifier)> SignInAtIdpAsync(
         DokumentApp app,
         FakeUser user,
         string redirectUri = ScalarRedirectUri
@@ -138,10 +138,11 @@ public sealed class TokenEndpointTests(PostgresFixture postgres)
         return (query["code"]!, verifier);
     }
 
-    private static FormUrlEncodedContent TokenRequest(
+    internal static FormUrlEncodedContent TokenRequest(
         string code,
         string verifier,
-        string redirectUri
+        string redirectUri,
+        string? deviceName = null
     ) =>
         new(
             new Dictionary<string, string>
@@ -151,6 +152,7 @@ public sealed class TokenEndpointTests(PostgresFixture postgres)
                 ["code_verifier"] = verifier,
                 ["redirect_uri"] = redirectUri,
                 ["client_id"] = FakeOidcProvider.ClientId,
+                ["device_name"] = deviceName ?? "",
             }
         );
 

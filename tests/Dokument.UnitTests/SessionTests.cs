@@ -94,4 +94,30 @@ public class SessionTests
         Assert.False(token.CsrfTokenMatches(null));
         Assert.NotEqual(token.Value, csrf);
     }
+
+    [Fact]
+    public void Proof_matches_the_apps_for_the_same_token_and_nonce()
+    {
+        // The same vector is in the mobile app's proof.test.ts, so the two sides can't drift apart.
+        Assert.True(
+            SessionToken.TryParse("ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM", out var token)
+        );
+        Assert.True(ProofNonce.TryParse("AAECAwQFBgcICQoLDA0ODw", out var nonce));
+        var session = new Session
+        {
+            UserId = Guid.NewGuid(),
+            Kind = SessionKind.Bearer,
+            TokenHash = token.Hash(),
+        };
+
+        Assert.Equal("cWORWj2un_ZELltxcead_sh4P7WuP1g1Y2bEIAMlguw", session.Prove(nonce));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("AAECAwQFBgcICQoLDA0O")]
+    [InlineData("not base64url!")]
+    public void Proof_nonces_are_16_to_64_random_bytes(string? value) =>
+        Assert.False(ProofNonce.TryParse(value, out _));
 }

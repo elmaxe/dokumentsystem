@@ -145,11 +145,55 @@
         "tags": [
           "Auth"
         ],
-        "description": "An OAuth token request (form: grant_type=authorization_code, code, code_verifier, redirect_uri) for a code from the IdP. Returns a bearer session as access_token.",
+        "description": "An OAuth token request (form: grant_type=authorization_code, code, code_verifier, redirect_uri, and optionally device_name) for a code from the IdP. Returns a bearer session as access_token.",
         "operationId": "RedeemCode",
         "responses": {
           "200": {
             "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/proof": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "description": "Proves this server issued a bearer session, for the app checking a local address. Returns an HMAC-SHA256 of the nonce keyed by the SHA-256 of the session token. 404 for unknown sessions.",
+        "operationId": "ProveSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProofRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionProof"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
           }
         }
       }
@@ -3002,7 +3046,11 @@
       "AuthConfig": {
         "required": [
           "enabled",
-          "providerName"
+          "providerName",
+          "issuer",
+          "clientId",
+          "scope",
+          "appRedirectUri"
         ],
         "type": "object",
         "properties": {
@@ -3010,6 +3058,30 @@
             "type": "boolean"
           },
           "providerName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "issuer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "clientId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scope": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "appRedirectUri": {
             "type": [
               "null",
               "string"
@@ -4739,6 +4811,22 @@
           }
         }
       },
+      "ProofRequest": {
+        "required": [
+          "sessionId",
+          "nonce"
+        ],
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nonce": {
+            "type": "string"
+          }
+        }
+      },
       "QuotaDto": {
         "required": [
           "kind",
@@ -5023,6 +5111,17 @@
           "cookie",
           "bearer"
         ]
+      },
+      "SessionProof": {
+        "required": [
+          "proof"
+        ],
+        "type": "object",
+        "properties": {
+          "proof": {
+            "type": "string"
+          }
+        }
       },
       "SetLanguageRequest": {
         "required": [
