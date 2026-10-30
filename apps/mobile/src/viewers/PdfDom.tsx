@@ -65,7 +65,9 @@ export default function PdfDom({
       scrollTop: number;
     } | null = null;
     let live = 1;
-    let tap: { x: number; y: number; moved: boolean } | null = null;
+    // A tap is short and stays put. Without the time limit, two small nudges against the page's edge, where it can't
+    // scroll any further, read as a double tap and zoomed back out.
+    let tap: { x: number; y: number; moved: boolean; time: number } | null = null;
     let lastTap: { x: number; y: number; time: number } | null = null;
 
     const touch = (touches: TouchList, index: number) => touches.item(index)!;
@@ -88,10 +90,11 @@ export default function PdfDom({
     const start = (event: TouchEvent) => {
       if (event.touches.length === 1) {
         const first = touch(event.touches, 0);
-        tap = { x: first.clientX, y: first.clientY, moved: false };
+        tap = { x: first.clientX, y: first.clientY, moved: false, time: Date.now() };
         return;
       }
       tap = null;
+      lastTap = null;
       if (event.touches.length !== 2) return;
       const box = scroller.getBoundingClientRect();
       const [a, b] = [touch(event.touches, 0), touch(event.touches, 1)];
@@ -131,11 +134,16 @@ export default function PdfDom({
         setZoom(zoomRef.current * live);
         return;
       }
-      if (!tap || tap.moved || event.touches.length > 0) return;
+      if (!tap || event.touches.length > 0) return;
+      const now = Date.now();
+      if (tap.moved || now - tap.time > 250) {
+        tap = null;
+        lastTap = null;
+        return;
+      }
       const box = scroller.getBoundingClientRect();
       const x = tap.x - box.left;
       const y = tap.y - box.top;
-      const now = Date.now();
       if (lastTap && now - lastTap.time < 300 && Math.hypot(x - lastTap.x, y - lastTap.y) < 40) {
         lastTap = null;
         zoomTo(zoomRef.current > 1 ? 1 : 2.5, x, y);

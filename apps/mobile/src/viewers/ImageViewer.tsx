@@ -5,8 +5,8 @@ import {
   GestureDetector,
   usePanGesture,
   usePinchGesture,
+  useCompetingGestures,
   useSimultaneousGestures,
-  useExclusiveGestures,
   useTapGesture,
 } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
@@ -82,6 +82,8 @@ export function ImageViewer({
 
   const doubleTap = useTapGesture({
     numberOfTaps: 2,
+    maxDistance: 20,
+    maxDuration: 250,
     onActivate: (event) => {
       "worklet";
       if (scale.value > 1) {
@@ -99,7 +101,8 @@ export function ImageViewer({
     },
   });
 
-  const gesture = useExclusiveGestures(doubleTap, useSimultaneousGestures(pinch, pan));
+  // Competing rather than double tap first: two fingers never fail a tap, so pinch would wait out its timeout.
+  const gesture = useCompetingGestures(useSimultaneousGestures(pinch, pan), doubleTap);
   const style = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }, { translateY: y.value }, { scale: scale.value }],
   }));
