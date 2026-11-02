@@ -181,6 +181,77 @@ public sealed class MediaProbeTests
 }
 
 /// <summary>Against the real ffmpeg, which CI installs. Videos are made with its test pattern, so the repo holds none.</summary>
+public sealed class SeekPreviewLayoutTests
+{
+    [Theory]
+    [InlineData(null, 0, 0)]
+    [InlineData(8.0, 0, 0)]
+    [InlineData(10.0, 5, 2000)]
+    [InlineData(31.0, 15, 2000)]
+    [InlineData(120.0, 60, 2000)]
+    [InlineData(240.0, 100, 2400)]
+    [InlineData(7200.0, 100, 72000)]
+    public void A_frame_every_percent_but_at_least_two_seconds_apart(
+        double? seconds,
+        int count,
+        int intervalMs
+    )
+    {
+        var layout = SeekPreviewLayout.For(seconds);
+        Assert.Equal(count, layout?.Count ?? 0);
+        Assert.Equal(intervalMs, (int)Math.Round((layout?.IntervalSeconds ?? 0) * 1000));
+    }
+
+    [Fact]
+    public void Frames_are_from_the_middle_of_their_stretch_and_fill_rows_of_ten()
+    {
+        var layout = SeekPreviewLayout.For(240)!;
+        Assert.Equal(TimeSpan.FromSeconds(1.2), layout.TimeOf(0));
+        Assert.Equal(TimeSpan.FromSeconds(238.8), layout.TimeOf(99));
+        Assert.Equal((10, 10), (layout.Columns, layout.Rows));
+
+        var clip = SeekPreviewLayout.For(30)!;
+        Assert.Equal((10, 2), (clip.Columns, clip.Rows));
+        var short_ = SeekPreviewLayout.For(12)!;
+        Assert.Equal((6, 1), (short_.Columns, short_.Rows));
+    }
+
+    [Theory]
+    [InlineData(1920, 1080, 256, 144)]
+    [InlineData(1080, 1920, 144, 256)]
+    [InlineData(1440, 1080, 256, 192)]
+    [InlineData(160, 120, 160, 120)]
+    [InlineData(null, null, 256, 144)]
+    public void Frames_are_256_on_the_long_edge_and_never_scaled_up(
+        int? width,
+        int? height,
+        int frameWidth,
+        int frameHeight
+    ) => Assert.Equal((frameWidth, frameHeight), SeekPreviewLayout.FrameSize(width, height));
+
+    [Fact]
+    public void A_sheet_that_doesnt_fit_the_length_isnt_offered()
+    {
+        Assert.Equal(
+            new SeekPreviewSheet(2400, 100, 10, 256, 144),
+            SeekPreviewSheet.From(240, 2560, 1440)
+        );
+        Assert.Null(SeekPreviewSheet.From(240, 2560, 1441));
+        Assert.Null(SeekPreviewSheet.From(5, 2560, 1440));
+    }
+
+    [Fact]
+    public void Missing_frames_borrow_their_neighbours()
+    {
+        byte[] a = [1],
+            b = [2];
+        byte[]?[] frames = [null, a, null, b, null];
+        Assert.True(SeekPreviewsHandler.Fill(frames));
+        Assert.Equal([a, a, a, b, b], frames);
+        Assert.False(SeekPreviewsHandler.Fill(new byte[]?[3]));
+    }
+}
+
 public sealed class FFmpegTests : IDisposable
 {
     private readonly string dir = Directory.CreateTempSubdirectory("dokument-media-").FullName;
@@ -230,6 +301,56 @@ public sealed class FFmpegTests : IDisposable
         Assert.Equal("h264", made.Video?.Codec);
         Assert.Equal("aac", made.Audio?.Codec);
         Assert.Equal(PlaybackPlan.Direct, MediaPlanner.Plan(made.ForPlanning));
+    }
+
+    [Fact]
+    public async Task Seek_previews_are_upright_frames_of_one_size_joined_ten_to_a_row()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var path = Path.Combine(dir, "clip.mp4");
+        await File.WriteAllBytesAsync(
+            path,
+            Dokument.Tests.TestFiles.Video(
+                "clip.mp4",
+                seconds: 24,
+                size: "320x180",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac"
+            ),
+            ct
+        );
+        var layout = SeekPreviewLayout.For(24)!;
+        Assert.Equal(12, layout.Count);
+        var (width, height) = SeekPreviewLayout.FrameSize(320, 180);
+
+        var frames = new byte[]?[layout.Count];
+        for (var i = 0; i < layout.Count; i++)
+        {
+            frames[i] = await ffmpeg.SeekFrameAsync(path, layout.TimeOf(i), width, height, ct);
+            Assert.NotNull(frames[i]);
+        }
+
+        // Past the end there's nothing to take.
+        Assert.Null(await ffmpeg.SeekFrameAsync(path, TimeSpan.FromSeconds(60), width, height, ct));
+
+        var sheet = SeekPreviewsHandler.Join(frames!, layout.Columns);
+        using var image = Image.NewFromBuffer(sheet);
+        Assert.Equal("webpload_buffer", image.Get("vips-loader"));
+        Assert.Equal((10 * 256, 2 * 144), (image.Width, image.Height));
+        Assert.Equal(
+            new SeekPreviewSheet(2000, 12, 10, 256, 144),
+            SeekPreviewSheet.From(24, image.Width, image.Height)
+        );
+
+        // The test pattern's counter: frames a second apart differ, so each is its own seek.
+        using var first = image.ExtractArea(0, 0, 256, 144);
+        using var second = image.ExtractArea(256, 0, 256, 144);
+        using var difference = (first - second).Abs();
+        Assert.True(difference.Max() > 50);
     }
 
     [Fact]

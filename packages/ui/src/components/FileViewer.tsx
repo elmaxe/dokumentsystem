@@ -9,7 +9,7 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { ActionMenu, type MenuAction } from "./Menu";
 import { Progress } from "./Progress";
-import { leadInMs } from "../lib/media";
+import { leadInMs, type SeekPreviews } from "../lib/media";
 import { MediaPlayer } from "./MediaPlayer";
 import { TranscriptPanel, type TranscriptView } from "./Transcript";
 
@@ -21,7 +21,7 @@ const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 export type PreviewSource =
   | { type: "image" | "pdf" | "text" | "markdown"; src: string }
   /** `fallbacks` are tried in turn if the browser can't play `src`, e.g. the playable copy after the HEVC original. */
-  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string }
+  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string; seekPreviews?: SeekPreviews }
   /** The worker is still making the rendition the viewer needs, e.g. for a HEIC photo. */
   | { type: "preparing" }
   /** A video or audio file browsers can't play, while the worker makes a copy that plays. `progress` is 0–100. */
@@ -303,6 +303,7 @@ export function FileViewer({
                 type={preview.type}
                 sources={[preview.src, ...(preview.fallbacks ?? [])]}
                 poster={preview.poster}
+                seekPreviews={preview.seekPreviews}
                 cover={<AudioCover item={item} />}
                 fallback={noPreview(true)}
                 mediaRef={media}
