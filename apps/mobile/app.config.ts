@@ -81,6 +81,11 @@ const config: ExpoConfig = {
     ],
     // The local address may be http; the main address must be https outside development (§15.3).
     ["expo-build-properties", { android: { usesCleartextTraffic: true } }],
+    // The document scanner (§15.3): VisionKit asks for the camera on iOS; ML Kit's scanner needs no permission.
+    [
+      "react-native-document-scanner-plugin",
+      { cameraPermission: "Dokumentsystem uses the camera to scan documents." },
+    ],
   ],
   experiments: { typedRoutes: true },
 };

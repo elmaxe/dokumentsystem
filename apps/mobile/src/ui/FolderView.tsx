@@ -11,6 +11,7 @@ import { FileList, openFile } from "./FileList";
 import { ItemSheet } from "./ItemSheet";
 import { ListActions } from "./ListActions";
 import { Notice } from "./Notice";
+import { ScanButton } from "./Scan";
 import { TopBar } from "./TopBar";
 
 /** My files, or a folder in it (docs/design.md §16.3). */
@@ -44,6 +45,8 @@ export function FolderView({ folderId }: { folderId: string | null }) {
           empty={<EmptyState icon="folder_open" title={t("files.empty.folderTitle")} />}
         />
       )}
+      {/* Below My files the tab bar is gone, so the button keeps clear of the system's own bar. */}
+      <ScanButton folderId={folderId} folderName={title} safeArea={!!folderId} />
       <ItemSheet node={selected} onClose={() => setSelected(null)} onOpenFolder={openFolder} />
     </View>
   );
