@@ -23,6 +23,12 @@ public enum RenditionKind
 
     /// <summary>A PDF of an Office or OpenDocument file, made by Gotenberg, that the viewer shows with pdf.js.</summary>
     Document,
+
+    /// <summary>
+    /// An audio file's loudness over time, for the player's waveform (§14): <see cref="Waveform"/>'s binary format.
+    /// Not an image.
+    /// </summary>
+    Waveform,
 }
 
 public static class RenditionKinds
@@ -37,7 +43,7 @@ public static class RenditionKinds
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
-    /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>, <c>playable</c>, <c>document</c>.</summary>
+    /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>, <c>playable</c>, <c>document</c>, <c>waveform</c>.</summary>
     public static string Key(this RenditionKind kind) =>
         kind switch
         {
@@ -46,6 +52,7 @@ public static class RenditionKinds
             RenditionKind.Preview => "preview",
             RenditionKind.Playable => "playable",
             RenditionKind.Document => "document",
+            RenditionKind.Waveform => "waveform",
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
@@ -57,6 +64,7 @@ public static class RenditionKinds
             "preview" => RenditionKind.Preview,
             "playable" => RenditionKind.Playable,
             "document" => RenditionKind.Document,
+            "waveform" => RenditionKind.Waveform,
             _ => throw new ArgumentException($"\"{key}\" isn't a rendition kind.", nameof(key)),
         };
 }

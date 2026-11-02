@@ -56,7 +56,9 @@ public sealed class MediaService(DokumentDbContext db, JobQueue jobs, DerivedSto
                 m.HasAudio,
                 m.VideoCodec,
                 CopyStateOf(m, jobStatus.TryGetValue(m.BlobHash.Hex, out var s) ? s : null),
-                m.CopyProgress
+                m.CopyProgress,
+                m.HasCover,
+                m.HasWaveform
             )
         );
     }

@@ -101,6 +101,11 @@ export function thumbnailUrl(nodeId: string, versionId?: string | null, size: "s
   return `${baseUrl}/api/v1/nodes/${nodeId}/thumbnail${query ? `?${query}` : ""}`;
 }
 
+/** An audio file's waveform for the player (§14), once `media.hasWaveform`. Parse it with `parseWaveform`. Not audited. */
+export function waveformUrl(nodeId: string, versionId?: string | null, baseUrl = ""): string {
+  return `${baseUrl}/api/v1/nodes/${nodeId}/waveform${versionId ? `?versionId=${versionId}` : ""}`;
+}
+
 /**
  * What the viewer loads: a rendition for images browsers can't show, the playable copy of a video browsers can't
  * play, otherwise the original, inline. `original` asks for the original video even when there is a copy. Not audited.

@@ -1,4 +1,4 @@
-import { captionsUrl, contentUrl, previewUrl, thumbnailUrl, type NodeDto } from "@dokument/api";
+import { captionsUrl, contentUrl, previewUrl, thumbnailUrl, waveformUrl, type NodeDto } from "@dokument/api";
 import {
   Banner,
   Button,
@@ -59,14 +59,18 @@ function previewOf(node: NodeDto, versionId: string | null | undefined, refused:
   const src = previewUrl(node.id, versionId);
   // What the worker found applies to the current version; an older one just gets what the server has for it.
   if (type !== "video" && type !== "audio") return { type, src };
-  const poster = type === "video" && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
   const media = versionId === node.currentVersionId ? node.media : null;
+  // An audio file without cover art has its waveform as its thumbnail, which isn't a cover for the player.
+  const pictured = type === "video" || !!media?.hasCover;
+  const poster = pictured && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
+  const waveform = type === "audio" && media?.hasWaveform ? waveformUrl(node.id, versionId) : undefined;
   if (!media && node.thumbnail === "pending" && !webMedia.test(node.mimeType ?? "")) return { type: "preparing" };
-  if (!media || media.copy === "notNeeded") return { type, src, poster };
+  if (!media || media.copy === "notNeeded") return { type, src, poster, waveform };
 
   const original = playsOriginal(node) ? previewUrl(node.id, versionId, { original: true }) : null;
-  if (media.copy === "ready") return original ? { type, src: original, fallbacks: [src], poster } : { type, src, poster };
-  if (original) return { type, src: original, poster };
+  if (media.copy === "ready")
+    return original ? { type, src: original, fallbacks: [src], poster, waveform } : { type, src, poster, waveform };
+  if (original) return { type, src: original, poster, waveform };
   if (media.copy === "failed" || refused) return { type: "unplayable" };
   return { type: "converting", waiting: media.copy !== "making", progress: media.progress ?? undefined };
 }

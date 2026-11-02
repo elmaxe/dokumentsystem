@@ -21,7 +21,11 @@ const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 export type PreviewSource =
   | { type: "image" | "pdf" | "text" | "markdown"; src: string }
   /** `fallbacks` are tried in turn if the browser can't play `src`, e.g. the playable copy after the HEVC original. */
-  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string }
+  /**
+   * `poster` is a video's poster frame or an audio file's cover art; `waveform` is where an audio file's waveform is,
+   * drawn as the timeline (§14).
+   */
+  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string; waveform?: string }
   /** The worker is still making the rendition the viewer needs, e.g. for a HEIC photo. */
   | { type: "preparing" }
   /** A video or audio file browsers can't play, while the worker makes a copy that plays. `progress` is 0–100. */
@@ -302,8 +306,9 @@ export function FileViewer({
                 key={preview.src}
                 type={preview.type}
                 sources={[preview.src, ...(preview.fallbacks ?? [])]}
-                poster={preview.poster}
-                cover={<AudioCover item={item} />}
+                poster={preview.type === "video" ? preview.poster : undefined}
+                cover={<AudioCover name={item.name} src={preview.poster} />}
+                waveform={preview.waveform}
                 fallback={noPreview(true)}
                 mediaRef={media}
                 startAtMs={startAtMs}
@@ -677,14 +682,14 @@ function useStoredFlag(key: string) {
 }
 
 /** An audio file's cover art, or a note when it has none, and its name, above the player's controls. */
-function AudioCover({ item }: { item: FileItem }) {
+function AudioCover({ name, src }: { name: string; src?: string }) {
   const { t } = useTranslation();
   const [failed, setFailed] = useState(false);
   return (
     <>
-      {item.thumbnail && !failed ? (
+      {src && !failed ? (
         <img
-          src={item.thumbnail}
+          src={src}
           alt={t("viewer.cover")}
           onError={() => setFailed(true)}
           className="size-60 rounded-lg object-cover shadow-elevation-1 max-sm:size-32"
@@ -694,7 +699,7 @@ function AudioCover({ item }: { item: FileItem }) {
           <Icon name="music_note" filled size={96} />
         </span>
       )}
-      <p className="m-0 max-w-full truncate text-title-md">{item.name}</p>
+      <p className="m-0 max-w-full truncate text-title-md">{name}</p>
     </>
   );
 }

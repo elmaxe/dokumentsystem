@@ -233,6 +233,24 @@ public sealed class FFmpegTests : IDisposable
     }
 
     [Fact]
+    public async Task Reads_an_audio_files_loudness_over_time()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var path = Path.Combine(dir, "tone.mp3");
+        File.WriteAllBytes(path, Dokument.Tests.TestFiles.Audio("tone.mp3", "-c:a", "libmp3lame"));
+
+        var waveform = await ffmpeg.WaveformAsync(path, ct);
+
+        Assert.NotNull(waveform);
+        var slices = Waveform.Decode(waveform.Encode(), out var seconds);
+        Assert.InRange(slices.Length * seconds, 3.9, 4.2);
+        // Two seconds of tone, then silence (give the encoder's edges a slice or two).
+        var half = (int)(2 / seconds);
+        Assert.All(slices[2..(half - 2)], s => Assert.InRange(s.High, 200, 255));
+        Assert.All(slices[(half + 3)..^3], s => Assert.InRange(s.High, 0, 5));
+    }
+
+    [Fact]
     public async Task Says_nothing_about_files_that_arent_media()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -243,6 +261,63 @@ public sealed class FFmpegTests : IDisposable
 
         Assert.Null(await ffmpeg.ProbeAsync(text, ct));
         Assert.Null(await ffmpeg.ProbeAsync(png, ct));
+    }
+}
+
+public sealed class WaveformTests
+{
+    [Fact]
+    public void Keeps_the_shape_of_a_quiet_recording_in_20_ms_slices()
+    {
+        var waveform = new Waveform();
+        // Half a second of a quiet tone (a tenth of full scale), then half a second of silence.
+        var samples = new short[Waveform.SampleRate];
+        for (var i = 0; i < samples.Length / 2; i++)
+        {
+            samples[i] = (short)(3276 * Math.Sin(i * 2 * Math.PI * 440 / Waveform.SampleRate));
+        }
+
+        waveform.Add(samples);
+
+        var slices = Waveform.Decode(waveform.Encode(), out var seconds);
+        Assert.Equal(0.02, seconds, 4);
+        Assert.Equal(50, slices.Length);
+        // Scaled to the loudest moment, so a quiet tone still fills the height.
+        Assert.All(slices[..25], s => Assert.InRange(s.High, 245, 255));
+        Assert.All(slices[..25], s => Assert.InRange(s.Low, 245, 255));
+        // A sine's RMS is its peak over √2.
+        Assert.All(slices[..25], s => Assert.InRange(s.Rms, 170, 190));
+        Assert.All(slices[25..], s => Assert.Equal((0, 0, 0), (s.Low, s.High, s.Rms)));
+    }
+
+    [Fact]
+    public void Merges_slices_so_hours_of_audio_stay_small()
+    {
+        var waveform = new Waveform();
+        var second = new short[Waveform.SampleRate];
+        Array.Fill(second, (short)1000);
+        // Over twice what 20 ms slices allow, with a partly filled last slice.
+        for (var i = 0; i < 1400; i++)
+        {
+            waveform.Add(second);
+        }
+
+        waveform.Add(second.AsSpan(0, 123));
+
+        var encoded = waveform.Encode();
+        var slices = Waveform.Decode(encoded, out var seconds);
+        Assert.InRange(slices.Length, Waveform.MaxSlices / 2, Waveform.MaxSlices);
+        Assert.Equal(0.08, seconds, 4);
+        Assert.InRange(slices.Length * seconds, 1400, 1400.1);
+        Assert.Equal(Waveform.HeaderBytes + slices.Length * 3, encoded.Length);
+        Assert.All(slices, s => Assert.Equal(255, s.High));
+    }
+
+    [Fact]
+    public void An_empty_recording_has_no_slices()
+    {
+        Assert.Empty(Waveform.Decode(new Waveform().Encode(), out _));
+        Assert.Throws<FormatException>(() => Waveform.Decode("nope"u8, out _));
     }
 }
 
