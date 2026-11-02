@@ -51,6 +51,39 @@ public sealed class AdminTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task The_Word_viewer_is_off_until_an_admin_turns_it_on_for_everyone()
+    {
+        await using var app = await DokumentApp.StartAsync(postgres);
+        using var alice = await FileTests.SignInAsync(app, Alice);
+        using var admin = await FileTests.SignInAsync(app, Admin);
+        Assert.False((await DokumentApp.GetSessionAsync(alice)).Features.WordViewer);
+
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (
+                await alice.PutAsJsonAsync(
+                    "/api/v1/admin/settings/word-viewer",
+                    new WordViewerDto(true),
+                    Json.Options
+                )
+            ).StatusCode
+        );
+        var saved = await admin.PutAsJsonAsync(
+            "/api/v1/admin/settings/word-viewer",
+            new WordViewerDto(true),
+            Json.Options
+        );
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+
+        Assert.True((await DokumentApp.GetSessionAsync(alice)).Features.WordViewer);
+        var settings = await admin.GetFromJsonAsync<AdminSettingsDto>(
+            "/api/v1/admin/settings",
+            Json.Options
+        );
+        Assert.True(settings!.WordViewer.Enabled);
+    }
+
+    [Fact]
     public async Task The_default_quota_applies_until_a_person_has_their_own()
     {
         await using var app = await DokumentApp.StartAsync(postgres);

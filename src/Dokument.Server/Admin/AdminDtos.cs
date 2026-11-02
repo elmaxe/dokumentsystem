@@ -14,6 +14,7 @@ public sealed record AdminSettingsDto(
     TextRecognitionDto TextRecognition,
     VideoSettingsDto Videos,
     OfficeSettingsDto Office,
+    WordViewerDto WordViewer,
     TranscriptionSettingsDto Transcription,
     SignInInfo SignIn
 );
@@ -26,6 +27,9 @@ public sealed record OfficeSettingsDto(string? GotenbergUrl, bool Configured);
 public sealed record OfficeSettingsRequest(string? GotenbergUrl);
 
 public sealed record TestOfficeRequest(string Url);
+
+/// <param name="Enabled">Whether .docx files open in the browser with Scriptor instead of as a PDF (§14). Experimental.</param>
+public sealed record WordViewerDto(bool Enabled);
 
 /// <param name="Enabled">Whether what's said in recordings is made searchable (§11.1). Needs an ML service.</param>
 /// <param name="Model">One of <c>models</c>; <c>auto</c> lets the ML service pick by its hardware.</param>

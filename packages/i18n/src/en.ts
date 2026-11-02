@@ -575,6 +575,9 @@ export const en = {
     unplayableText: "Browsers can't play it as it is, and no copy that plays can be made. Download it to play it in another app.",
     cover: "Cover art",
     shownAsPdf: "Shown as a PDF, so the layout may differ a little. Download the original to edit it.",
+    wordFailedAsPdf: "Scriptor couldn't read this file, so it's shown as a PDF instead. The layout may differ a little.",
+    asWord: "Word",
+    asPdf: "PDF",
     failedTitle: "The preview couldn't be shown",
     failedText: "The file may be damaged or password-protected. You can still download it.",
     truncated: "Showing the first {{size}}. Download the file to see all of it.",
@@ -1003,6 +1006,9 @@ export const en = {
       failed: "Can't reach Gotenberg: {{error}}",
       off: "Office previews are off. Documents show their type icon and can be downloaded.",
       backfill: "Documents uploaded while previews were off get them in the background once you save.",
+      wordViewer: "Show Word files with Scriptor (experimental)",
+      wordViewerHint:
+        "Opens .docx files in the browser as Word lays them out, without Gotenberg. The PDF stays one click away. Loads 6 MB the first time someone opens a Word file.",
     },
     videos: {
       intro:

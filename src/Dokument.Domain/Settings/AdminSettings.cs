@@ -128,6 +128,15 @@ public sealed record OfficeSettings(ServiceUrl? GotenbergUrl)
 }
 
 /// <summary>
+/// Whether Word files (.docx) open in the browser with Scriptor, a WebAssembly Word engine, instead of as the PDF
+/// Gotenberg made of them (§14). Experimental, so off by default.
+/// </summary>
+public sealed record WordViewerSettings(bool Enabled)
+{
+    public static readonly WordViewerSettings Default = new(false);
+}
+
+/// <summary>
 /// Speech to text (§11.1), done by the ML service: on by default, so adding an ML URL is all it takes. With no ML
 /// service set, nothing is queued.
 /// </summary>

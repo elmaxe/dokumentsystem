@@ -131,6 +131,8 @@ function useSave() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin"] }),
         queryClient.invalidateQueries({ queryKey: ["storage"] }),
+        // The session carries the features that change how files open, such as the Word viewer.
+        queryClient.invalidateQueries({ queryKey: ["auth", "session"] }),
       ]);
       toast(t("common.saved"));
     } catch {
@@ -929,6 +931,7 @@ function OfficeSection({ settings }: { settings: AdminSettings }) {
   const { t } = useTranslation();
   const initial = settings.office.gotenbergUrl ?? "";
   const configured = settings.office.configured;
+  const wordId = useId();
   const [url, setUrl] = useState(initial);
   const [test, setTest] = useState<ProbeResult | "testing" | null>(null);
   const { busy, save } = useSave();
@@ -972,6 +975,17 @@ function OfficeSection({ settings }: { settings: AdminSettings }) {
       {!configured && (
         <SaveButton disabled={busy || url.trim() === initial} onClick={() => void save(() => admin.putOffice(url.trim() || null))} />
       )}
+      <div className="flex items-center gap-4 border-t border-outline-variant pt-4">
+        <label htmlFor={wordId} className="flex min-w-0 flex-1 cursor-pointer flex-col">
+          <span className="text-title-sm">{t("admin.office.wordViewer")}</span>
+          <span className="text-body-sm text-on-surface-variant">{t("admin.office.wordViewerHint")}</span>
+        </label>
+        <Switch
+          id={wordId}
+          checked={settings.wordViewer.enabled}
+          onCheckedChange={(checked) => !busy && void save(() => admin.putWordViewer(checked))}
+        />
+      </div>
     </Section>
   );
 }

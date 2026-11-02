@@ -3,6 +3,7 @@ using Dokument.Domain.Identity;
 using Dokument.Infrastructure.Identity;
 using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
+using Dokument.Infrastructure.Settings;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -72,6 +73,7 @@ public static class AuthEndpoints
         HttpContext context,
         ClaimsPrincipal principal,
         DokumentDbContext db,
+        SettingsStore settings,
         CancellationToken ct
     )
     {
@@ -88,8 +90,14 @@ public static class AuthEndpoints
             && context.Items[SessionAuthentication.TokenItem] is SessionToken token
                 ? token.CsrfToken()
                 : null;
+        var wordViewer = await settings.GetAsync(SettingKeys.WordViewer, ct);
         return TypedResults.Ok(
-            new CurrentSession(UserProfile.From(user), principal.SessionId(), csrfToken)
+            new CurrentSession(
+                UserProfile.From(user),
+                principal.SessionId(),
+                csrfToken,
+                new ServerFeatures(wordViewer.Enabled)
+            )
         );
     }
 
@@ -205,7 +213,16 @@ public static class AuthEndpoints
 public sealed record AuthConfig(bool Enabled, string? ProviderName);
 
 /// <param name="CsrfToken">Send this in <c>X-CSRF-Token</c> on mutations. Null for bearer sessions, which don't need it.</param>
-public sealed record CurrentSession(UserProfile User, Guid SessionId, string? CsrfToken);
+public sealed record CurrentSession(
+    UserProfile User,
+    Guid SessionId,
+    string? CsrfToken,
+    ServerFeatures Features
+);
+
+/// <summary>What an admin has turned on that changes how clients behave.</summary>
+/// <param name="WordViewer">Word files (.docx) open with Scriptor in the browser instead of as a PDF (§14).</param>
+public sealed record ServerFeatures(bool WordViewer);
 
 /// <param name="Language">The UI language the user picked; null follows the browser.</param>
 /// <param name="ShowSeconds">Times show seconds ("09:14:07").</param>

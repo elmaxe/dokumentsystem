@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -59,6 +61,22 @@ public static class ServerRole
             options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
         });
         builder.AddDokumentAuth();
+
+        // Only the Word viewer's WebAssembly engine (16 MB, 6 MB gzipped; §14) is compressed. It's built into the app,
+        // so it holds no secrets, and nothing else large is served compressible: the rest is small or already compressed.
+        builder.Services.AddResponseCompression(options =>
+        {
+            options.EnableForHttps = true;
+            options.MimeTypes = ["application/wasm"];
+            options.Providers.Add<BrotliCompressionProvider>();
+            options.Providers.Add<GzipCompressionProvider>();
+        });
+        builder.Services.Configure<BrotliCompressionProviderOptions>(o =>
+            o.Level = CompressionLevel.Fastest
+        );
+        builder.Services.Configure<GzipCompressionProviderOptions>(o =>
+            o.Level = CompressionLevel.Fastest
+        );
         return builder;
     }
 
@@ -69,7 +87,21 @@ public static class ServerRole
 
         // The built web app is copied into wwwroot by the Docker image. Unknown non-API paths go to the SPA router.
         app.UseDefaultFiles();
-        app.UseStaticFiles();
+        app.UseResponseCompression();
+        app.UseStaticFiles(
+            new StaticFileOptions
+            {
+                // Vite names everything under /assets by its content hash, so a browser can keep it for good.
+                OnPrepareResponse = context =>
+                {
+                    if (context.Context.Request.Path.StartsWithSegments("/assets"))
+                    {
+                        context.Context.Response.Headers.CacheControl =
+                            "public, max-age=31536000, immutable";
+                    }
+                },
+            }
+        );
 
         app.UseRouting();
         app.UseAuthentication();

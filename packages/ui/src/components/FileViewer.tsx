@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "rea
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
 import type { FileItem } from "../lib/files";
+import { Banner } from "./Banner";
 import { Button, IconButton } from "./Button";
 import { EmptyState } from "./EmptyState";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -16,10 +17,13 @@ import { TranscriptPanel, type TranscriptView } from "./Transcript";
 const PdfPreview = lazy(() => import("./PdfPreview"));
 const CodePreview = lazy(() => import("./CodePreview"));
 const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
+const WordPreview = lazy(() => import("./WordPreview"));
 
 /** What the viewer body shows (docs/design.md §14). `src` is the server's preview URL, which is not audited. */
 export type PreviewSource =
   | { type: "image" | "pdf" | "text" | "markdown"; src: string }
+  /** A .docx drawn by Scriptor from the original bytes, with the PDF Gotenberg made of it as the other view (§14). */
+  | { type: "word"; src: string; pdf?: string }
   /** `fallbacks` are tried in turn if the browser can't play `src`, e.g. the playable copy after the HEVC original. */
   | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string }
   /** The worker is still making the rendition the viewer needs, e.g. for a HEIC photo. */
@@ -108,6 +112,11 @@ export function FileViewer({
   const nextMarked = markedPages.find((p) => p > page);
   const boxesOn = (pageNo: number) => marks?.pages.find((p) => p.pageNo === pageNo)?.boxes ?? [];
   const [markdownView, setMarkdownView] = useState<"formatted" | "source">("formatted");
+  // A Word file is shown by Scriptor unless the person picks the PDF, or Scriptor can't read it.
+  const [wordView, setWordView] = useState<"word" | "pdf">("word");
+  const [wordFailed, setWordFailed] = useState<string | null>(null);
+  const word = preview.type === "word" ? preview : null;
+  const wordAsPdf = word?.pdf && (wordView === "pdf" || wordFailed === word.src) ? word.pdf : null;
   const [wrap, setWrap] = useStoredFlag("dokument.viewer.wrap");
   const [findRequest, setFindRequest] = useState(0);
   const showsCode = preview.type === "text" || (preview.type === "markdown" && markdownView === "source");
@@ -219,6 +228,7 @@ export function FileViewer({
           </div>
         )}
         {preview.type === "markdown" && <MarkdownViewToggle value={markdownView} onChange={setMarkdownView} />}
+        {word?.pdf && wordFailed !== word.src && <WordViewToggle value={wordView} onChange={setWordView} />}
         {showsCode && (
           <>
             <IconButton icon="wrap_text" label={t("code.wrap")} selected={wrap} onClick={() => setWrap(!wrap)} />
@@ -254,7 +264,13 @@ export function FileViewer({
           <ActionMenu actions={menuActions} onAction={onAction} trigger={<IconButton icon="more_vert" label={t("common.more")} />} />
         )}
       </header>
-      {banner && <div className="shrink-0 px-2 pt-2 sm:px-4">{banner}</div>}
+      {(banner || wordAsPdf) && (
+        <div className="shrink-0 px-2 pt-2 sm:px-4">
+          {banner ?? (
+            <Banner icon="picture_as_pdf">{wordFailed === word?.src ? t("viewer.wordFailedAsPdf") : t("viewer.shownAsPdf")}</Banner>
+          )}
+        </div>
+      )}
       <div className={cn("flex min-h-0 flex-1", showsTranscript && "max-lg:flex-col")}>
         <div
           className="relative flex min-w-0 flex-1 flex-col"
@@ -273,15 +289,25 @@ export function FileViewer({
         >
           {preview.type === "image" ? (
             <ImagePreview key={preview.src} src={preview.src} alt={item.name} boxes={boxesOn(1)} fallback={noPreview(true)} />
-          ) : preview.type === "pdf" ? (
+          ) : preview.type === "pdf" || wordAsPdf ? (
             <Suspense fallback={<Loading />}>
               <PdfPreview
-                key={preview.src}
-                src={preview.src}
+                key={wordAsPdf ?? (preview.type === "pdf" ? preview.src : "")}
+                src={wordAsPdf ?? (preview.type === "pdf" ? preview.src : "")}
                 page={page}
                 onPageChange={setPage}
                 terms={marks?.terms}
                 boxes={boxesOn(page)}
+                fallback={noPreview(true)}
+              />
+            </Suspense>
+          ) : preview.type === "word" ? (
+            <Suspense fallback={<Loading />}>
+              <WordPreview
+                key={preview.src}
+                src={preview.src}
+                onFailed={() => setWordFailed(preview.src)}
+                onSave={onDownload}
                 fallback={noPreview(true)}
               />
             </Suspense>
@@ -632,8 +658,32 @@ function MarkdownViewToggle({ value, onChange }: { value: "formatted" | "source"
     { id: "formatted", icon: "article", label: t("markdown.formatted") },
     { id: "source", icon: "code", label: t("markdown.source") },
   ] as const;
+  return <ViewToggle label={t("markdown.showAs")} options={options} value={value} onChange={onChange} />;
+}
+
+/** Word files: as Scriptor draws them, or as the PDF Gotenberg made (§14). */
+function WordViewToggle({ value, onChange }: { value: "word" | "pdf"; onChange: (value: "word" | "pdf") => void }) {
+  const { t } = useTranslation();
+  const options = [
+    { id: "word", icon: "description", label: t("viewer.asWord") },
+    { id: "pdf", icon: "picture_as_pdf", label: t("viewer.asPdf") },
+  ] as const;
+  return <ViewToggle label={t("markdown.showAs")} options={options} value={value} onChange={onChange} />;
+}
+
+function ViewToggle<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: readonly { id: T; icon: string; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
   return (
-    <div role="radiogroup" aria-label={t("markdown.showAs")} className="flex h-10 shrink-0 overflow-hidden rounded-full border border-outline">
+    <div role="radiogroup" aria-label={label} className="flex h-10 shrink-0 overflow-hidden rounded-full border border-outline">
       {options.map((option, i) => (
         <button
           key={option.id}

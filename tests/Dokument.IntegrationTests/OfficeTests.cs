@@ -99,6 +99,12 @@ public sealed class OfficeTests(PostgresFixture postgres) : IAsyncLifetime
             )
         );
 
+        // The Word viewer asks for the original bytes instead of the PDF (§14).
+        var original = await admin.GetByteArrayAsync(
+            $"/api/v1/nodes/{contract}/preview?original=true"
+        );
+        Assert.Equal("PK"u8.ToArray(), original[..2]);
+
         using (
             var thumbnail = Image.NewFromBuffer(
                 await admin.GetByteArrayAsync($"/api/v1/nodes/{contract}/thumbnail")

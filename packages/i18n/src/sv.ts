@@ -580,6 +580,9 @@ export const sv: Strings = {
     unplayableText: "Webbläsare kan inte spela den som den är, och ingen kopia som går att spela kan göras. Ladda ned den för att spela den i en annan app.",
     cover: "Omslagsbild",
     shownAsPdf: "Visas som PDF, så layouten kan skilja sig lite. Ladda ned originalet för att redigera det.",
+    wordFailedAsPdf: "Scriptor kunde inte läsa filen, så den visas som PDF i stället. Layouten kan skilja sig lite.",
+    asWord: "Word",
+    asPdf: "PDF",
     failedTitle: "Förhandsvisningen kunde inte visas",
     failedText: "Filen kan vara skadad eller lösenordsskyddad. Du kan fortfarande ladda ned den.",
     truncated: "Visar de första {{size}}. Ladda ned filen för att se allt.",
@@ -1008,6 +1011,9 @@ export const sv: Strings = {
       failed: "Når inte Gotenberg: {{error}}",
       off: "Förhandsgranskning av Office-filer är avstängd. Dokumenten visas med sin typikon och kan laddas ned.",
       backfill: "Dokument som laddades upp medan den var avstängd förhandsgranskas i bakgrunden när du sparar.",
+      wordViewer: "Visa Word-filer med Scriptor (experimentellt)",
+      wordViewerHint:
+        "Öppnar .docx-filer i webbläsaren som Word lägger upp dem, utan Gotenberg. PDF:en finns ett klick bort. Laddar 6 MB första gången någon öppnar en Word-fil.",
     },
     videos: {
       intro:

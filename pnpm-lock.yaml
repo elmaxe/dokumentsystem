@@ -140,6 +140,8 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0))
 
+  packages/scriptor: {}
+
   packages/tokens:
     devDependencies:
       '@types/node':
@@ -169,6 +171,9 @@ importers:
       '@dokument/i18n':
         specifier: workspace:*
         version: link:../i18n
+      '@dokument/scriptor':
+        specifier: workspace:*
+        version: link:../scriptor
       '@dokument/tokens':
         specifier: workspace:*
         version: link:../tokens
