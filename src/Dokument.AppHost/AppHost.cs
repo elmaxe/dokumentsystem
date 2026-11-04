@@ -37,6 +37,17 @@ var gotenberg = builder
     .WithHttpHealthCheck("/health");
 var gotenbergUrl = gotenberg.GetEndpoint("http");
 
+// The ML service for speech to text (§11.1), built from ml/. Its models download into the volume the first time they're
+// used. The server on the host and the worker in a container reach it at different addresses, so it comes to both
+// through the environment (Ml__Url) rather than Admin › Settings. Start with `-- --Ml=false` to leave it out.
+var ml = builder.Configuration.GetValue("Ml", true)
+    ? builder
+        .AddDockerfile("ml", "../../ml")
+        .WithVolume("dokumentsystem-ml-cache", "/cache")
+        .WithHttpEndpoint(targetPort: 3003)
+        .WithHttpHealthCheck("/health")
+    : null;
+
 // Only the server uses the Host's launch profile. Both roles taking its fixed port 5080 made Aspire bind that port
 // for whichever came first, so the server could stay "not ready" and nothing waiting on it would start.
 IResourceBuilder<ProjectResource> AddRole(string role, string? launchProfile) =>
@@ -62,13 +73,17 @@ var server = AddRole("server", launchProfile: "http")
     .WithEnvironment("OIDC_QUOTA_CLAIM", "dokument_quota")
     .WithEnvironment("GOTENBERG_URL", gotenbergUrl)
     .WaitFor(keycloak);
+if (ml is not null)
+{
+    server.WithEnvironment("Ml__Url", ml.GetEndpoint("http"));
+}
 
 // The worker runs in the app's image by default, so exiftool, Tesseract and libvips are there on any machine, the same
 // as in production. Start with `-- --WorkerOnHost=true` to run it as a project instead, e.g. to debug it; it then needs
 // those tools installed (README, Develop).
 if (builder.Configuration.GetValue<bool>("WorkerOnHost"))
 {
-    AddRole("worker", launchProfile: null)
+    var worker = AddRole("worker", launchProfile: null)
         .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
         // One line per job and per file read, in the dashboard's structured logs.
         .WithEnvironment("Serilog__MinimumLevel__Override__Dokument.Worker", "Debug")
@@ -77,6 +92,10 @@ if (builder.Configuration.GetValue<bool>("WorkerOnHost"))
         .WithEnvironment("GOTENBERG_URL", gotenbergUrl)
         .WaitFor(gotenberg)
         .WaitFor(server);
+    if (ml is not null)
+    {
+        worker.WithEnvironment("Ml__Url", ml.GetEndpoint("http"));
+    }
 }
 else
 {
@@ -97,6 +116,11 @@ else
         .WithEnvironment("GOTENBERG_URL", gotenbergUrl)
         .WaitFor(gotenberg)
         .WaitFor(server);
+
+    if (ml is not null)
+    {
+        worker.WithEnvironment("Ml__Url", ml.GetEndpoint("http"));
+    }
 
     // On Linux and macOS the container writes thumbnails as you, so the server on the host can clean them up.
     if (!OperatingSystem.IsWindows())

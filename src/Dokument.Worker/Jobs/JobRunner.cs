@@ -121,6 +121,12 @@ internal sealed partial class JobRunner(
             await queue.SucceedAsync(job, CancellationToken.None);
             LogSucceeded(logger, job.Type.Name, job.Subject, job.Attempts);
         }
+        catch (JobPostponedException e)
+        {
+            outcome = "postponed";
+            LogPostponed(logger, job.Type.Name, job.Subject, e.Message, e.Delay);
+            await queue.PostponeAsync(job, e.Delay, e.Message, CancellationToken.None);
+        }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             outcome = "released";
@@ -203,6 +209,18 @@ internal sealed partial class JobRunner(
         string type,
         string subject,
         int attempt
+    );
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Job {Type} {Subject} postponed by {Delay}: {Reason}"
+    )]
+    private static partial void LogPostponed(
+        ILogger logger,
+        string type,
+        string subject,
+        string reason,
+        TimeSpan delay
     );
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Job queue error ({Type}); retrying shortly")]

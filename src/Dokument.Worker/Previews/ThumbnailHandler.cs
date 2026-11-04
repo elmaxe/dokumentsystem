@@ -8,6 +8,7 @@ using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Live;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Infrastructure.Previews;
+using Dokument.Infrastructure.Search;
 using Dokument.Infrastructure.Settings;
 using Dokument.Infrastructure.Telemetry;
 using Dokument.Worker.Jobs;
@@ -35,6 +36,7 @@ internal sealed partial class ThumbnailHandler(
     FFmpeg ffmpeg,
     Gotenberg gotenberg,
     JobQueue jobs,
+    TranscriptService transcripts,
     SettingsStore settings,
     OfficeAddress office,
     LiveChanges live,
@@ -63,6 +65,7 @@ internal sealed partial class ThumbnailHandler(
         RenderResult result;
         BlobMedia? media;
         DerivedKey? document = null;
+        byte[]? waveform = null;
         using (var render = DokumentTelemetry.ActivitySource.StartActivity("thumbnail render"))
         {
             render?.SetTag("dokument.blob.size", blob.Size);
@@ -87,7 +90,7 @@ internal sealed partial class ThumbnailHandler(
             else if (result.Status == PreviewStatus.Unsupported)
             {
                 RenderResult? fromMedia;
-                (fromMedia, probed) = await RenderMediaAsync(
+                (fromMedia, probed, waveform) = await RenderMediaAsync(
                     hash,
                     blobs.PathOf(blob.StorageKey),
                     ct
@@ -128,6 +131,24 @@ internal sealed partial class ThumbnailHandler(
             );
         }
 
+        if (waveform is not null)
+        {
+            var key = DerivedKey.For(hash, RenditionKind.Waveform);
+            await derived.WriteAsync(key, waveform, ct);
+            renditions.Add(
+                new Rendition
+                {
+                    BlobHash = hash,
+                    Kind = RenditionKind.Waveform,
+                    StorageKey = key,
+                    MimeType = "application/octet-stream",
+                    Width = 0,
+                    Height = 0,
+                    CreatedAt = now,
+                }
+            );
+        }
+
         foreach (var image in result.Images)
         {
             var key = DerivedKey.For(hash, image.Kind);
@@ -145,9 +166,13 @@ internal sealed partial class ThumbnailHandler(
             );
         }
 
-        // The playable copy is the transcode stage's, so making thumbnails again keeps it.
+        // The playable copy and seek previews are other stages', so making thumbnails again keeps them.
         var old = await db
-            .Renditions.Where(r => r.BlobHash == hash && r.Kind != RenditionKind.Playable)
+            .Renditions.Where(r =>
+                r.BlobHash == hash
+                && r.Kind != RenditionKind.Playable
+                && r.Kind != RenditionKind.SeekPreviews
+            )
             .ToListAsync(ct);
         db.Renditions.RemoveRange(old);
         db.Renditions.AddRange(renditions);
@@ -282,9 +307,10 @@ internal sealed partial class ThumbnailHandler(
 
     /// <summary>
     /// A poster or cover for video and audio, and what ffprobe found; Unsupported, with no media, for anything else.
-    /// Null when ffmpeg isn't installed.
+    /// Audio also gets its waveform (§14), which is its thumbnail when it has no cover art. Null when ffmpeg isn't
+    /// installed.
     /// </summary>
-    private async Task<(RenderResult?, BlobMedia?)> RenderMediaAsync(
+    private async Task<(RenderResult?, BlobMedia?, byte[]?)> RenderMediaAsync(
         ContentHash hash,
         string path,
         CancellationToken ct
@@ -303,12 +329,12 @@ internal sealed partial class ThumbnailHandler(
                 LogToolMissing(logger, e.Message);
             }
 
-            return (null, null);
+            return (null, null, null);
         }
 
         if (probe is null)
         {
-            return (RenderResult.Unsupported, null);
+            return (RenderResult.Unsupported, null, null);
         }
 
         var size = probe.DisplaySize;
@@ -342,14 +368,35 @@ internal sealed partial class ThumbnailHandler(
             still = await ffmpeg.CoverAsync(path, cover.Index, ct);
         }
 
+        // Videos have seek previews instead; a waveform is for listening.
+        Waveform? waveform = null;
+        if (probe.Video is null && probe.Audio is not null)
+        {
+            using (DokumentTelemetry.ActivitySource.StartActivity("waveform"))
+            {
+                waveform = await ffmpeg.WaveformAsync(path, ct);
+            }
+
+            if (waveform is { Count: 0 })
+            {
+                waveform = null;
+            }
+        }
+
+        media.HasCover = probe.Video is null && still is not null;
+        media.HasWaveform = waveform is not null;
         var result =
             still is not null ? thumbnailer.RenderStill(still, size?.Width, size?.Height, ct)
             : probe.Video is not null ? RenderResult.Failed("ffmpeg couldn't read a frame.")
+            : waveform is not null ? thumbnailer.RenderWaveform(waveform, ct)
             : RenderResult.Unsupported;
-        return (result, media);
+        return (result, media, waveform?.Encode());
     }
 
-    /// <summary>Keeps what ffprobe found and queues a playable copy when one is needed and copies are made in the background.</summary>
+    /// <summary>
+    /// Keeps what ffprobe found and queues a playable copy when one is needed and copies are made in the background,
+    /// and seek previews for videos.
+    /// </summary>
     private async Task SaveMediaAsync(
         Job job,
         BlobMedia? media,
@@ -380,6 +427,8 @@ internal sealed partial class ThumbnailHandler(
             stored.Width = media.Width;
             stored.Height = media.Height;
             stored.Plan = media.Plan;
+            stored.HasCover = media.HasCover;
+            stored.HasWaveform = media.HasWaveform;
         }
 
         stored.UpdatedAt = now;
@@ -391,6 +440,22 @@ internal sealed partial class ThumbnailHandler(
         {
             await jobs.EnqueueAsync(JobType.Transcode, stored.BlobHash.Hex, job.Priority, ct);
         }
+
+        // The frames a video's timeline shows while seeking, for anything long enough to need them (§14).
+        if (
+            stored.HasVideo
+            && SeekPreviewLayout.For(stored.DurationSeconds) is not null
+            && !await db.Renditions.AnyAsync(
+                r => r.BlobHash == stored.BlobHash && r.Kind == RenditionKind.SeekPreviews,
+                ct
+            )
+        )
+        {
+            await jobs.EnqueueAsync(JobType.SeekPreviews, stored.BlobHash.Hex, job.Priority, ct);
+        }
+
+        // Speech to text needs to know there's sound, so it's queued from here (§11.1).
+        await transcripts.RequestAsync(stored, JobPriority.Background, ct);
     }
 
     [LoggerMessage(

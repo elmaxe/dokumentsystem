@@ -1,4 +1,4 @@
-import { findHits } from "@dokument/core";
+import { findHits, type PageWord } from "@dokument/core";
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy, type PDFPageProxy, type PageViewport, type RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
 import { IconButton } from "./Button";
 import { Loading, MarkOverlay, ToolbarDivider, ViewerToolbar, ZoomControls, type MarkBox } from "./FileViewer";
+import { NoTextNote, TextControls, TextFloatingToggle, useWords, WordLayer, type ViewerText } from "./WordLayer";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -41,7 +42,8 @@ class BundledBinaryData {
  * pages, since the arrow keys move between files. Loaded only when a PDF is opened.
  *
  * Opened from search, it marks the hits: in the page's text layer by the search rule, or, for a scanned page, at the
- * boxes the server recognized.
+ * boxes the server recognized. The Text toggle shows a page's words, from the server for a scan and otherwise from the
+ * PDF's own text, so they can be selected and copied.
  */
 export default function PdfPreview({
   src,
@@ -49,6 +51,7 @@ export default function PdfPreview({
   onPageChange: setPage,
   terms,
   boxes,
+  text,
   fallback,
 }: {
   src: string;
@@ -56,6 +59,7 @@ export default function PdfPreview({
   onPageChange: (page: number) => void;
   terms?: readonly string[];
   boxes: readonly MarkBox[];
+  text?: ViewerText;
   fallback: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -132,7 +136,13 @@ export default function PdfPreview({
     box.current?.querySelector("[data-mark]")?.scrollIntoView({ block: "center", inline: "nearest" });
   }, [rendering, marks]);
 
-  const pages = document && document !== "failed" ? document.numPages : 0;
+  const loaded = document && document !== "failed" ? document : null;
+  const words = useWords(
+    text?.shown && loaded ? () => text.wordsOn(page) ?? loaded.getPage(page).then(textWords) : null,
+    `${src} ${page}`,
+  );
+
+  const pages = loaded ? loaded.numPages : 0;
   const turn = (to: number) => {
     setPage(Math.min(Math.max(1, to), pages));
     box.current?.scrollTo({ top: 0 });
@@ -160,15 +170,19 @@ export default function PdfPreview({
             aria-label={t("viewer.page", { page, total: pages })}
             className={cn("block bg-white shadow-elevation-2 transition-opacity", rendering && "opacity-60")}
           />
+          {!rendering && words && <WordLayer words={words} />}
           {!rendering && marks.length > 0 && <MarkOverlay boxes={marks} />}
         </div>
       </div>
+      {text && <TextFloatingToggle text={text} />}
+      {!rendering && words?.length === 0 && <NoTextNote />}
       <ViewerToolbar>
         <IconButton icon="chevron_left" label={t("viewer.previousPage")} size="sm" disabled={page <= 1} onClick={() => turn(page - 1)} />
         <span className="tabular px-2 text-label-lg">{t("viewer.page", { page, total: pages })}</span>
         <IconButton icon="chevron_right" label={t("viewer.nextPage")} size="sm" disabled={page >= pages} onClick={() => turn(page + 1)} />
         <ToolbarDivider />
         <ZoomControls zoom={zoom} onZoom={setZoom} />
+        {text && <TextControls text={text} words={words} page />}
       </ViewerToolbar>
     </>
   );
@@ -182,32 +196,62 @@ type TextItem = { str: string; transform: number[]; width: number; height: numbe
  * run's real width, which is close enough for marking.
  */
 async function textMarks(pdfPage: PDFPageProxy, terms: string[]): Promise<MarkBox[]> {
+  const marks: MarkBox[] = [];
+  for (const run of await textRuns(pdfPage)) {
+    for (const [start, end] of findHits(run.str, terms)) marks.push(run.box(start, end));
+  }
+  return marks;
+}
+
+/** Each word of a page's text layer with its box, for the Text toggle on pages that aren't scans. */
+async function textWords(pdfPage: PDFPageProxy): Promise<PageWord[]> {
+  const words: PageWord[] = [];
+  for (const run of await textRuns(pdfPage)) {
+    for (const word of run.str.matchAll(/\S+/g)) {
+      const [x = 0, y = 0, width = 0, height = 0] = run.box(word.index, word.index + word[0].length);
+      words.push({ x, y, width, height, text: word[0] });
+    }
+  }
+  return words;
+}
+
+/**
+ * A page's runs of text, each able to say where a stretch of it is as fractions of the page. pdf.js gives each run
+ * with its position and width; where a stretch starts and ends within the run is measured in the run's font family,
+ * scaled to the run's real width, which is close enough for marking and selecting.
+ */
+async function textRuns(pdfPage: PDFPageProxy): Promise<{ str: string; box: (start: number, end: number) => MarkBox }[]> {
   const viewport: PageViewport = pdfPage.getViewport({ scale: 1 });
   const content = await pdfPage.getTextContent();
   const measure = document.createElement("canvas").getContext("2d");
-  const marks: MarkBox[] = [];
-  for (const raw of content.items) {
-    if (!("str" in raw)) continue;
+  return content.items.flatMap((raw) => {
+    if (!("str" in raw)) return [];
     const item = raw as TextItem;
-    if (!item.str) continue;
+    if (!item.str.trim()) return [];
     const [a = 0, b = 0, , , x = 0, y = 0] = item.transform;
     const size = item.height || Math.hypot(a, b);
-    if (measure) measure.font = `${size}px ${content.styles[item.fontName]?.fontFamily ?? "sans-serif"}`;
-    const full = measure?.measureText(item.str).width || item.str.length;
-    const offset = (index: number) =>
-      x + (item.width * (measure ? measure.measureText(item.str.slice(0, index)).width : index)) / full;
-    for (const [start, end] of findHits(item.str, terms)) {
-      const left = offset(start);
-      const right = offset(end);
-      const [x1 = 0, y1 = 0] = viewport.convertToViewportPoint(left, y - size * 0.2) as number[];
-      const [x2 = 0, y2 = 0] = viewport.convertToViewportPoint(right, y + size * 0.85) as number[];
-      marks.push([
-        Math.min(x1, x2) / viewport.width,
-        Math.min(y1, y2) / viewport.height,
-        Math.abs(x2 - x1) / viewport.width,
-        Math.abs(y2 - y1) / viewport.height,
-      ]);
-    }
-  }
-  return marks;
+    const family = content.styles[item.fontName]?.fontFamily ?? "sans-serif";
+    const width = (text: string) => {
+      if (!measure) return text.length;
+      measure.font = `${size}px ${family}`;
+      return measure.measureText(text).width;
+    };
+    const full = width(item.str) || item.str.length;
+    const offset = (index: number) => x + (item.width * width(item.str.slice(0, index))) / full;
+    return [
+      {
+        str: item.str,
+        box: (start: number, end: number): MarkBox => {
+          const [x1 = 0, y1 = 0] = viewport.convertToViewportPoint(offset(start), y - size * 0.2) as number[];
+          const [x2 = 0, y2 = 0] = viewport.convertToViewportPoint(offset(end), y + size * 0.85) as number[];
+          return [
+            Math.min(x1, x2) / viewport.width,
+            Math.min(y1, y2) / viewport.height,
+            Math.abs(x2 - x1) / viewport.width,
+            Math.abs(y2 - y1) / viewport.height,
+          ];
+        },
+      },
+    ];
+  });
 }

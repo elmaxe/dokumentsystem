@@ -1,4 +1,4 @@
-import { formatBytes } from "@dokument/core";
+import { formatBytes, type PageWord } from "@dokument/core";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
@@ -9,6 +9,10 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { ActionMenu, type MenuAction } from "./Menu";
 import { Progress } from "./Progress";
+import { leadInMs, type SeekPreviews } from "../lib/media";
+import { MediaPlayer } from "./MediaPlayer";
+import { TranscriptPanel, type TranscriptView } from "./Transcript";
+import { TextControls, TextFloatingToggle, useWords, WordLayer, type ViewerText } from "./WordLayer";
 
 const PdfPreview = lazy(() => import("./PdfPreview"));
 const CodePreview = lazy(() => import("./CodePreview"));
@@ -18,7 +22,18 @@ const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 export type PreviewSource =
   | { type: "image" | "pdf" | "text" | "markdown"; src: string }
   /** `fallbacks` are tried in turn if the browser can't play `src`, e.g. the playable copy after the HEVC original. */
-  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string }
+  /**
+   * `poster` is a video's poster frame or an audio file's cover art; `waveform` is where an audio file's waveform is,
+   * drawn as the timeline (§14).
+   */
+  | {
+      type: "video" | "audio";
+      src: string;
+      fallbacks?: string[];
+      poster?: string;
+      seekPreviews?: SeekPreviews;
+      waveform?: string;
+    }
   /** The worker is still making the rendition the viewer needs, e.g. for a HEIC photo. */
   | { type: "preparing" }
   /** A video or audio file browsers can't play, while the worker makes a copy that plays. `progress` is 0–100. */
@@ -38,6 +53,8 @@ export type ViewerMarks = {
   pages: readonly { pageNo: number; boxes: readonly MarkBox[] }[];
   /** The page to open on: the best hit. */
   startPage?: number;
+  /** In a recording: where the hits are said, in milliseconds. */
+  times?: readonly number[];
   onClear: () => void;
 };
 
@@ -62,6 +79,22 @@ export type FileViewerProps = {
   position?: string;
   /** A note under the top bar, such as a newer version having arrived (§15.4). */
   banner?: ReactNode;
+  /** What's said in a video or audio file, shown beside the player (§11.1). */
+  transcript?: TranscriptView;
+  /** Transcribes the recording again from the start, e.g. after the admin picked another model. */
+  onTranscriptRedo?: () => void;
+  /** WebVTT captions for a video, from its transcript. */
+  captions?: string;
+  /** Where a recording starts playing, in milliseconds: just before the hit it was opened from. */
+  startAtMs?: number;
+  /**
+   * Words the server recognized in scans and photos, for the Text toggle (§14): the pages that have any, and a page's
+   * words. Leave out for an older version, whose words aren't served.
+   */
+  recognized?: { pages: readonly number[]; wordsOn: (page: number) => Promise<readonly PageWord[]> };
+  /** Whether the Text toggle is on. Kept by the page, so it stays on while stepping between files. */
+  textShown?: boolean;
+  onTextShownChange?: (shown: boolean) => void;
 };
 
 /** The file viewer (§14, §16.4): a full-screen preview with the file's actions, its siblings and its details. */
@@ -81,6 +114,13 @@ export function FileViewer({
   marks,
   position,
   banner,
+  transcript,
+  onTranscriptRedo,
+  captions,
+  startAtMs,
+  recognized,
+  textShown = false,
+  onTextShownChange,
 }: FileViewerProps) {
   const { t } = useTranslation();
   const swipe = useRef<{ x: number; y: number } | null>(null);
@@ -90,10 +130,38 @@ export function FileViewer({
   const previousMarked = markedPages.filter((p) => p < page).at(-1);
   const nextMarked = markedPages.find((p) => p > page);
   const boxesOn = (pageNo: number) => marks?.pages.find((p) => p.pageNo === pageNo)?.boxes ?? [];
+  // Photos and scans with recognized words, and every PDF, which may have text of its own.
+  const text: ViewerText | undefined =
+    onTextShownChange && (preview.type === "pdf" || (preview.type === "image" && recognized?.pages.includes(1)))
+      ? {
+          shown: textShown,
+          onShownChange: onTextShownChange,
+          wordsOn: (pageNo) => (recognized?.pages.includes(pageNo) ? recognized.wordsOn(pageNo) : null),
+        }
+      : undefined;
   const [markdownView, setMarkdownView] = useState<"formatted" | "source">("formatted");
   const [wrap, setWrap] = useStoredFlag("dokument.viewer.wrap");
   const [findRequest, setFindRequest] = useState(0);
   const showsCode = preview.type === "text" || (preview.type === "markdown" && markdownView === "source");
+  const playing = preview.type === "video" || preview.type === "audio";
+  const media = useRef<HTMLMediaElement | null>(null);
+  const [currentMs, setCurrentMs] = useState(startAtMs ?? 0);
+  const [transcriptOpen, setTranscriptOpen] = useState(true);
+  const showsTranscript = playing && !!transcript && transcriptOpen;
+  const times = playing ? [...(marks?.times ?? [])].sort((a, b) => a - b) : [];
+  // The hit being heard: the last one started, counting the lead-in before it.
+  const timeIndex = times.findLastIndex((time) => time - leadInMs <= currentMs + 500);
+  const seek = (ms: number) => {
+    const element = media.current;
+    if (!element) return;
+    element.currentTime = Math.max(0, ms) / 1000;
+    setCurrentMs(Math.max(0, ms));
+    void element.play().catch(() => {});
+  };
+  const seekToHit = (index: number) => {
+    const time = times[index];
+    if (time !== undefined) seek(time - leadInMs);
+  };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -137,6 +205,27 @@ export function FileViewer({
           >
             <Icon name="search" size="sm" className="text-on-surface-variant max-sm:hidden" />
             <span className="max-w-40 truncate px-1 max-md:hidden">{marks.query}</span>
+            {times.length > 0 && (
+              <>
+                <span className="tabular px-1 text-label-lg text-on-surface-variant max-sm:sr-only">
+                  {t("viewer.matchPosition", { current: timeIndex < 0 ? "–" : timeIndex + 1, total: times.length })}
+                </span>
+                <IconButton
+                  icon="keyboard_arrow_up"
+                  label={t("viewer.previousSpokenMatch")}
+                  size="sm"
+                  disabled={timeIndex <= 0}
+                  onClick={() => seekToHit(timeIndex - 1)}
+                />
+                <IconButton
+                  icon="keyboard_arrow_down"
+                  label={t("viewer.nextSpokenMatch")}
+                  size="sm"
+                  disabled={timeIndex >= times.length - 1}
+                  onClick={() => seekToHit(timeIndex + 1)}
+                />
+              </>
+            )}
             {preview.type === "pdf" && markedPages.length > 0 && (
               <>
                 <span className="tabular px-1 text-label-lg text-on-surface-variant max-sm:sr-only" title={pageIndex < 0 ? t("viewer.noMatchesHere") : undefined}>
@@ -168,6 +257,14 @@ export function FileViewer({
             <IconButton icon="search" label={t("code.findInFile")} onClick={() => setFindRequest((n) => n + 1)} className="max-sm:hidden" />
           </>
         )}
+        {playing && transcript && (
+          <IconButton
+            icon="subtitles"
+            label={transcriptOpen ? t("transcript.hide") : t("transcript.show")}
+            selected={transcriptOpen}
+            onClick={() => setTranscriptOpen(!transcriptOpen)}
+          />
+        )}
         {onShare && (
           <>
             <Button variant="tonal" icon="person_add" onClick={onShare} className="max-md:hidden">
@@ -190,7 +287,7 @@ export function FileViewer({
         )}
       </header>
       {banner && <div className="shrink-0 px-2 pt-2 sm:px-4">{banner}</div>}
-      <div className="flex min-h-0 flex-1">
+      <div className={cn("flex min-h-0 flex-1", showsTranscript && "max-lg:flex-col")}>
         <div
           className="relative flex min-w-0 flex-1 flex-col"
           onTouchStart={(event) => {
@@ -207,7 +304,7 @@ export function FileViewer({
           }}
         >
           {preview.type === "image" ? (
-            <ImagePreview key={preview.src} src={preview.src} alt={item.name} boxes={boxesOn(1)} fallback={noPreview(true)} />
+            <ImagePreview key={preview.src} src={preview.src} alt={item.name} boxes={boxesOn(1)} text={text} fallback={noPreview(true)} />
           ) : preview.type === "pdf" ? (
             <Suspense fallback={<Loading />}>
               <PdfPreview
@@ -217,6 +314,7 @@ export function FileViewer({
                 onPageChange={setPage}
                 terms={marks?.terms}
                 boxes={boxesOn(page)}
+                text={text}
                 fallback={noPreview(true)}
               />
             </Suspense>
@@ -232,14 +330,27 @@ export function FileViewer({
               fallback={noPreview(true)}
             />
           ) : preview.type === "video" || preview.type === "audio" ? (
-            <MediaPreview
-              key={preview.src}
-              type={preview.type}
-              sources={[preview.src, ...(preview.fallbacks ?? [])]}
-              poster={preview.poster}
-              item={item}
-              fallback={noPreview(true)}
-            />
+            <Centered>
+              <MediaPlayer
+                key={preview.src}
+                type={preview.type}
+                sources={[preview.src, ...(preview.fallbacks ?? [])]}
+                poster={preview.type === "video" ? preview.poster : undefined}
+                seekPreviews={preview.seekPreviews}
+                cover={<AudioCover name={item.name} src={preview.poster} />}
+                waveform={preview.waveform}
+                fallback={noPreview(true)}
+                mediaRef={media}
+                startAtMs={startAtMs}
+                onTime={setCurrentMs}
+                onSeek={seek}
+                ticks={times}
+                durationMs={transcript?.durationMs ?? undefined}
+                captionLines={preview.type === "video" && captions ? transcript?.lines : undefined}
+                captions={captions}
+                captionsLanguage={transcript?.language ?? undefined}
+              />
+            </Centered>
           ) : preview.type === "converting" ? (
             <Centered>
               <EmptyState
@@ -309,6 +420,17 @@ export function FileViewer({
             </span>
           )}
         </div>
+        {showsTranscript && (
+          <TranscriptPanel
+            transcript={transcript}
+            currentMs={currentMs}
+            terms={marks?.terms}
+            onSeek={seek}
+            onRedo={onTranscriptRedo}
+            onClose={() => setTranscriptOpen(false)}
+            className="lg:w-96 lg:shrink-0 lg:border-l max-lg:h-[45%] max-lg:border-t"
+          />
+        )}
         {detailsOpen && details}
       </div>
     </div>
@@ -408,12 +530,25 @@ export function MarkOverlay({ boxes }: { boxes: readonly MarkBox[] }) {
   );
 }
 
-function ImagePreview({ src, alt, boxes, fallback }: { src: string; alt: string; boxes: readonly MarkBox[]; fallback: ReactNode }) {
+function ImagePreview({
+  src,
+  alt,
+  boxes,
+  text,
+  fallback,
+}: {
+  src: string;
+  alt: string;
+  boxes: readonly MarkBox[];
+  text?: ViewerText;
+  fallback: ReactNode;
+}) {
   const [zoom, setZoom] = useState(1);
   const [state, setState] = useState<"loading" | "loaded" | "failed">("loading");
   const [fit, setFit] = useState<{ width: number; height: number } | null>(null);
   const pan = useDragToPan();
   const image = useRef<HTMLImageElement>(null);
+  const words = useWords(text?.shown ? () => text.wordsOn(1) ?? Promise.resolve([]) : null, src);
 
   // At 100 % the image fits the window with a margin; zooming scales that fitted size, and the area scrolls.
   useEffect(() => {
@@ -453,11 +588,14 @@ function ImagePreview({ src, alt, boxes, fallback }: { src: string; alt: string;
             onError={() => setState("failed")}
             className="size-full max-w-none rounded-sm shadow-elevation-2 select-none"
           />
+          {fit && words && <WordLayer words={words} />}
           {fit && boxes.length > 0 && <MarkOverlay boxes={boxes} />}
         </span>
       </div>
+      {text && state === "loaded" && <TextFloatingToggle text={text} />}
       <ViewerToolbar>
         <ZoomControls zoom={zoom} onZoom={setZoom} disabled={state !== "loaded"} />
+        {text && <TextControls text={text} words={words} />}
       </ViewerToolbar>
     </>
   );
@@ -589,58 +727,25 @@ function useStoredFlag(key: string) {
   return [value, set] as const;
 }
 
-/** Plays the first of `sources` the browser can, e.g. the original HEVC in Safari and the H.264 copy elsewhere. */
-function MediaPreview({
-  type,
-  sources,
-  poster,
-  item,
-  fallback,
-}: {
-  type: "video" | "audio";
-  sources: string[];
-  poster?: string;
-  item: FileItem;
-  fallback: ReactNode;
-}) {
+/** An audio file's cover art, or a note when it has none, and its name, above the player's controls. */
+function AudioCover({ name, src }: { name: string; src?: string }) {
   const { t } = useTranslation();
-  const [index, setIndex] = useState(0);
-  const [coverFailed, setCoverFailed] = useState(false);
-  if (index >= sources.length) return <Centered>{fallback}</Centered>;
-  const src = sources[index];
-  const next = () => setIndex((i) => i + 1);
+  const [failed, setFailed] = useState(false);
   return (
-    <Centered>
-      {type === "video" ? (
-        <video
-          key={src}
+    <>
+      {src && !failed ? (
+        <img
           src={src}
-          poster={poster}
-          controls
-          autoPlay
-          playsInline
-          preload="metadata"
-          onError={next}
-          className="max-h-full max-w-full bg-black shadow-elevation-2 sm:rounded-sm"
+          alt={t("viewer.cover")}
+          onError={() => setFailed(true)}
+          className="size-60 rounded-lg object-cover shadow-elevation-1 max-sm:size-32"
         />
       ) : (
-        <div className="m-4 flex w-full max-w-md flex-col items-center gap-6 rounded-lg bg-surface-container-low p-8 shadow-elevation-1">
-          {item.thumbnail && !coverFailed ? (
-            <img
-              src={item.thumbnail}
-              alt={t("viewer.cover")}
-              onError={() => setCoverFailed(true)}
-              className="size-48 rounded-lg object-cover shadow-elevation-1"
-            />
-          ) : (
-            <span className="flex size-32 items-center justify-center rounded-lg bg-surface-container-high text-file-audio">
-              <Icon name="music_note" filled size={64} />
-            </span>
-          )}
-          <p className="m-0 max-w-full truncate text-title-md">{item.name}</p>
-          <audio key={src} src={src} controls autoPlay preload="metadata" onError={next} className="w-full" />
-        </div>
+        <span className="flex size-60 items-center justify-center rounded-lg bg-primary-container text-on-primary-container max-sm:size-32">
+          <Icon name="music_note" filled size={96} />
+        </span>
       )}
-    </Centered>
+      <p className="m-0 max-w-full truncate text-title-md">{name}</p>
+    </>
   );
 }

@@ -294,6 +294,7 @@ public sealed partial class PurgeService(
             // So do the text and metadata read from them (§13).
             await db.ContentPages.Where(p => p.BlobHash == hash).ExecuteDeleteAsync(ct);
             await db.BlobContents.Where(c => c.BlobHash == hash).ExecuteDeleteAsync(ct);
+            await db.BlobTranscripts.Where(t => t.BlobHash == hash).ExecuteDeleteAsync(ct);
             await db.BlobMetadata.Where(m => m.BlobHash == hash).ExecuteDeleteAsync(ct);
             await db.BlobTags.Where(t => t.BlobHash == hash).ExecuteDeleteAsync(ct);
         }

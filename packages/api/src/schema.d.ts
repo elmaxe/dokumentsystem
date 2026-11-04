@@ -332,6 +332,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/waveform": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description An audio file's loudness over time, for the player's timeline: a 16-byte header ("DKWF", version 1, three zero bytes, seconds per slice as float32, slice count as uint32, little-endian), then three bytes per slice: the lowest sample's size, the highest sample and the RMS, scaled so the loudest sample is 255. 404 until the worker has made one; see NodeDto.media.hasWaveform. Not audited. */
+        get: operations["GetWaveform"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/preview": {
         parameters: {
             query?: never;
@@ -341,6 +358,23 @@ export interface paths {
         };
         /** @description What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18). */
         get: operations["GetPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/seek-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A video's seek previews: one WebP of frames from along the video, laid out as NodeDto.media.seekPreviews says. 404 until the worker has made them, and for audio and clips under 10 s. Not audited, like previews. */
+        get: operations["GetSeekPreviews"];
         put?: never;
         post?: never;
         delete?: never;
@@ -508,6 +542,23 @@ export interface paths {
         };
         /** @description The searchable text of the current version, page by page from `from`, with corrections in place. */
         get: operations["GetFileText"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/words": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The words recognized on one page of a scan or photo, with their boxes, for the viewer to show and select, and which pages have any. What was read, not corrections. */
+        get: operations["GetRecognizedWords"];
         put?: never;
         post?: never;
         delete?: never;
@@ -906,6 +957,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What's said in a video or audio file, line by line with times. */
+        get: operations["GetTranscript"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/transcript/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Transcribes the file again from the start, ahead of the background work, e.g. after the admin picked another model. The old transcript stays until the new run starts. 409 when the file isn't transcribed (no sound, speech to text off, or no ML service). */
+        post: operations["RedoTranscript"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/captions.vtt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The transcript as WebVTT captions, for the player's CC button. 404 until there is one. */
+        get: operations["GetCaptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads/{id}": {
         parameters: {
             query?: never;
@@ -1184,6 +1286,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/settings/transcription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Turning it on, or including videos, queues the recordings not transcribed yet, in the background. */
+        put: operations["AdminPutTranscriptionSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/transcription/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminGetTranscriptionProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/transcription/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Transcribes every stored recording again, in the background, e.g. after picking another model. Old transcripts stay searchable until each is redone. */
+        post: operations["AdminRedoAllTranscripts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/storage": {
         parameters: {
             query?: never;
@@ -1401,6 +1553,7 @@ export interface components {
             textRecognition: components["schemas"]["TextRecognitionDto"];
             videos: components["schemas"]["VideoSettingsDto"];
             office: components["schemas"]["OfficeSettingsDto"];
+            transcription: components["schemas"]["TranscriptionSettingsDto"];
             signIn: components["schemas"]["SignInInfo"];
         };
         AdminUser: {
@@ -1548,7 +1701,7 @@ export interface components {
             steps: components["schemas"]["ProcessingStepDto"][];
         };
         /** @enum {unknown} */
-        FileStep: "thumbnail" | "metadata" | "text" | "transcode";
+        FileStep: "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews";
         FileTags: {
             tags: components["schemas"]["TagDto"][];
             removed: string[];
@@ -1700,7 +1853,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "tagRule" | "file" | "filingRule";
+        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews" | "transcribe" | "tagRule" | "file" | "filingRule";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;
@@ -1729,7 +1882,7 @@ export interface components {
             pages: components["schemas"]["PageMatchDto"][];
         };
         /** @enum {unknown} */
-        MatchSource: "name" | "text" | "ocr" | "metadata" | "tag";
+        MatchSource: "name" | "text" | "ocr" | "metadata" | "tag" | "transcript";
         MediaDto: {
             /** Format: double */
             durationSeconds: null | number;
@@ -1739,6 +1892,9 @@ export interface components {
             copy: components["schemas"]["CopyState"];
             /** Format: int32 */
             progress: null | number;
+            hasCover: boolean;
+            hasWaveform: boolean;
+            seekPreviews: null | components["schemas"]["SeekPreviewsDto"];
         };
         MlEndpointDto: {
             url: string;
@@ -1747,6 +1903,7 @@ export interface components {
         MlEndpointStatus: {
             url: string;
             status: components["schemas"]["ProbeResult"];
+            fromEnvironment: boolean;
         };
         MlEndpointUpdate: {
             url: string;
@@ -1816,9 +1973,10 @@ export interface components {
             pageNo: number;
             source: components["schemas"]["PageSource"];
             boxes: number[][];
+            times: number[];
         };
         /** @enum {unknown} */
-        PageSource: "text" | "ocr" | "metadata" | "added";
+        PageSource: "text" | "ocr" | "metadata" | "added" | "transcript";
         PathEntry: {
             /** Format: uuid */
             id: string;
@@ -1872,6 +2030,21 @@ export interface components {
         RecentListing: {
             items: components["schemas"]["RecentItem"][];
         };
+        RecognizedWordDto: {
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            height: number;
+            text: string;
+        };
+        RecognizedWordsDto: {
+            pages: number[];
+            words: components["schemas"]["RecognizedWordDto"][];
+        };
         RenameRequest: {
             name: string;
         };
@@ -1906,9 +2079,23 @@ export interface components {
             /** Format: int32 */
             pagesWithHits: number;
             snippet: null | components["schemas"]["SnippetDto"];
+            /** Format: int32 */
+            atMs: null | number;
         };
         /** @enum {unknown} */
         SearchSort: "relevance" | "modified";
+        SeekPreviewsDto: {
+            /** Format: int32 */
+            intervalMs: number;
+            /** Format: int32 */
+            count: number;
+            /** Format: int32 */
+            columns: number;
+            /** Format: int32 */
+            frameWidth: number;
+            /** Format: int32 */
+            frameHeight: number;
+        };
         ServerInfo: {
             name: string;
             version: string;
@@ -2088,6 +2275,43 @@ export interface components {
         TextState: "reading" | "ready" | "empty" | "unsupported" | "unreadable";
         /** @enum {unknown} */
         ThumbnailState: "none" | "pending" | "ready";
+        TranscriptDto: {
+            state: components["schemas"]["TranscriptState"];
+            language: null | string;
+            model: null | string;
+            /** Format: int32 */
+            durationMs: null | number;
+            /** Format: int32 */
+            doneMs: null | number;
+            lines: components["schemas"]["TranscriptLineDto"][];
+        };
+        TranscriptionProgress: {
+            /** Format: int32 */
+            done: number;
+            /** Format: int32 */
+            waiting: number;
+            /** Format: double */
+            waitingSeconds: number;
+            /** Format: int32 */
+            running: number;
+            /** Format: int32 */
+            failed: number;
+        };
+        TranscriptionSettingsDto: {
+            enabled: boolean;
+            model: string;
+            videos: boolean;
+            models: string[];
+        };
+        TranscriptLineDto: {
+            /** Format: int32 */
+            startMs: number;
+            /** Format: int32 */
+            endMs: number;
+            text: string;
+        };
+        /** @enum {unknown} */
+        TranscriptState: "none" | "waiting" | "running" | "ready" | "noSpeech" | "failed";
         TrashItem: {
             node: components["schemas"]["NodeDto"];
             path: components["schemas"]["PathEntry"][];
@@ -2113,6 +2337,11 @@ export interface components {
         };
         UpdateMlSettingsRequest: {
             endpoints: components["schemas"]["MlEndpointUpdate"][];
+        };
+        UpdateTranscriptionRequest: {
+            enabled: boolean;
+            model: string;
+            videos: boolean;
         };
         UploadStatus: {
             /** Format: uuid */
@@ -2652,6 +2881,35 @@ export interface operations {
             };
         };
     };
+    GetWaveform: {
+        parameters: {
+            query?: {
+                versionId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     GetPreview: {
         parameters: {
             query?: {
@@ -2668,6 +2926,26 @@ export interface operations {
         responses: {
             /** @description OK */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetSeekPreviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2926,6 +3204,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileTextDto"];
+                };
+            };
+        };
+    };
+    GetRecognizedWords: {
+        parameters: {
+            query?: {
+                page?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecognizedWordsDto"];
                 };
             };
         };
@@ -3519,6 +3821,70 @@ export interface operations {
             };
         };
     };
+    GetTranscript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptDto"];
+                };
+            };
+        };
+    };
+    RedoTranscript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptDto"];
+                };
+            };
+        };
+    };
+    GetCaptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     GetUpload: {
         parameters: {
             query?: never;
@@ -4011,6 +4377,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CopyStats"];
+                };
+            };
+        };
+    };
+    AdminPutTranscriptionSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTranscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionSettingsDto"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminGetTranscriptionProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionProgress"];
+                };
+            };
+        };
+    };
+    AdminRedoAllTranscripts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionProgress"];
                 };
             };
         };

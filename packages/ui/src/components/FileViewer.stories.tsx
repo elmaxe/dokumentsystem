@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { FileItem } from "../lib/files";
 import { thumbnails } from "../mockup/thumbnails";
-import { FileViewer, type PreviewSource } from "./FileViewer";
+import type { PageWord } from "@dokument/core";
+import { FileViewer, type FileViewerProps, type PreviewSource } from "./FileViewer";
 
 /** A real, multi-page PDF built on the fly, so the story runs pdf.js exactly as the app does. */
 function samplePdf(): string {
@@ -88,12 +89,155 @@ def main(card, root):
         target.write_bytes(photo.read_bytes())
 ${Array.from({ length: 30 }, (_, i) => `# line ${i + 25}: ${"a long comment that runs past the edge of the window ".repeat(3)}`).join("\n")}
 `;
+/** A quiet tone, `seconds` long, as an 8 kHz WAV, so the player has something to play and seek in. */
+function sampleWav(seconds: number): string {
+  const rate = 8000;
+  const samples = rate * seconds;
+  const bytes = new Uint8Array(44 + samples);
+  const view = new DataView(bytes.buffer);
+  const ascii = (offset: number, text: string) => [...text].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + samples, true);
+  ascii(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  ascii(36, "data");
+  view.setUint32(40, samples, true);
+  for (let i = 0; i < samples; i++) bytes[44 + i] = 128 + Math.round(4 * Math.sin((i / rate) * 2 * Math.PI * 220));
+  return URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+}
+
+/**
+ * A made-up waveform in the worker's format (§14): speech in bursts, quieter at times, with the given stretches of
+ * silence, in 20 ms slices.
+ */
+function sampleWaveform(seconds: number, silences: readonly (readonly [number, number])[] = []) {
+  const count = seconds * 50;
+  const bytes = new Uint8Array(16 + count * 3);
+  const view = new DataView(bytes.buffer);
+  [..."DKWF"].forEach((c, i) => view.setUint8(i, c.charCodeAt(0)));
+  view.setUint8(4, 1);
+  view.setFloat32(8, 0.02, true);
+  view.setUint32(12, count, true);
+  const noise = (i: number) => {
+    const x = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  for (let i = 0; i < count; i++) {
+    const t = i / 50;
+    const quiet = silences.some(([from, to]) => t >= from && t < to);
+    const gate = Math.sin(t * 1.25 + 0.9 * Math.sin(t * 0.37)) < -0.82 ? 0.05 : 1;
+    const syllable = Math.abs(Math.sin(t * Math.PI * 4.1 + 1.6 * Math.sin(t * 0.83))) ** 0.9;
+    const level = 0.58 + 0.3 * Math.sin(t * 0.23 + 1.1);
+    const amp = quiet ? 0.012 + 0.01 * noise(i) : Math.min(1, gate * syllable * level * (0.7 + 0.3 * noise(i)) + 0.02);
+    bytes[16 + i * 3] = Math.round(255 * amp * (0.8 + 0.2 * noise(i + 7)));
+    bytes[17 + i * 3] = Math.round(255 * amp);
+    bytes[18 + i * 3] = Math.round(255 * amp * (0.36 + 0.14 * noise(i + 3)));
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+}
+
+const meetingLines = [
+  [0, "Hej, tack för att du kunde ses. Jag tänkte vi kunde gå igenom det som hänt med fönstren först."],
+  [9_000, "Ja, och sen var det frågan om balkongen, som de ska renovera nästa år."],
+  [18_000, "Men det påverkar inte hyran, sa han, i alla fall inte i år."],
+  [27_000, "Och då sa han att vi måste skriva om hyresavtalet innan juni, annars gäller det gamla hyresavtal fortfarande,"],
+  [36_500, "med samma uppsägningstid som förut. Tre månader."],
+  [44_000, "Okej. Kan du maila det till mig så jag har det skriftligt?"],
+  [52_000, "Absolut, jag skickar ett utkast i veckan."],
+  [120_000, "Sådär, då är vi tillbaka. Var var vi? Just det, hyresavtal för förrådet också."],
+  [131_000, "Det tar vi nästa gång."],
+] as const;
+
+const meeting: FileViewerProps["transcript"] = {
+  state: "ready",
+  language: "sv",
+  model: "kb-whisper-small",
+  durationMs: 150_000,
+  lines: meetingLines.map(([startMs, text], i) => ({
+    startMs,
+    endMs: Math.min(meetingLines[i + 1]?.[0] ?? 150_000, startMs + 8_500),
+    text,
+  })),
+};
+
+/**
+ * A photo of a receipt, drawn in a monospaced font so each word's box is known exactly: what the server's text
+ * recognition returns for it, as fractions of the picture.
+ */
+function receipt(): { src: string; words: PageWord[] } {
+  const lines = [
+    "MATBUTIKEN HORNSTULL",
+    "Org.nr 556000-0000",
+    "2025-09-14       16:42",
+    "",
+    "Mjölk 1,5% 1 l   15,90",
+    "Kaffe 450 g      64,90",
+    "Bananer 1,12 kg  27,89",
+    "Havregryn        21,50",
+    "",
+    "TOTALT          130,19",
+    "Kort            130,19",
+    "",
+    "   Tack för besöket",
+  ];
+  const [width, height, size, left, top, step] = [520, 640, 22, 64, 80, 36];
+  const char = size * 0.6;
+  const words: PageWord[] = lines.flatMap((line, row) =>
+    [...line.matchAll(/\S+/g)].map((match) => ({
+      x: (left + match.index * char - 2) / width,
+      y: (top + row * step - size * 0.8) / height,
+      width: (match[0].length * char + 4) / width,
+      height: (size * 1.05) / height,
+      text: match[0],
+    })),
+  );
+  const text = lines
+    .map((line, row) => `<text x="${left}" y="${top + row * step}" xml:space="preserve">${line}</text>`)
+    .join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#faf8f2"/><g font-family="Courier New, monospace" font-size="${size}" fill="#2a2620">${text}</g></svg>`;
+  return { src: URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })), words };
+}
+
+const receiptPhoto = receipt();
+
 const textUrl = (body: string) => URL.createObjectURL(new Blob([body], { type: "text/plain" }));
 
-const files: Record<string, { item: FileItem; preview: () => PreviewSource }> = {
+const files: Record<string, { item: FileItem; preview: () => PreviewSource; extra?: Partial<FileViewerProps> }> = {
+  transcript: {
+    item: { id: "11", name: "Möte med hyresvärden.m4a", kind: "audio", modified: "2026-03-12T17:40:00Z", owner: "Alice" },
+    preview: () => ({ type: "audio", src: sampleWav(150), waveform: sampleWaveform(150, [[60, 120]]) }),
+    extra: {
+      transcript: meeting,
+      onTranscriptRedo: () => {},
+      startAtMs: 19_400,
+      marks: {
+        query: "hyresavtal",
+        terms: ["hyresavtal"],
+        pages: [],
+        times: [29_400, 33_900, 126_800],
+        onClear: () => {},
+      },
+    },
+  },
+  listening: {
+    item: { id: "12", name: "Röstmemo 2026-09-02.m4a", kind: "audio", modified: "2026-09-02T08:12:00Z", owner: "Alice" },
+    preview: () => ({ type: "audio", src: sampleWav(60), waveform: sampleWaveform(60) }),
+    extra: { transcript: { ...meeting, state: "running", doneMs: 36_000, lines: meeting.lines.slice(0, 4) } },
+  },
   image: {
     item: { id: "1", name: "Abisko-2025.jpg", kind: "image", modified: "2026-10-20T10:00:00Z", owner: "Alice" },
     preview: () => ({ type: "image", src: thumbnails.mountains }),
+  },
+  receipt: {
+    item: { id: "13", name: "Kvitto 2025-09-14.jpg", kind: "image", modified: "2026-09-14T16:45:00Z", owner: "Alice" },
+    preview: () => ({ type: "image", src: receiptPhoto.src }),
+    extra: { recognized: { pages: [1], wordsOn: () => Promise.resolve(receiptPhoto.words) } },
   },
   pdf: {
     item: { id: "2", name: "Hyresavtal-2026.pdf", kind: "pdf", modified: "2026-10-01T10:00:00Z", owner: "Alice" },
@@ -110,6 +254,31 @@ const files: Record<string, { item: FileItem; preview: () => PreviewSource }> = 
   preparing: {
     item: { id: "4", name: "IMG_4021.HEIC", kind: "image", modified: "2026-10-23T10:00:00Z", owner: "Alice" },
     preview: () => ({ type: "preparing" }),
+  },
+  video: {
+    item: { id: "13", name: "Årsstämma 2026.mp4", kind: "video", modified: "2026-05-12T19:00:00Z", owner: "Alice" },
+    preview: () => ({
+      type: "video",
+      src: "sample.webm",
+      seekPreviews: { src: "sample-seek.webp", intervalMs: 2000, count: 15, columns: 10, frameWidth: 256, frameHeight: 144 },
+    }),
+    extra: {
+      transcript: {
+        state: "ready",
+        language: "sv",
+        model: "large-v3-turbo",
+        durationMs: 30_000,
+        lines: [
+          { startMs: 1_000, endMs: 5_000, text: "Nästa punkt på dagordningen är motion nummer fyra." },
+          { startMs: 6_000, endMs: 9_500, text: "Den gäller frågan om andrahandsuthyrning," },
+          { startMs: 10_000, endMs: 16_000, text: "där styrelsen föreslår att hyresavtal för andra hand alltid ska godkännas skriftligt." },
+          { startMs: 17_000, endMs: 21_000, text: "Finns det några frågor om det? Ja, där bak." },
+          { startMs: 22_000, endMs: 27_000, text: "Gäller det även korttidsuthyrning, alltså några veckor?" },
+        ],
+      },
+      captions: "data:text/vtt,WEBVTT",
+      marks: { query: "hyresavtal", terms: ["hyresavtal"], pages: [], times: [10_400], onClear: () => {} },
+    },
   },
   converting: {
     item: { id: "8", name: "Midsommar-2026.mkv", kind: "video", modified: "2026-06-21T10:00:00Z", owner: "Alice" },
@@ -139,7 +308,8 @@ function Viewer({ file }: { file: keyof typeof files }) {
   const [current, setCurrent] = useState(file);
   const [preview] = useState(() => new Map(order.map((key) => [key, files[key]!.preview()])));
   const index = order.indexOf(current);
-  const { item } = files[current]!;
+  const { item, extra } = files[current]!;
+  const [textShown, setTextShown] = useState(false);
   return (
     <FileViewer
       item={item}
@@ -154,6 +324,9 @@ function Viewer({ file }: { file: keyof typeof files }) {
       onAction={() => {}}
       onPrevious={index > 0 ? () => setCurrent(order[index - 1]!) : undefined}
       onNext={index < order.length - 1 ? () => setCurrent(order[index + 1]!) : undefined}
+      textShown={textShown}
+      onTextShownChange={setTextShown}
+      {...extra}
     />
   );
 }
@@ -176,7 +349,17 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Image: Story = { args: { file: "image" } };
+/** Opened from a search hit: plays from 10 s before it, with the transcript beside the player and ticks for each hit. */
+export const Transcript: Story = { args: { file: "transcript" } };
+export const StillListening: Story = { args: { file: "listening" } };
+/**
+ * Our own controls over the picture: ticks for the hits, captions from the transcript (CC), speed, volume, full screen.
+ * Pointing at the timeline shows the frame from that moment, cut from the seek-preview sheet.
+ */
+export const Video: Story = { args: { file: "video" } };
 export const Pdf: Story = { args: { file: "pdf" } };
+/** A photo with recognized words: the Text button shows them, ready to select and copy (§14). */
+export const RecognizedText: Story = { args: { file: "receipt" } };
 export const Markdown: Story = { args: { file: "markdown" } };
 export const Code: Story = { args: { file: "code" } };
 export const Preparing: Story = { args: { file: "preparing" } };

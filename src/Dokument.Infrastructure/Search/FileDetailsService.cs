@@ -80,6 +80,13 @@ public sealed record FileText(
     int? NextFrom
 );
 
+/// <summary>A recognized word and its box, as fractions of the page's size.</summary>
+public sealed record RecognizedWord(double X, double Y, double Width, double Height, string Text);
+
+/// <param name="Pages">The pages with recognized words, from 1.</param>
+/// <param name="Words">The asked-for page's words in reading order; empty when it has none.</param>
+public sealed record RecognizedWords(IReadOnlyList<int> Pages, IReadOnlyList<RecognizedWord> Words);
+
 /// <summary>An edit of a version's details. Null means "as the file says".</summary>
 public sealed record DetailsEdit(string? Title, string? Description, string? Taken);
 
@@ -518,6 +525,46 @@ public sealed class FileDetailsService(
             : takenAt.UtcDateTime;
 
     /// <summary>The pages of a version as search sees them: corrections, and read pages without one. Page 0 is left out.</summary>
+    /// <summary>
+    /// The words recognized on one page of the current version, where they are, for the viewer's Text toggle (§14), and
+    /// which pages have any. They are what was read: a corrected page still shows the scan's own words.
+    /// </summary>
+    public async Task<RecognizedWords> GetWordsAsync(
+        Actor actor,
+        Guid id,
+        int pageNo,
+        CancellationToken ct = default
+    )
+    {
+        var node = await drive.GetFileAsync(actor, id, ct);
+        var hash = node.CurrentVersion!.BlobHash;
+        var read = db.ContentPages.Where(p =>
+            p.BlobHash == hash
+            && p.VersionId == null
+            && p.Source == PageSource.Ocr
+            && p.PageNo > 0
+            && p.Words != null
+        );
+        var pages = await read.Select(p => p.PageNo).OrderBy(n => n).ToListAsync(ct);
+        var json = await read.Where(p => p.PageNo == pageNo)
+            .Select(p => p.Words)
+            .FirstOrDefaultAsync(ct);
+        return new RecognizedWords(pages, json is null ? [] : Words(json));
+    }
+
+    private static List<RecognizedWord> Words(string json) =>
+        (JsonNode.Parse(json)?.AsArray() ?? [])
+            .OfType<JsonArray>()
+            .Where(w => w.Count >= 5)
+            .Select(w => new RecognizedWord(
+                (double)w[0]!,
+                (double)w[1]!,
+                (double)w[2]!,
+                (double)w[3]!,
+                (string)w[4]!
+            ))
+            .ToList();
+
     private IQueryable<ContentPage> Pages(FileVersion version) =>
         db.ContentPages.Where(p =>
             p.BlobHash == version.BlobHash

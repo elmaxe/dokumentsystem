@@ -576,6 +576,42 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/waveform": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "An audio file's loudness over time, for the player's timeline: a 16-byte header (\"DKWF\", version 1, three zero bytes, seconds per slice as float32, slice count as uint32, little-endian), then three bytes per slice: the lowest sample's size, the highest sample and the RMS, scaled so the loudest sample is 255. 404 until the worker has made one; see NodeDto.media.hasWaveform. Not audited.",
+        "operationId": "GetWaveform",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          },
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/preview": {
       "get": {
         "tags": [
@@ -612,6 +648,31 @@
         "responses": {
           "200": {
             "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/seek-previews": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "A video's seek previews: one WebP of frames from along the video, laid out as NodeDto.media.seekPreviews says. 404 until the worker has made them, and for audio and clips under 10 s. Not audited, like previews.",
+        "operationId": "GetSeekPreviews",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -994,6 +1055,47 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FileTextDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/words": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "The words recognized on one page of a scan or photo, with their boxes, for the viewer to show and select, and which pages have any. What was read, not corrections.",
+        "operationId": "GetRecognizedWords",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecognizedWordsDto"
                 }
               }
             }
@@ -1814,6 +1916,95 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/transcript": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "What's said in a video or audio file, line by line with times.",
+        "operationId": "GetTranscript",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/transcript/redo": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "description": "Transcribes the file again from the start, ahead of the background work, e.g. after the admin picked another model. The old transcript stays until the new run starts. 409 when the file isn't transcribed (no sound, speech to text off, or no ML service).",
+        "operationId": "RedoTranscript",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/captions.vtt": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "The transcript as WebVTT captions, for the player's CC button. 404 until there is one.",
+        "operationId": "GetCaptions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/v1/uploads/{id}": {
       "get": {
         "tags": [
@@ -2402,6 +2593,88 @@
         }
       }
     },
+    "/api/v1/admin/settings/transcription": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Turning it on, or including videos, queues the recordings not transcribed yet, in the background.",
+        "operationId": "AdminPutTranscriptionSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTranscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/transcription/progress": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminGetTranscriptionProgress",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionProgress"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/transcription/redo": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Transcribes every stored recording again, in the background, e.g. after picking another model. Old transcripts stay searchable until each is redone.",
+        "operationId": "AdminRedoAllTranscripts",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionProgress"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/storage": {
       "get": {
         "tags": [
@@ -2906,6 +3179,7 @@
           "textRecognition",
           "videos",
           "office",
+          "transcription",
           "signIn"
         ],
         "type": "object",
@@ -2933,6 +3207,9 @@
           },
           "office": {
             "$ref": "#/components/schemas/OfficeSettingsDto"
+          },
+          "transcription": {
+            "$ref": "#/components/schemas/TranscriptionSettingsDto"
           },
           "signIn": {
             "$ref": "#/components/schemas/SignInInfo"
@@ -3558,7 +3835,8 @@
           "thumbnail",
           "metadata",
           "text",
-          "transcode"
+          "transcode",
+          "seekPreviews"
         ]
       },
       "FileTags": {
@@ -4125,6 +4403,8 @@
           "metadata",
           "text",
           "transcode",
+          "seekPreviews",
+          "transcribe",
           "tagRule",
           "file",
           "filingRule"
@@ -4235,7 +4515,8 @@
           "text",
           "ocr",
           "metadata",
-          "tag"
+          "tag",
+          "transcript"
         ]
       },
       "MediaDto": {
@@ -4245,7 +4526,10 @@
           "hasAudio",
           "videoCodec",
           "copy",
-          "progress"
+          "progress",
+          "hasCover",
+          "hasWaveform",
+          "seekPreviews"
         ],
         "type": "object",
         "properties": {
@@ -4277,6 +4561,22 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "hasCover": {
+            "type": "boolean"
+          },
+          "hasWaveform": {
+            "type": "boolean"
+          },
+          "seekPreviews": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SeekPreviewsDto"
+              }
+            ]
           }
         }
       },
@@ -4298,7 +4598,8 @@
       "MlEndpointStatus": {
         "required": [
           "url",
-          "status"
+          "status",
+          "fromEnvironment"
         ],
         "type": "object",
         "properties": {
@@ -4307,6 +4608,9 @@
           },
           "status": {
             "$ref": "#/components/schemas/ProbeResult"
+          },
+          "fromEnvironment": {
+            "type": "boolean"
           }
         }
       },
@@ -4577,7 +4881,8 @@
         "required": [
           "pageNo",
           "source",
-          "boxes"
+          "boxes",
+          "times"
         ],
         "type": "object",
         "properties": {
@@ -4597,6 +4902,13 @@
                 "format": "double"
               }
             }
+          },
+          "times": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
           }
         }
       },
@@ -4605,7 +4917,8 @@
           "text",
           "ocr",
           "metadata",
-          "added"
+          "added",
+          "transcript"
         ]
       },
       "PathEntry": {
@@ -4813,6 +5126,59 @@
           }
         }
       },
+      "RecognizedWordDto": {
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "format": "double"
+          },
+          "y": {
+            "type": "number",
+            "format": "double"
+          },
+          "width": {
+            "type": "number",
+            "format": "double"
+          },
+          "height": {
+            "type": "number",
+            "format": "double"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "RecognizedWordsDto": {
+        "required": [
+          "pages",
+          "words"
+        ],
+        "type": "object",
+        "properties": {
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecognizedWordDto"
+            }
+          }
+        }
+      },
       "RenameRequest": {
         "required": [
           "name"
@@ -4914,7 +5280,8 @@
           "pageNo",
           "pageCount",
           "pagesWithHits",
-          "snippet"
+          "snippet",
+          "atMs"
         ],
         "type": "object",
         "properties": {
@@ -4957,6 +5324,13 @@
                 "$ref": "#/components/schemas/SnippetDto"
               }
             ]
+          },
+          "atMs": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -4965,6 +5339,38 @@
           "relevance",
           "modified"
         ]
+      },
+      "SeekPreviewsDto": {
+        "required": [
+          "intervalMs",
+          "count",
+          "columns",
+          "frameWidth",
+          "frameHeight"
+        ],
+        "type": "object",
+        "properties": {
+          "intervalMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "columns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frameWidth": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frameHeight": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
       },
       "ServerInfo": {
         "required": [
@@ -5647,6 +6053,143 @@
           "ready"
         ]
       },
+      "TranscriptDto": {
+        "required": [
+          "state",
+          "language",
+          "model",
+          "durationMs",
+          "doneMs",
+          "lines"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/TranscriptState"
+          },
+          "language": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "model": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "durationMs": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "doneMs": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TranscriptLineDto"
+            }
+          }
+        }
+      },
+      "TranscriptionProgress": {
+        "required": [
+          "done",
+          "waiting",
+          "waitingSeconds",
+          "running",
+          "failed"
+        ],
+        "type": "object",
+        "properties": {
+          "done": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waiting": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waitingSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "running": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TranscriptionSettingsDto": {
+        "required": [
+          "enabled",
+          "model",
+          "videos",
+          "models"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "videos": {
+            "type": "boolean"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TranscriptLineDto": {
+        "required": [
+          "startMs",
+          "endMs",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "startMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "endMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "TranscriptState": {
+        "enum": [
+          "none",
+          "waiting",
+          "running",
+          "ready",
+          "noSpeech",
+          "failed"
+        ]
+      },
       "TrashItem": {
         "required": [
           "node",
@@ -5732,6 +6275,25 @@
             "items": {
               "$ref": "#/components/schemas/MlEndpointUpdate"
             }
+          }
+        }
+      },
+      "UpdateTranscriptionRequest": {
+        "required": [
+          "enabled",
+          "model",
+          "videos"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "videos": {
+            "type": "boolean"
           }
         }
       },

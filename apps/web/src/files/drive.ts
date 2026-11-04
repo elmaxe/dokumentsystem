@@ -4,6 +4,7 @@ import type {
   FileDetailsDto,
   FileProcessing,
   FileTextDto,
+  RecognizedWordsDto,
   FolderConflictPolicy,
   FolderListing,
   FolderTreeEntry,
@@ -16,6 +17,7 @@ import type {
   StarredListing,
   StorageUsage,
   TagSuggestion,
+  Transcript,
   TrashListing,
   VersionDto,
 } from "@dokument/api";
@@ -157,6 +159,15 @@ export const fileTextQuery = (id: string, versionId: string | null) =>
 export const fileTextPage = (id: string, from: number, limit = 20): Promise<FileTextDto> =>
   unwrap(api.GET("/api/v1/nodes/{id}/text", { params: { path: { id }, query: { from, limit } } }));
 
+/** The words recognized on a page of a scan or photo, with their boxes, for the viewer's Text toggle (§14). */
+export const wordsQuery = (id: string, versionId: string | null, page: number) =>
+  queryOptions({
+    queryKey: ["words", id, versionId, page],
+    queryFn: (): Promise<RecognizedWordsDto> =>
+      unwrap(api.GET("/api/v1/nodes/{id}/words", { params: { path: { id }, query: { page } } })),
+    staleTime: 5 * 60_000,
+  });
+
 export const versionsQuery = (id: string) =>
   queryOptions({
     queryKey: ["versions", id],
@@ -272,6 +283,9 @@ export const drive = {
   opened: (id: string) => send(api.POST("/api/v1/nodes/{id}/opened", { params: { path: { id } } })),
   /** Asks for a playable copy of a video the browser can't play, ahead of other work. 409 when none can be made. */
   requestPlayable: (id: string) => unwrap(api.POST("/api/v1/nodes/{id}/playable", { params: { path: { id } } })),
+  /** Transcribes a recording again from the start, ahead of other work (§11.1). 409 when it isn't transcribed. */
+  redoTranscript: (id: string): Promise<Transcript> =>
+    unwrap(api.POST("/api/v1/nodes/{id}/transcript/redo", { params: { path: { id } } })),
   restore: async (ids: string[]): Promise<RestoredItem[]> =>
     (await unwrap(api.POST("/api/v1/trash/restore", { body: { ids } }))).items,
   deleteForever: (ids: string[]) => send(api.POST("/api/v1/trash/delete", { body: { ids } })),
@@ -310,3 +324,14 @@ export function download(url: string) {
   link.click();
   link.remove();
 }
+
+/**
+ * What's said in a recording (§11.1). Under ["node", id] so the worker's notice when it's done refreshes it; while
+ * it runs, lines arrive about a minute of sound at a time with no notice, so it's asked for again every 10 s.
+ */
+export const transcriptQuery = (id: string) =>
+  queryOptions({
+    queryKey: ["node", id, "transcript"],
+    queryFn: (): Promise<Transcript> => unwrap(api.GET("/api/v1/nodes/{id}/transcript", { params: { path: { id } } })),
+    refetchInterval: (query) => (query.state.data?.state === "running" ? 10_000 : false),
+  });

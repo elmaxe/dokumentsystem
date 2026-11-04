@@ -55,10 +55,23 @@ public static class FileEndpoints
                 "A WebP thumbnail of the file: small (256 px) for lists, medium (640 px) for the grid. 404 until the worker has made one; see NodeDto.thumbnail."
             );
         files
+            .MapGet("/nodes/{id:guid}/waveform", GetWaveform)
+            .WithName("GetWaveform")
+            .WithDescription(
+                "An audio file's loudness over time, for the player's timeline: a 16-byte header (\"DKWF\", version 1, three zero bytes, seconds per slice as float32, slice count as uint32, little-endian), then three bytes per slice: the lowest sample's size, the highest sample and the RMS, scaled so the loudest sample is 255. 404 until the worker has made one; see NodeDto.media.hasWaveform. Not audited."
+            )
+            .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream");
+        files
             .MapGet("/nodes/{id:guid}/preview", GetPreview)
             .WithName("GetPreview")
             .WithDescription(
                 "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18)."
+            );
+        files
+            .MapGet("/nodes/{id:guid}/seek-previews", GetSeekPreviews)
+            .WithName("GetSeekPreviews")
+            .WithDescription(
+                "A video's seek previews: one WebP of frames from along the video, laid out as NodeDto.media.seekPreviews says. 404 until the worker has made them, and for audio and clips under 10 s. Not audited, like previews."
             );
         files
             .MapPost("/nodes/{id:guid}/playable", RequestPlayable)
@@ -310,6 +323,30 @@ public static class FileEndpoints
             : TypedResults.NotFound();
     }
 
+    private static async Task<Results<PhysicalFileHttpResult, NotFound>> GetWaveform(
+        Guid id,
+        Guid? versionId,
+        HttpContext context,
+        DriveService drive,
+        PreviewService previews,
+        CancellationToken ct
+    )
+    {
+        var content = await drive.OpenContentAsync(
+            context.Actor(),
+            id,
+            versionId,
+            audited: false,
+            ct
+        );
+        return
+            await previews.FindAsync(content.Version.BlobHash, RenditionKind.Waveform, ct)
+                is { } waveform
+            && File.Exists(waveform.PhysicalPath)
+            ? Rendition(context, waveform)
+            : TypedResults.NotFound();
+    }
+
     /// <param name="original">For video and audio: the original even when a playable copy exists, for browsers that play more than most (HEVC in Safari).</param>
     private static async Task<PhysicalFileHttpResult> GetPreview(
         Guid id,
@@ -371,6 +408,29 @@ public static class FileEndpoints
             entityTag: new EntityTagHeaderValue($"\"{content.Version.BlobHash.Hex}\""),
             enableRangeProcessing: true
         );
+    }
+
+    private static async Task<Results<PhysicalFileHttpResult, NotFound>> GetSeekPreviews(
+        Guid id,
+        HttpContext context,
+        DriveService drive,
+        PreviewService previews,
+        CancellationToken ct
+    )
+    {
+        var content = await drive.OpenContentAsync(
+            context.Actor(),
+            id,
+            versionId: null,
+            audited: false,
+            ct
+        );
+        return
+            await previews.FindAsync(content.Version.BlobHash, RenditionKind.SeekPreviews, ct)
+                is { } sheet
+            && File.Exists(sheet.PhysicalPath)
+            ? Rendition(context, sheet)
+            : TypedResults.NotFound();
     }
 
     private static PhysicalFileHttpResult Rendition(HttpContext context, RenditionFile file)

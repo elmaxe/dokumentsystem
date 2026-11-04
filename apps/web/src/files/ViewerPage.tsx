@@ -1,10 +1,11 @@
-import { contentUrl, previewUrl, thumbnailUrl, type NodeDto } from "@dokument/api";
+import { captionsUrl, contentUrl, previewUrl, seekPreviewsUrl, thumbnailUrl, waveformUrl, type NodeDto } from "@dokument/api";
 import {
   Banner,
   Button,
   EmptyState,
   FileViewer,
   kindOf,
+  leadInMs,
   previewTypeOf,
   sortItems,
   useFormat,
@@ -28,6 +29,8 @@ import {
   recentQuery,
   starredQuery,
   toItem,
+  transcriptQuery,
+  wordsQuery,
 } from "./drive";
 import { FileDetailsPanel } from "./FileDetailsPanel";
 import { lastSearchResults, matchesQuery } from "../search/search";
@@ -38,23 +41,39 @@ const webImage = /^image\/(jpeg|png|webp|gif|avif)$/;
 /** Video and audio that usually play from the original, before the worker has looked at them. Others wait for it. */
 const webMedia = /^(video\/(mp4|webm|ogg)|audio\/(mpeg|mp4|aac|ogg|opus|wav|x-wav|webm|flac|x-flac))$/;
 
+/**
+ * How the viewer shows a file: by its type, or, for a recording stored with a type nobody knew (an .amr uploaded
+ * before the server knew the name), by what ffprobe found in it.
+ */
+function viewTypeOf(node: NodeDto) {
+  const type = previewTypeOf(node.mimeType);
+  if (type !== "none" || !node.media) return type;
+  return node.media.hasVideo ? "video" : node.media.hasAudio ? "audio" : type;
+}
+
 function previewOf(node: NodeDto, versionId: string | null | undefined, refused: boolean): PreviewSource {
   // Office documents are shown as the PDF the worker had Gotenberg make of them (§14).
   if (node.shownAsPdf) return { type: "pdf", src: previewUrl(node.id, versionId) };
-  const type = previewTypeOf(node.mimeType);
+  const type = viewTypeOf(node);
   if (type === "none") return isOffice(node) && node.thumbnail === "pending" ? { type: "preparing" } : { type };
   if (type === "image" && !webImage.test(node.mimeType ?? "") && node.thumbnail === "pending") return { type: "preparing" };
   const src = previewUrl(node.id, versionId);
   // What the worker found applies to the current version; an older one just gets what the server has for it.
   if (type !== "video" && type !== "audio") return { type, src };
-  const poster = type === "video" && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
   const media = versionId === node.currentVersionId ? node.media : null;
+  // An audio file without cover art has its waveform as its thumbnail, which isn't a cover for the player.
+  const pictured = type === "video" || !!media?.hasCover;
+  const poster = pictured && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
+  const waveform = type === "audio" && media?.hasWaveform ? waveformUrl(node.id, versionId) : undefined;
   if (!media && node.thumbnail === "pending" && !webMedia.test(node.mimeType ?? "")) return { type: "preparing" };
-  if (!media || media.copy === "notNeeded") return { type, src, poster };
+  // The frames over the timeline while seeking, once the worker has made them (§14).
+  const seekPreviews = media?.seekPreviews ? { src: seekPreviewsUrl(node.id), ...media.seekPreviews } : undefined;
+  if (!media || media.copy === "notNeeded") return { type, src, poster, seekPreviews, waveform };
 
   const original = playsOriginal(node) ? previewUrl(node.id, versionId, { original: true }) : null;
-  if (media.copy === "ready") return original ? { type, src: original, fallbacks: [src], poster } : { type, src, poster };
-  if (original) return { type, src: original, poster };
+  if (media.copy === "ready")
+    return original ? { type, src: original, fallbacks: [src], poster, seekPreviews, waveform } : { type, src, poster, seekPreviews, waveform };
+  if (original) return { type, src: original, poster, seekPreviews, waveform };
   if (media.copy === "failed" || refused) return { type: "unplayable" };
   return { type: "converting", waiting: media.copy !== "making", progress: media.progress ?? undefined };
 }
@@ -77,18 +96,21 @@ type Pin = { fileId: string; versionId: string; fetchedAt: number };
 /**
  * A file opened from the grid or list (§14): full screen, with its siblings a key or swipe away. Opened from Starred
  * or Recent, the siblings are that page's files and closing goes back there; otherwise they're the file's folder.
- * Opened from search, the siblings are the results, and the hits for `q` are marked, starting on `page`.
+ * Opened from search, the siblings are the results, and the hits for `q` are marked, starting on `page`, or a
+ * recording plays from just before `at`, the second of the hit.
  */
 export function ViewerPage({
   fileId,
   from,
   q,
   page,
+  at,
 }: {
   fileId: string;
   from?: "starred" | "recent" | "search";
   q?: string;
   page?: number;
+  at?: number;
 }) {
   const { t, i18n } = useTranslation();
   const toast = useSnackbar();
@@ -101,9 +123,13 @@ export function ViewerPage({
   const recent = useQuery({ ...recentQuery, enabled: from === "recent" });
   const results = from === "search" ? lastSearchResults() : null;
   const matches = useQuery({ ...matchesQuery(fileId, q ?? ""), enabled: !!q });
+  const recording = !!details.data && ["video", "audio"].includes(viewTypeOf(details.data.node));
+  const transcript = useQuery({ ...transcriptQuery(fileId), enabled: recording });
   const [panel, setPanel] = useState<{ open: boolean; tab: DetailsTab }>({ open: false, tab: "info" });
   const format = useFormat();
   const current = details.data?.node.currentVersionId ?? null;
+  // On while stepping between files, off the next time the viewer opens (§14).
+  const [textShown, setTextShown] = useState(false);
 
   // A newer version uploaded elsewhere doesn't replace what the person is reading: the open version stays until they
   // ask for the newest (§15.4). Their own uploads and restores show at once, since no notice comes for them.
@@ -128,6 +154,9 @@ export function ViewerPage({
   const shownVersion = pin?.versionId ?? current;
   const newer = !!pin && !!current && pin.versionId !== current;
   const gone = details.isError && details.error instanceof ApiError && details.error.status === 404;
+  // Which pages have recognized words, with page 1's; served for the current version only.
+  const showsWords = !!details.data && shownVersion === current && ["image", "pdf"].includes(previewOf(details.data.node, current, false).type);
+  const words = useQuery({ ...wordsQuery(fileId, current, 1), enabled: showsWords });
 
   // For the person's Recent page only; opening a preview is never audited (§18).
   useEffect(() => {
@@ -146,6 +175,15 @@ export function ViewerPage({
       .then((node) => queryClient.setQueryData(nodeQuery(fileId).queryKey, (old) => (old ? { ...old, node } : old)))
       .catch(() => setRefused(fileId));
   }, [needsCopy, fileId, queryClient]);
+
+  const redoTranscript = async () => {
+    try {
+      queryClient.setQueryData(transcriptQuery(fileId).queryKey, await drive.redoTranscript(fileId));
+      toast(t("transcript.redoStarted"));
+    } catch (error) {
+      toast(errorMessage(t, error));
+    }
+  };
 
   const close = () =>
     void (from === "search"
@@ -195,9 +233,15 @@ export function ViewerPage({
 
   // Wait for the hits before showing a file opened from search, so it opens on the right page with them marked.
   if (q && matches.isPending) return <div className="fixed inset-0 z-40 bg-surface-container-highest" />;
+  // Shown once there's something to say about it; a viewer with no transcript coming keeps its full width.
+  const spokenState = shownVersion === current ? transcript.data?.state : undefined;
+  const spoken = transcript.data && spokenState && spokenState !== "none" ? { ...transcript.data, state: spokenState } : undefined;
+  const times = matches.data?.pages.flatMap((p) => p.times) ?? [];
+  const firstHit = at !== undefined ? at * 1000 : times.length > 0 ? Math.min(...times) : undefined;
   const marks =
     q && matches.data
       ? {
+          times,
           query: q,
           terms: matches.data.terms,
           pages: matches.data.pages,
@@ -253,6 +297,22 @@ export function ViewerPage({
         ]}
         onAction={(id) => void setStar(id === "star")}
         marks={marks}
+        recognized={
+          showsWords && words.data
+            ? {
+                pages: words.data.pages,
+                wordsOn: async (page) => (await queryClient.fetchQuery(wordsQuery(fileId, current, page))).words,
+              }
+            : undefined
+        }
+        textShown={textShown}
+        onTextShownChange={setTextShown}
+        transcript={spoken}
+        onTranscriptRedo={() => void redoTranscript()}
+        captions={
+          item.kind === "video" && transcript.data?.lines.length && shownVersion === current ? captionsUrl(item.id) : undefined
+        }
+        startAtMs={firstHit !== undefined && shownVersion === current ? Math.max(0, firstHit - leadInMs) : undefined}
         position={
           from === "search" && index >= 0 && siblings.length > 1
             ? t("viewer.resultPosition", { current: index + 1, total: siblings.length })

@@ -18,8 +18,20 @@ jobs:
         include:
           - name: dokumentsystem
             context: .
+            platforms: linux/amd64,linux/arm64
           - name: dokumentsystem-postgres
             context: docker/postgres
+            platforms: linux/amd64,linux/arm64
+          - name: dokumentsystem-ml
+            context: ml
+            platforms: linux/amd64,linux/arm64
+            variant: cpu
+          # NVIDIA GPUs (docs/design.md §11): the same image with cuBLAS and cuDNN, tagged with a -cuda suffix.
+          - name: dokumentsystem-ml
+            context: ml
+            platforms: linux/amd64
+            variant: cuda
+            suffix: -cuda
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-qemu-action@v3
@@ -33,6 +45,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          flavor: suffix=${{ matrix.suffix || '' }},onlatest=true
           tags: |
             type=raw,value=edge,enable=${{ github.ref_type == 'branch' }}
             type=semver,pattern={{version}}
@@ -40,10 +53,12 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platforms }}
           push: true
-          build-args: VERSION=${{ github.ref_type == 'tag' && github.ref_name || format('0.0.0-edge.{0}', github.run_number) }}
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || format('0.0.0-edge.{0}', github.run_number) }}
+            VARIANT=${{ matrix.variant || 'cpu' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          cache-from: type=gha,scope=${{ matrix.name }}${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}${{ matrix.suffix }}

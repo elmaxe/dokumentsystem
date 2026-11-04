@@ -716,9 +716,17 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("has_audio");
 
+                    b.Property<bool>("HasCover")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_cover");
+
                     b.Property<bool>("HasVideo")
                         .HasColumnType("boolean")
                         .HasColumnName("has_video");
+
+                    b.Property<bool>("HasWaveform")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_waveform");
 
                     b.Property<int?>("Height")
                         .HasColumnType("integer")
@@ -907,6 +915,50 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("blob_metadata", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Search.BlobTranscript", b =>
+                {
+                    b.Property<byte[]>("BlobHash")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob_hash");
+
+                    b.Property<int>("DoneMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("done_ms");
+
+                    b.Property<int?>("DurationMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_ms");
+
+                    b.Property<string>("Engine")
+                        .HasColumnType("text")
+                        .HasColumnName("engine");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<string>("Language")
+                        .HasColumnType("text")
+                        .HasColumnName("language");
+
+                    b.Property<string>("Model")
+                        .HasColumnType("text")
+                        .HasColumnName("model");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("BlobHash");
+
+                    b.ToTable("blob_transcripts", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Domain.Search.ContentPage", b =>
                 {
                     b.Property<long>("Id")
@@ -929,6 +981,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("edited_by");
 
+                    b.Property<int?>("EndMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("end_ms");
+
                     b.Property<int>("PageNo")
                         .HasColumnType("integer")
                         .HasColumnName("page_no");
@@ -937,6 +993,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("source");
+
+                    b.Property<int?>("StartMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("start_ms");
 
                     b.Property<string>("Text")
                         .IsRequired()

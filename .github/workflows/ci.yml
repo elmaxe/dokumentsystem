@@ -27,6 +27,24 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  ml:
+    name: ML service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ml
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ml/pyproject.toml
+      - run: pip install -e ".[dev]"
+      - run: ruff format --check .
+      - run: ruff check .
+      - run: pytest
+
   dotnet:
     name: .NET
     runs-on: ubuntu-latest
@@ -90,6 +108,19 @@ jobs:
           load: true
           cache-from: type=gha,scope=app
           cache-to: type=gha,mode=max,scope=app
+      - uses: docker/build-push-action@v6
+        with:
+          context: ml
+          tags: dokumentsystem-ml:ci
+          load: true
+          cache-from: type=gha,scope=ml
+          cache-to: type=gha,mode=max,scope=ml
+      - name: ML service answers
+        run: |
+          docker run -d --name ml -p 3003:3003 dokumentsystem-ml:ci
+          for i in $(seq 30); do curl --fail --silent http://localhost:3003/health && exit 0; sleep 2; done
+          docker logs ml
+          exit 1
       - name: Compose stack starts and is healthy
         run: |
           mkdir -p ci/data/originals ci/data/derived ci/data/backups
