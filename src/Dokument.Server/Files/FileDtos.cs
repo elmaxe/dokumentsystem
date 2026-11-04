@@ -3,6 +3,7 @@ using Dokument.Domain.Previews;
 using Dokument.Domain.Tags;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Jobs;
+using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Tags;
 
 namespace Dokument.Server.Files;
@@ -20,6 +21,7 @@ namespace Dokument.Server.Files;
 /// <param name="Tags">The file's tags, by name: the ones people added and the automatic ones nobody removed (§13.4).</param>
 /// <param name="Media">For video and audio files, once the worker has looked at them. Null for everything else.</param>
 /// <param name="ShownAsPdf">Whether <c>/nodes/{id}/preview</c> serves a PDF made of the file, for Office documents.</param>
+/// <param name="Pdf">For PDFs the worker has looked at: pages, for merging and splitting (§8.4). Null for everything else.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -40,7 +42,8 @@ public sealed record NodeDto(
     List<ActiveStepDto> Processing,
     List<TagDto> Tags,
     MediaDto? Media,
-    bool ShownAsPdf
+    bool ShownAsPdf,
+    PdfDto? Pdf
 )
 {
     public static NodeDto From(
@@ -52,7 +55,8 @@ public sealed record NodeDto(
         IReadOnlyDictionary<ContentHash, List<ActiveStep>> processing,
         IReadOnlyDictionary<Guid, List<TagView>> tags,
         IReadOnlyDictionary<ContentHash, MediaState> media,
-        IReadOnlySet<ContentHash> documents
+        IReadOnlySet<ContentHash> documents,
+        IReadOnlyDictionary<ContentHash, PdfState> pdfs
     ) =>
         new(
             node.Id,
@@ -103,9 +107,16 @@ public sealed record NodeDto(
                         : null
                 )
                 : null,
-            node.CurrentVersion is { } converted && documents.Contains(converted.BlobHash)
+            node.CurrentVersion is { } converted && documents.Contains(converted.BlobHash),
+            node.CurrentVersion is { } read && pdfs.TryGetValue(read.BlobHash, out var pdf)
+                ? new PdfDto(pdf.PageCount, Readable: pdf.PageCount is not null)
+                : null
         );
 }
+
+/// <param name="PageCount">Null when it can't be read.</param>
+/// <param name="Readable">False for a PDF that is damaged or locked with a password: it can't be merged or split.</param>
+public sealed record PdfDto(int? PageCount, bool Readable);
 
 /// <summary>A processing step that hasn't finished yet.</summary>
 /// <param name="Running">False while it waits its turn.</param>

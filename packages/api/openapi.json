@@ -1960,6 +1960,251 @@
         }
       }
     },
+    "/api/v1/pdf/merge": {
+      "post": {
+        "tags": [
+          "PDF"
+        ],
+        "description": "Merges PDFs into one new file, in the order given. Answers at once; the worker puts the pages together, then the file appears. Follow it with GET /pdf/operations/{id}.",
+        "operationId": "MergePdfs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergePdfsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PdfOperationDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pdf/split": {
+      "post": {
+        "tags": [
+          "PDF"
+        ],
+        "description": "Splits a PDF into new files, one per part, next to it or in a new folder. Answers at once, like merging.",
+        "operationId": "SplitPdf",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SplitPdfRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PdfOperationDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pdf/operations": {
+      "get": {
+        "tags": [
+          "PDF"
+        ],
+        "description": "Your merges and splits from the last week, newest first.",
+        "operationId": "ListPdfOperations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PdfOperationListing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pdf/operations/{id}": {
+      "get": {
+        "tags": [
+          "PDF"
+        ],
+        "operationId": "GetPdfOperation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PdfOperationDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "PDF"
+        ],
+        "description": "Stops a merge or split that hasn't saved anything yet.",
+        "operationId": "CancelPdfOperation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PdfOperationDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/page-sheets": {
+      "post": {
+        "tags": [
+          "PDF"
+        ],
+        "description": "A PDF's pages as small images, for choosing pages: says where each page is, and asks the worker to make them if they aren't made yet. 409 when the PDF can't be read or isn't processed yet.",
+        "operationId": "RequestPageSheets",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageSheetsDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/page-sheets/{sheet}": {
+      "get": {
+        "tags": [
+          "PDF"
+        ],
+        "description": "One WebP sheet of page images, numbered from 1, laid out as RequestPageSheets says. Not audited, like previews.",
+        "operationId": "GetPageSheet",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "sheet",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/origin": {
+      "get": {
+        "tags": [
+          "PDF"
+        ],
+        "description": "For a file made by merging or splitting PDFs: what its current version was made from. 204 for other files.",
+        "operationId": "GetFileOrigin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOriginDto"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/transcript": {
       "get": {
         "tags": [
@@ -3888,6 +4133,33 @@
           }
         }
       },
+      "FileOriginDto": {
+        "required": [
+          "kind",
+          "at",
+          "by",
+          "lines"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PdfOperationKind"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "by": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OriginLineDto"
+            }
+          }
+        }
+      },
       "FileProcessing": {
         "required": [
           "steps"
@@ -4477,6 +4749,9 @@
           "transcode",
           "seekPreviews",
           "transcribe",
+          "pageSheets",
+          "pdf",
+          "pdfSave",
           "tagRule",
           "file",
           "filingRule"
@@ -4652,6 +4927,37 @@
           }
         }
       },
+      "MergePdfsRequest": {
+        "required": [
+          "ids",
+          "folderId",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "trashOriginals": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
       "MlEndpointDto": {
         "required": [
           "url",
@@ -4784,7 +5090,8 @@
           "processing",
           "tags",
           "media",
-          "shownAsPdf"
+          "shownAsPdf",
+          "pdf"
         ],
         "type": "object",
         "properties": {
@@ -4893,6 +5200,16 @@
           },
           "shownAsPdf": {
             "type": "boolean"
+          },
+          "pdf": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PdfDto"
+              }
+            ]
           }
         }
       },
@@ -4949,6 +5266,53 @@
           }
         }
       },
+      "OriginLineDto": {
+        "required": [
+          "sourceNodeId",
+          "sourceName",
+          "sourceFirst",
+          "sourceLast",
+          "first",
+          "last",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "sourceNodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "sourceFirst": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sourceLast": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "first": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "last": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OriginSourceState"
+          }
+        }
+      },
+      "OriginSourceState": {
+        "enum": [
+          "live",
+          "trashed",
+          "gone"
+        ]
+      },
       "PageMatchDto": {
         "required": [
           "pageNo",
@@ -4981,6 +5345,47 @@
               "type": "integer",
               "format": "int32"
             }
+          }
+        }
+      },
+      "PageSheetsDto": {
+        "required": [
+          "ready",
+          "pageCount",
+          "sheets",
+          "cellWidth",
+          "cellHeight",
+          "columns",
+          "perSheet"
+        ],
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "pageCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sheets": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "cellWidth": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "cellHeight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "columns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "perSheet": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -5017,6 +5422,158 @@
         "properties": {
           "paused": {
             "type": "boolean"
+          }
+        }
+      },
+      "PdfDto": {
+        "required": [
+          "pageCount",
+          "readable"
+        ],
+        "type": "object",
+        "properties": {
+          "pageCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "readable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PdfOperationDto": {
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "pagesDone",
+          "pagesTotal",
+          "names",
+          "sources",
+          "folderId",
+          "results",
+          "error",
+          "createdAt",
+          "finishedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PdfOperationKind"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PdfOperationState"
+          },
+          "pagesDone": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pagesTotal": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PdfResultDto"
+            }
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "PdfOperationKind": {
+        "enum": [
+          "merge",
+          "split"
+        ]
+      },
+      "PdfOperationListing": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PdfOperationDto"
+            }
+          }
+        }
+      },
+      "PdfOperationState": {
+        "enum": [
+          "waiting",
+          "working",
+          "saving",
+          "done",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "PdfResultDto": {
+        "required": [
+          "nodeId",
+          "name",
+          "duplicateOf"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "duplicateOf": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -5624,6 +6181,50 @@
           },
           "cutEnd": {
             "type": "boolean"
+          }
+        }
+      },
+      "SplitPartRequest": {
+        "required": [
+          "name",
+          "pages"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "pages": {
+            "type": "string"
+          }
+        }
+      },
+      "SplitPdfRequest": {
+        "required": [
+          "id",
+          "parts"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SplitPartRequest"
+            }
+          },
+          "newFolderName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "trashOriginal": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -6669,6 +7270,9 @@
     },
     {
       "name": "Filing"
+    },
+    {
+      "name": "PDF"
     },
     {
       "name": "Uploads"

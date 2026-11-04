@@ -114,6 +114,25 @@ public sealed class BlobStore(IOptions<StorageOptions> options)
         return MoveIn(temp, key);
     }
 
+    /// <summary>
+    /// Copies a file from outside the originals volume into <paramref name="ownerId"/>'s folder under its hash, such as
+    /// a PDF the worker made by merging or splitting (docs/design.md §8.4). Copied to a temp file first, so the blob
+    /// appears whole or not at all.
+    /// </summary>
+    public StorageKey Import(string path, Guid ownerId, ContentHash hash)
+    {
+        var key = StorageKey.For(ownerId, hash);
+        if (File.Exists(PathOf(key)))
+        {
+            return key;
+        }
+
+        var temp = TempPathOf(Guid.NewGuid());
+        Directory.CreateDirectory(Path.GetDirectoryName(temp)!);
+        File.Copy(path, temp);
+        return MoveIn(temp, key);
+    }
+
     public bool Exists(StorageKey key) => File.Exists(PathOf(key));
 
     private StorageKey MoveIn(string temp, StorageKey key)

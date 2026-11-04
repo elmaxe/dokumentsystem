@@ -974,6 +974,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pdf/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Merges PDFs into one new file, in the order given. Answers at once; the worker puts the pages together, then the file appears. Follow it with GET /pdf/operations/{id}. */
+        post: operations["MergePdfs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Splits a PDF into new files, one per part, next to it or in a new folder. Answers at once, like merging. */
+        post: operations["SplitPdf"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Your merges and splits from the last week, newest first. */
+        get: operations["ListPdfOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf/operations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetPdfOperation"];
+        put?: never;
+        post?: never;
+        /** @description Stops a merge or split that hasn't saved anything yet. */
+        delete: operations["CancelPdfOperation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/page-sheets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description A PDF's pages as small images, for choosing pages: says where each page is, and asks the worker to make them if they aren't made yet. 409 when the PDF can't be read or isn't processed yet. */
+        post: operations["RequestPageSheets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/page-sheets/{sheet}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One WebP sheet of page images, numbered from 1, laid out as RequestPageSheets says. Not audited, like previews. */
+        get: operations["GetPageSheet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/{id}/origin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description For a file made by merging or splitting PDFs: what its current version was made from. 204 for other files. */
+        get: operations["GetFileOrigin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/transcript": {
         parameters: {
             query?: never;
@@ -1718,6 +1837,13 @@ export interface components {
         FiledFiles: {
             items: components["schemas"]["FiledFileDto"][];
         };
+        FileOriginDto: {
+            kind: components["schemas"]["PdfOperationKind"];
+            /** Format: date-time */
+            at: string;
+            by: string;
+            lines: components["schemas"]["OriginLineDto"][];
+        };
         FileProcessing: {
             steps: components["schemas"]["ProcessingStepDto"][];
         };
@@ -1874,7 +2000,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews" | "transcribe" | "tagRule" | "file" | "filingRule";
+        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews" | "transcribe" | "pageSheets" | "pdf" | "pdfSave" | "tagRule" | "file" | "filingRule";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;
@@ -1916,6 +2042,14 @@ export interface components {
             hasCover: boolean;
             hasWaveform: boolean;
             seekPreviews: null | components["schemas"]["SeekPreviewsDto"];
+        };
+        MergePdfsRequest: {
+            ids: string[];
+            /** Format: uuid */
+            folderId: null | string;
+            name: string;
+            /** @default false */
+            trashOriginals: boolean;
         };
         MlEndpointDto: {
             url: string;
@@ -1976,6 +2110,7 @@ export interface components {
             tags: components["schemas"]["TagDto"][];
             media: null | components["schemas"]["MediaDto"];
             shownAsPdf: boolean;
+            pdf: null | components["schemas"]["PdfDto"];
         };
         NodeIdsRequest: {
             ids: string[];
@@ -1989,12 +2124,43 @@ export interface components {
         OfficeSettingsRequest: {
             gotenbergUrl: null | string;
         };
+        OriginLineDto: {
+            /** Format: uuid */
+            sourceNodeId: string;
+            sourceName: string;
+            /** Format: int32 */
+            sourceFirst: number;
+            /** Format: int32 */
+            sourceLast: number;
+            /** Format: int32 */
+            first: number;
+            /** Format: int32 */
+            last: number;
+            state: components["schemas"]["OriginSourceState"];
+        };
+        /** @enum {unknown} */
+        OriginSourceState: "live" | "trashed" | "gone";
         PageMatchDto: {
             /** Format: int32 */
             pageNo: number;
             source: components["schemas"]["PageSource"];
             boxes: number[][];
             times: number[];
+        };
+        PageSheetsDto: {
+            ready: boolean;
+            /** Format: int32 */
+            pageCount: number;
+            /** Format: int32 */
+            sheets: number;
+            /** Format: int32 */
+            cellWidth: number;
+            /** Format: int32 */
+            cellHeight: number;
+            /** Format: int32 */
+            columns: number;
+            /** Format: int32 */
+            perSheet: number;
         };
         /** @enum {unknown} */
         PageSource: "text" | "ocr" | "metadata" | "added" | "transcript";
@@ -2005,6 +2171,45 @@ export interface components {
         };
         PauseQueueRequest: {
             paused: boolean;
+        };
+        PdfDto: {
+            /** Format: int32 */
+            pageCount: null | number;
+            readable: boolean;
+        };
+        PdfOperationDto: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["PdfOperationKind"];
+            state: components["schemas"]["PdfOperationState"];
+            /** Format: int32 */
+            pagesDone: number;
+            /** Format: int32 */
+            pagesTotal: number;
+            names: string[];
+            sources: string[];
+            /** Format: uuid */
+            folderId: null | string;
+            results: components["schemas"]["PdfResultDto"][];
+            error: null | string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            finishedAt: null | string;
+        };
+        /** @enum {unknown} */
+        PdfOperationKind: "merge" | "split";
+        PdfOperationListing: {
+            items: components["schemas"]["PdfOperationDto"][];
+        };
+        /** @enum {unknown} */
+        PdfOperationState: "waiting" | "working" | "saving" | "done" | "failed" | "cancelled";
+        PdfResultDto: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            /** Format: uuid */
+            duplicateOf: null | string;
         };
         PlaceDto: {
             /** Format: double */
@@ -2161,6 +2366,18 @@ export interface components {
             highlights: number[][];
             cutStart: boolean;
             cutEnd: boolean;
+        };
+        SplitPartRequest: {
+            name: string;
+            pages: string;
+        };
+        SplitPdfRequest: {
+            /** Format: uuid */
+            id: string;
+            parts: components["schemas"]["SplitPartRequest"][];
+            newFolderName?: null | string;
+            /** @default false */
+            trashOriginal: boolean;
         };
         StarredItem: {
             node: components["schemas"]["NodeDto"];
@@ -3881,6 +4098,190 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MergePdfs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergePdfsRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfOperationDto"];
+                };
+            };
+        };
+    };
+    SplitPdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SplitPdfRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfOperationDto"];
+                };
+            };
+        };
+    };
+    ListPdfOperations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfOperationListing"];
+                };
+            };
+        };
+    };
+    GetPdfOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfOperationDto"];
+                };
+            };
+        };
+    };
+    CancelPdfOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfOperationDto"];
+                };
+            };
+        };
+    };
+    RequestPageSheets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageSheetsDto"];
+                };
+            };
+        };
+    };
+    GetPageSheet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sheet: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetFileOrigin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOriginDto"];
+                };
+            };
             /** @description No Content */
             204: {
                 headers: {

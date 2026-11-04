@@ -32,4 +32,20 @@ public sealed class DerivedStore(IOptions<StorageOptions> options)
     }
 
     public void Delete(DerivedKey key) => File.Delete(PathOf(key));
+
+    /// <summary>
+    /// Where the worker writes the PDFs of a merge or split (docs/design.md §8.4) for the server to pick up. On the
+    /// derived volume, because the worker can't write originals (§10.4).
+    /// </summary>
+    public string PdfWorkPath(Guid operationId) =>
+        Path.Combine(Root, "tmp", "pdf", operationId.ToString("N"));
+
+    public void DeletePdfWork(Guid operationId)
+    {
+        var path = PdfWorkPath(operationId);
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, recursive: true);
+        }
+    }
 }

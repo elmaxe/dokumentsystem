@@ -108,4 +108,79 @@ internal static partial class Pdfium
         int count,
         ushort* result
     );
+
+    /// <summary>For <see cref="FPDF_SaveAsCopy"/>: write the whole file, not an update of the source.</summary>
+    public const uint NoIncremental = 2;
+
+    [LibraryImport(Library)]
+    public static partial nint FPDF_CreateNewDocument();
+
+    /// <summary>
+    /// Copies pages of <paramref name="source"/> into <paramref name="destination"/> before page <paramref name="index"/>
+    /// (docs/design.md §8.4). Page indices are 0-based. Nonzero on success.
+    /// </summary>
+    [LibraryImport(Library)]
+    public static unsafe partial int FPDF_ImportPagesByIndex(
+        nint destination,
+        nint source,
+        int* pageIndices,
+        CULong length,
+        int index
+    );
+
+    /// <summary>Writes the document out through <paramref name="writer"/>'s callback. Nonzero on success.</summary>
+    [LibraryImport(Library)]
+    public static unsafe partial int FPDF_SaveAsCopy(
+        nint document,
+        FileWrite* writer,
+        CULong flags
+    );
+
+    /// <summary>
+    /// PDFium's <c>FPDF_FILEWRITE</c>, with a handle to the stream after it, since PDFium hands the struct back to the
+    /// callback.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct FileWrite
+    {
+        public int Version;
+        public delegate* unmanaged<FileWrite*, void*, CULong, int> WriteBlock;
+        public nint Stream;
+    }
+
+    /// <summary>Saves a document to <paramref name="stream"/>. Call while holding <see cref="Gate"/>.</summary>
+    public static unsafe bool Save(nint document, Stream stream)
+    {
+        var handle = GCHandle.Alloc(stream);
+        try
+        {
+            var writer = new FileWrite
+            {
+                Version = 1,
+                WriteBlock = &WriteBlock,
+                Stream = GCHandle.ToIntPtr(handle),
+            };
+            return FPDF_SaveAsCopy(document, &writer, new CULong(NoIncremental)) != 0;
+        }
+        finally
+        {
+            handle.Free();
+        }
+    }
+
+    [UnmanagedCallersOnly]
+    private static unsafe int WriteBlock(FileWrite* self, void* data, CULong size)
+    {
+        try
+        {
+            var stream = (Stream)GCHandle.FromIntPtr(self->Stream).Target!;
+            stream.Write(new ReadOnlySpan<byte>(data, checked((int)size.Value)));
+            return 1;
+        }
+        catch (Exception)
+        {
+            // An exception must not cross into native code; PDFium reports the failed save.
+            return 0;
+        }
+    }
 }

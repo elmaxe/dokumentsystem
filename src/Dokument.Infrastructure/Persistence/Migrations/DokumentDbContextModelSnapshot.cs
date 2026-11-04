@@ -113,6 +113,47 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("blobs", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Files.FileOrigin", b =>
+                {
+                    b.Property<Guid>("VersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("version_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<int>("First")
+                        .HasColumnType("integer")
+                        .HasColumnName("first_page");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("SourceFirst")
+                        .HasColumnType("integer")
+                        .HasColumnName("source_first");
+
+                    b.Property<int>("SourceLast")
+                        .HasColumnType("integer")
+                        .HasColumnName("source_last");
+
+                    b.Property<string>("SourceName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_name");
+
+                    b.Property<Guid>("SourceNodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_node_id");
+
+                    b.HasKey("VersionId", "Position");
+
+                    b.ToTable("file_origins", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Domain.Files.FileVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -252,6 +293,94 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("OwnerId", "ParentId", "NameKey"), false);
 
                     b.ToTable("nodes", (string)null);
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Files.PdfOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<Guid?>("FolderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("folder_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Made")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("made");
+
+                    b.Property<string>("NewFolderName")
+                        .HasColumnType("text")
+                        .HasColumnName("new_folder_name");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("PagesDone")
+                        .HasColumnType("integer")
+                        .HasColumnName("pages_done");
+
+                    b.Property<int>("PagesTotal")
+                        .HasColumnType("integer")
+                        .HasColumnName("pages_total");
+
+                    b.Property<string>("Parts")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("parts");
+
+                    b.Property<long>("ReservedBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("reserved_bytes");
+
+                    b.Property<string>("Results")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("results");
+
+                    b.Property<string>("Sources")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("sources");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("state");
+
+                    b.Property<bool>("TrashSources")
+                        .HasColumnType("boolean")
+                        .HasColumnName("trash_sources");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("pdf_operations", (string)null);
                 });
 
             modelBuilder.Entity("Dokument.Domain.Files.RecentFile", b =>
@@ -800,6 +929,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("kind");
 
+                    b.Property<int?>("Count")
+                        .HasColumnType("integer")
+                        .HasColumnName("count");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -1269,6 +1402,15 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Files.FileOrigin", b =>
+                {
+                    b.HasOne("Dokument.Domain.Files.FileVersion", null)
+                        .WithMany()
+                        .HasForeignKey("VersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Dokument.Domain.Files.FileVersion", b =>
                 {
                     b.HasOne("Dokument.Domain.Files.Node", null)
@@ -1303,6 +1445,15 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("CurrentVersion");
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Files.PdfOperation", b =>
+                {
+                    b.HasOne("Dokument.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Dokument.Domain.Files.RecentFile", b =>

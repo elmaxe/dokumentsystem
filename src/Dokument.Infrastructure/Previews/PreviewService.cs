@@ -130,6 +130,59 @@ public sealed class PreviewService(DokumentDbContext db, JobQueue jobs, DerivedS
         );
     }
 
+    /// <summary>
+    /// For PDFs in a listing (docs/design.md §8.4): how many pages each has, and whether it can be read, from what the
+    /// thumbnail stage found. A blob it hasn't looked at yet is missing.
+    /// </summary>
+    public async Task<Dictionary<ContentHash, PdfState>> PdfStatesAsync(
+        IReadOnlyCollection<ContentHash> hashes,
+        CancellationToken ct = default
+    )
+    {
+        var distinct = hashes.Distinct().ToList();
+        return distinct.Count == 0
+            ? []
+            : await db
+                .BlobPreviews.AsNoTracking()
+                .Where(p =>
+                    distinct.Contains(p.BlobHash)
+                    && (p.PageCount != null || p.Status == PreviewStatus.Failed)
+                )
+                .ToDictionaryAsync(
+                    p => p.BlobHash,
+                    p => new PdfState(p.Status == PreviewStatus.Failed ? null : p.PageCount),
+                    ct
+                );
+    }
+
+    /// <summary>
+    /// Asks for a PDF's page sheets (§8.4) at interactive priority, unless they are made or being made. False when the
+    /// blob isn't a readable PDF.
+    /// </summary>
+    public async Task<bool> RequestPageSheetsAsync(ContentHash hash, CancellationToken ct = default)
+    {
+        var preview = await db
+            .BlobPreviews.AsNoTracking()
+            .SingleOrDefaultAsync(p => p.BlobHash == hash, ct);
+        if (preview is not { Status: PreviewStatus.Ready, PageCount: > 0 })
+        {
+            return false;
+        }
+
+        if (
+            !await db.Renditions.AnyAsync(
+                r => r.BlobHash == hash && r.Kind == RenditionKind.PageSheets,
+                ct
+            )
+        )
+        {
+            await jobs.EnqueueAsync(JobType.PageSheets, hash.Hex, JobPriority.Interactive, ct);
+            await db.SaveChangesAsync(ct);
+        }
+
+        return true;
+    }
+
     /// <summary>The rendition's file on disk, or null if the blob has none of that kind.</summary>
     public async Task<RenditionFile?> FindAsync(
         ContentHash hash,
@@ -147,3 +200,6 @@ public sealed class PreviewService(DokumentDbContext db, JobQueue jobs, DerivedS
 }
 
 public sealed record RenditionFile(Rendition Rendition, string PhysicalPath);
+
+/// <param name="PageCount">Null when the PDF can't be read: damaged, or locked with a password.</param>
+public sealed record PdfState(int? PageCount);

@@ -50,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<PurgeService>();
         services.AddSingleton<PurgeSignal>();
         services.AddScoped<TrashService>();
+        services.AddScoped<PdfService>();
         services.AddScoped<StarService>();
         services.AddScoped<RecentFiles>();
         services.AddScoped<JobQueue>();
