@@ -562,6 +562,42 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/waveform": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "An audio file's loudness over time, for the player's timeline: a 16-byte header (\"DKWF\", version 1, three zero bytes, seconds per slice as float32, slice count as uint32, little-endian), then three bytes per slice: the lowest sample's size, the highest sample and the RMS, scaled so the loudest sample is 255. 404 until the worker has made one; see NodeDto.media.hasWaveform. Not audited.",
+        "operationId": "GetWaveform",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          },
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/preview": {
       "get": {
         "tags": [
@@ -598,6 +634,31 @@
         "responses": {
           "200": {
             "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/seek-previews": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "A video's seek previews: one WebP of frames from along the video, laid out as NodeDto.media.seekPreviews says. 404 until the worker has made them, and for audio and clips under 10 s. Not audited, like previews.",
+        "operationId": "GetSeekPreviews",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -3760,7 +3821,8 @@
           "thumbnail",
           "metadata",
           "text",
-          "transcode"
+          "transcode",
+          "seekPreviews"
         ]
       },
       "FileTags": {
@@ -4327,6 +4389,7 @@
           "metadata",
           "text",
           "transcode",
+          "seekPreviews",
           "transcribe",
           "tagRule",
           "file",
@@ -4449,7 +4512,10 @@
           "hasAudio",
           "videoCodec",
           "copy",
-          "progress"
+          "progress",
+          "hasCover",
+          "hasWaveform",
+          "seekPreviews"
         ],
         "type": "object",
         "properties": {
@@ -4481,6 +4547,22 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "hasCover": {
+            "type": "boolean"
+          },
+          "hasWaveform": {
+            "type": "boolean"
+          },
+          "seekPreviews": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SeekPreviewsDto"
+              }
+            ]
           }
         }
       },
@@ -5243,6 +5325,38 @@
           "relevance",
           "modified"
         ]
+      },
+      "SeekPreviewsDto": {
+        "required": [
+          "intervalMs",
+          "count",
+          "columns",
+          "frameWidth",
+          "frameHeight"
+        ],
+        "type": "object",
+        "properties": {
+          "intervalMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "columns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frameWidth": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frameHeight": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
       },
       "ServerInfo": {
         "required": [

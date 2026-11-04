@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
+import { parseWaveform, waveColumns, wavePaths, type Waveform } from "@dokument/core";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
-import { formatMs, leadInMs } from "../lib/media";
+import { formatMs, leadInMs, seekFrameAt, type SeekPreviews } from "../lib/media";
 import { Icon } from "./Icon";
 import type { TranscriptLineView } from "./Transcript";
 
@@ -14,8 +15,12 @@ export type MediaPlayerProps = {
   /** Tried in order: the first the browser can play is used, e.g. the original HEVC in Safari and the H.264 copy elsewhere. */
   sources: readonly string[];
   poster?: string;
+  /** A video's frames for the timeline: shown above it while pointing at it or dragging (§14). */
+  seekPreviews?: SeekPreviews;
   /** Above an audio file's controls: its cover art and name. */
   cover?: ReactNode;
+  /** Where an audio file's waveform is: drawn as its timeline once loaded, the plain line until then (§14). */
+  waveform?: string;
   /** Shown when none of the sources play. */
   fallback: ReactNode;
   mediaRef: RefObject<HTMLMediaElement | null>;
@@ -43,7 +48,9 @@ export function MediaPlayer({
   type,
   sources,
   poster,
+  seekPreviews,
   cover,
+  waveform,
   fallback,
   mediaRef,
   startAtMs,
@@ -74,6 +81,7 @@ export function MediaPlayer({
   const idle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const hovering = useRef(false);
   const lengthMs = loadedMs ?? durationMs ?? 0;
+  const wave = useWaveform(type === "audio" ? waveform : undefined);
 
   // Smooth progress while playing; timeupdate alone moves the thumb in jumps of a quarter second.
   useEffect(() => {
@@ -242,6 +250,8 @@ export function MediaPlayer({
       onScrub={scrubTo}
       onTick={(time) => onSeek(time - leadInMs)}
       overlay={type === "video"}
+      waveform={wave}
+      seekPreviews={type === "video" ? seekPreviews : undefined}
     />
   );
   const speedButton = (
@@ -439,6 +449,8 @@ function Scrubber({
   onScrub,
   onTick,
   overlay,
+  waveform,
+  seekPreviews,
 }: {
   nowMs: number;
   lengthMs: number;
@@ -447,11 +459,15 @@ function Scrubber({
   onScrub: (ms: number) => void;
   onTick: (ms: number) => void;
   overlay?: boolean;
+  /** An audio file's loudness over time: the timeline becomes its waveform, Audacity-style. */
+  waveform?: Waveform | null;
+  seekPreviews?: SeekPreviews;
 }) {
   const { t } = useTranslation();
   const bar = useRef<HTMLDivElement | null>(null);
   const [dragMs, setDragMs] = useState<number | null>(null);
-  const [hover, setHover] = useState<{ ms: number; x: number } | null>(null);
+  const [hover, setHover] = useState<{ ms: number; x: number; width: number; touch: boolean } | null>(null);
+  const sheet = useSheet(seekPreviews);
   const shownMs = dragMs ?? nowMs;
   // Over a video the controls are dark in both themes, so the light theme's primary would be too dark there.
   const played = overlay ? "bg-primary-container dark:bg-primary" : "bg-primary";
@@ -459,7 +475,7 @@ function Scrubber({
   const msAt = (event: PointerEvent<HTMLDivElement>) => {
     const box = bar.current!.getBoundingClientRect();
     const x = Math.min(Math.max(0, event.clientX - box.left), box.width);
-    return { ms: box.width ? (x / box.width) * lengthMs : 0, x };
+    return { ms: box.width ? (x / box.width) * lengthMs : 0, x, width: box.width, touch: event.pointerType !== "mouse" };
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -481,7 +497,8 @@ function Scrubber({
   };
 
   return (
-    <div className="relative h-6 touch-none select-none">
+    // The waveform leaves room above it for the time under the pointer.
+    <div className={cn("relative touch-none select-none", waveform ? "mt-6 h-28 max-sm:mt-4 max-sm:h-20" : "h-6")}>
       <div
         ref={bar}
         role="slider"
@@ -492,7 +509,9 @@ function Scrubber({
         aria-valuenow={Math.round(shownMs / 1000)}
         aria-valuetext={t("player.positionText", { at: formatMs(shownMs), total: formatMs(lengthMs) })}
         onKeyDown={onKeyDown}
+        onPointerEnter={sheet.load}
         onPointerDown={(event) => {
+          sheet.load();
           if (!lengthMs) return;
           event.currentTarget.setPointerCapture(event.pointerId);
           setDragMs(msAt(event).ms);
@@ -509,20 +528,29 @@ function Scrubber({
         }}
         onPointerCancel={() => setDragMs(null)}
         onPointerLeave={() => setHover(null)}
-        className="group/scrub absolute inset-0 cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2"
+        className={cn(
+          "group/scrub absolute inset-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2",
+          waveform ? "rounded-sm" : "rounded-full",
+        )}
       >
-        <div className={cn("absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full group-hover/scrub:h-1.5", overlay ? "bg-white/30" : "bg-outline-variant")}>
-          <div className={cn("absolute inset-y-0 left-0 rounded-full", overlay ? "bg-white/40" : "bg-on-surface/15")} style={{ width: percent(bufferedMs) }} />
-          <div className={cn("absolute inset-y-0 left-0 rounded-full", played)} style={{ width: percent(shownMs) }} />
-        </div>
-        <div
-          className={cn(
-            "absolute top-1/2 size-3.5 -translate-1/2 rounded-full shadow-elevation-1 transition-transform",
-            played,
-            dragMs !== null ? "scale-125" : "group-hover/scrub:scale-110",
-          )}
-          style={{ left: percent(shownMs) }}
-        />
+        {waveform ? (
+          <WaveTrack waveform={waveform} lengthMs={lengthMs} played={percent(shownMs)} dragging={dragMs !== null} />
+        ) : (
+          <>
+            <div className={cn("absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full group-hover/scrub:h-1.5", overlay ? "bg-white/30" : "bg-outline-variant")}>
+              <div className={cn("absolute inset-y-0 left-0 rounded-full", overlay ? "bg-white/40" : "bg-on-surface/15")} style={{ width: percent(bufferedMs) }} />
+              <div className={cn("absolute inset-y-0 left-0 rounded-full", played)} style={{ width: percent(shownMs) }} />
+            </div>
+            <div
+              className={cn(
+                "absolute top-1/2 size-3.5 -translate-1/2 rounded-full shadow-elevation-1 transition-transform",
+                played,
+                dragMs !== null ? "scale-125" : "group-hover/scrub:scale-110",
+              )}
+              style={{ left: percent(shownMs) }}
+            />
+          </>
+        )}
       </div>
       {lengthMs > 0 &&
         ticks.map((time) => (
@@ -537,21 +565,170 @@ function Scrubber({
             onClick={() => onTick(time)}
             style={{ left: percent(time) }}
             className={cn(
-              "absolute top-1/2 h-4 w-1 -translate-1/2 cursor-pointer rounded-full ring-1 ring-black/30 hover:scale-125",
+              "absolute w-1 -translate-x-1/2 cursor-pointer rounded-full hover:scale-x-150",
+              waveform ? "inset-y-0 opacity-90" : "top-1/2 h-4 -translate-y-1/2 ring-1 ring-black/30 hover:scale-125",
               overlay ? "bg-warning-container dark:bg-warning" : "bg-warning",
             )}
           />
         ))}
-      {hover && (
-        <span
-          className="tabular pointer-events-none absolute bottom-full mb-1 -translate-x-1/2 rounded-xs bg-on-surface px-1.5 py-0.5 text-label-md text-surface"
-          style={{ left: hover.x }}
-        >
-          {formatMs(hover.ms)}
-        </span>
+      {hover && waveform && (
+        <span aria-hidden className="pointer-events-none absolute inset-y-0 w-px bg-on-surface/50" style={{ left: hover.x }} />
       )}
+      {hover &&
+        (sheet.ready && seekPreviews ? (
+          <SeekPreview sheet={seekPreviews} hover={hover} />
+        ) : (
+          <span
+            className="tabular pointer-events-none absolute bottom-full mb-1 -translate-x-1/2 rounded-xs bg-on-surface px-1.5 py-0.5 text-label-md text-surface"
+            style={{ left: hover.x }}
+          >
+            {formatMs(hover.ms)}
+          </span>
+        ))}
     </div>
   );
+}
+
+/**
+ * The waveform as the timeline (§14): the peaks as a pale outline and the loudness as a solid core around the middle
+ * line, the played part in the accent and the rest in grey, and a playhead. It grows out of the middle line when it
+ * arrives, except with reduced motion.
+ */
+function WaveTrack({
+  waveform,
+  lengthMs,
+  played,
+  dragging,
+}: {
+  waveform: Waveform;
+  lengthMs: number;
+  played: string;
+  dragging: boolean;
+}) {
+  const box = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+  const [grown, setGrown] = useState(false);
+  useEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry?.contentRect.width ?? 0));
+    observer.observe(element);
+    const frame = requestAnimationFrame(() => setGrown(true));
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+  // A column every 2 px is as fine as the eye reads it, and keeps the paths small.
+  const count = Math.max(1, Math.round(width / 2));
+  const paths = useMemo(
+    () => wavePaths(waveColumns(waveform, count, lengthMs ? lengthMs / 1000 : undefined)),
+    [waveform, count, lengthMs],
+  );
+  const shape = (className: string) => (
+    <svg
+      aria-hidden
+      viewBox={`0 -1 ${count} 2`}
+      preserveAspectRatio="none"
+      className={cn("absolute inset-y-0 left-0 h-full", className)}
+      style={{ width: width || "100%" }}
+    >
+      <path d={paths.peaks} fill="currentColor" opacity={0.4} />
+      <path d={paths.rms} fill="currentColor" />
+    </svg>
+  );
+  return (
+    <div
+      ref={box}
+      className={cn(
+        "absolute inset-0 origin-center transition-transform duration-300 ease-emphasized motion-reduce:transition-none",
+        grown ? "scale-y-100" : "scale-y-0",
+      )}
+    >
+      {shape("text-outline")}
+      <div className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: played }}>
+        {shape("text-primary")}
+      </div>
+      <div className="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-on-surface" style={{ left: played }} />
+      <div
+        className={cn(
+          "absolute -top-2.5 size-3.5 -translate-x-1/2 rounded-full border-2 border-surface bg-primary shadow-elevation-1 transition-transform",
+          dragging ? "scale-125" : "group-hover/scrub:scale-110",
+        )}
+        style={{ left: played }}
+      />
+    </div>
+  );
+}
+
+/**
+ * The frame for the time under the pointer, cut from the seek-preview sheet, with the time under it (§14). It follows
+ * the pointer but stops at the ends, so the first and last frames are whole. A 192 × 171 box on desktop, so landscape
+ * frames are 192 px wide and portrait ones 171 px high; 144 × 128 on touch screens.
+ */
+function SeekPreview({
+  sheet,
+  hover,
+}: {
+  sheet: SeekPreviews;
+  hover: { ms: number; x: number; width: number; touch: boolean };
+}) {
+  const frame = hover.touch ? seekFrameAt(sheet, hover.ms, 144, 128) : seekFrameAt(sheet, hover.ms, 192, 171);
+  const half = frame.width / 2;
+  const left = hover.width > frame.width ? Math.min(Math.max(hover.x, half), hover.width - half) : hover.width / 2;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute bottom-full mb-1 flex -translate-x-1/2 flex-col items-center gap-1.5"
+      style={{ left }}
+    >
+      <div
+        className="rounded-sm bg-black bg-no-repeat shadow-elevation-2 ring-1 ring-white/35"
+        style={{
+          width: frame.width,
+          height: frame.height,
+          backgroundImage: `url("${sheet.src}")`,
+          backgroundSize: frame.backgroundSize,
+          backgroundPosition: frame.backgroundPosition,
+        }}
+      />
+      <span className="tabular rounded-xs bg-on-surface px-1.5 py-0.5 text-label-md text-surface">{formatMs(hover.ms)}</span>
+    </div>
+  );
+}
+
+/** Fetches and reads a waveform. Null until it's loaded, and when it can't be: the plain timeline is shown then. */
+function useWaveform(src: string | undefined): Waveform | null {
+  const [loaded, setLoaded] = useState<{ src: string; waveform: Waveform } | null>(null);
+  useEffect(() => {
+    if (!src) return;
+    const abort = new AbortController();
+    fetch(src, { signal: abort.signal })
+      .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(new Error(String(response.status)))))
+      .then((buffer) => setLoaded({ src, waveform: parseWaveform(buffer) }))
+      .catch(() => {
+        // The plain timeline it is.
+      });
+    return () => abort.abort();
+  }, [src]);
+  return loaded && loaded.src === src ? loaded.waveform : null;
+}
+
+/**
+ * Loads the seek-preview sheet the first time the pointer comes to the timeline, not before: most videos are watched
+ * without seeking, and the sheet is a few hundred kB. Until it has loaded, the timeline shows only the time.
+ */
+function useSheet(sheet: SeekPreviews | undefined) {
+  const [loaded, setLoaded] = useState<string | null>(null);
+  const started = useRef<string | null>(null);
+  const load = () => {
+    if (!sheet || started.current === sheet.src) return;
+    started.current = sheet.src;
+    const image = new Image();
+    image.onload = () => setLoaded(sheet.src);
+    image.src = sheet.src;
+  };
+  return { ready: !!sheet && loaded === sheet.src, load };
 }
 
 function PlayerButton({

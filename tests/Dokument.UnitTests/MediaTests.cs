@@ -181,6 +181,77 @@ public sealed class MediaProbeTests
 }
 
 /// <summary>Against the real ffmpeg, which CI installs. Videos are made with its test pattern, so the repo holds none.</summary>
+public sealed class SeekPreviewLayoutTests
+{
+    [Theory]
+    [InlineData(null, 0, 0)]
+    [InlineData(8.0, 0, 0)]
+    [InlineData(10.0, 5, 2000)]
+    [InlineData(31.0, 15, 2000)]
+    [InlineData(120.0, 60, 2000)]
+    [InlineData(240.0, 100, 2400)]
+    [InlineData(7200.0, 100, 72000)]
+    public void A_frame_every_percent_but_at_least_two_seconds_apart(
+        double? seconds,
+        int count,
+        int intervalMs
+    )
+    {
+        var layout = SeekPreviewLayout.For(seconds);
+        Assert.Equal(count, layout?.Count ?? 0);
+        Assert.Equal(intervalMs, (int)Math.Round((layout?.IntervalSeconds ?? 0) * 1000));
+    }
+
+    [Fact]
+    public void Frames_are_from_the_middle_of_their_stretch_and_fill_rows_of_ten()
+    {
+        var layout = SeekPreviewLayout.For(240)!;
+        Assert.Equal(TimeSpan.FromSeconds(1.2), layout.TimeOf(0));
+        Assert.Equal(TimeSpan.FromSeconds(238.8), layout.TimeOf(99));
+        Assert.Equal((10, 10), (layout.Columns, layout.Rows));
+
+        var clip = SeekPreviewLayout.For(30)!;
+        Assert.Equal((10, 2), (clip.Columns, clip.Rows));
+        var short_ = SeekPreviewLayout.For(12)!;
+        Assert.Equal((6, 1), (short_.Columns, short_.Rows));
+    }
+
+    [Theory]
+    [InlineData(1920, 1080, 256, 144)]
+    [InlineData(1080, 1920, 144, 256)]
+    [InlineData(1440, 1080, 256, 192)]
+    [InlineData(160, 120, 160, 120)]
+    [InlineData(null, null, 256, 144)]
+    public void Frames_are_256_on_the_long_edge_and_never_scaled_up(
+        int? width,
+        int? height,
+        int frameWidth,
+        int frameHeight
+    ) => Assert.Equal((frameWidth, frameHeight), SeekPreviewLayout.FrameSize(width, height));
+
+    [Fact]
+    public void A_sheet_that_doesnt_fit_the_length_isnt_offered()
+    {
+        Assert.Equal(
+            new SeekPreviewSheet(2400, 100, 10, 256, 144),
+            SeekPreviewSheet.From(240, 2560, 1440)
+        );
+        Assert.Null(SeekPreviewSheet.From(240, 2560, 1441));
+        Assert.Null(SeekPreviewSheet.From(5, 2560, 1440));
+    }
+
+    [Fact]
+    public void Missing_frames_borrow_their_neighbours()
+    {
+        byte[] a = [1],
+            b = [2];
+        byte[]?[] frames = [null, a, null, b, null];
+        Assert.True(SeekPreviewsHandler.Fill(frames));
+        Assert.Equal([a, a, a, b, b], frames);
+        Assert.False(SeekPreviewsHandler.Fill(new byte[]?[3]));
+    }
+}
+
 public sealed class FFmpegTests : IDisposable
 {
     private readonly string dir = Directory.CreateTempSubdirectory("dokument-media-").FullName;
@@ -233,6 +304,74 @@ public sealed class FFmpegTests : IDisposable
     }
 
     [Fact]
+    public async Task Reads_an_audio_files_loudness_over_time()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var path = Path.Combine(dir, "tone.mp3");
+        File.WriteAllBytes(path, Dokument.Tests.TestFiles.Audio("tone.mp3", "-c:a", "libmp3lame"));
+
+        var waveform = await ffmpeg.WaveformAsync(path, ct);
+
+        Assert.NotNull(waveform);
+        var slices = Waveform.Decode(waveform.Encode(), out var seconds);
+        Assert.InRange(slices.Length * seconds, 3.9, 4.2);
+        // Two seconds of tone, then silence (give the encoder's edges a slice or two).
+        var half = (int)(2 / seconds);
+        Assert.All(slices[2..(half - 2)], s => Assert.InRange(s.High, 200, 255));
+        Assert.All(slices[(half + 3)..^3], s => Assert.InRange(s.High, 0, 5));
+    }
+
+    [Fact]
+    public async Task Seek_previews_are_upright_frames_of_one_size_joined_ten_to_a_row()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var path = Path.Combine(dir, "clip.mp4");
+        await File.WriteAllBytesAsync(
+            path,
+            Dokument.Tests.TestFiles.Video(
+                "clip.mp4",
+                seconds: 24,
+                size: "320x180",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac"
+            ),
+            ct
+        );
+        var layout = SeekPreviewLayout.For(24)!;
+        Assert.Equal(12, layout.Count);
+        var (width, height) = SeekPreviewLayout.FrameSize(320, 180);
+
+        var frames = new byte[]?[layout.Count];
+        for (var i = 0; i < layout.Count; i++)
+        {
+            frames[i] = await ffmpeg.SeekFrameAsync(path, layout.TimeOf(i), width, height, ct);
+            Assert.NotNull(frames[i]);
+        }
+
+        // Past the end there's nothing to take.
+        Assert.Null(await ffmpeg.SeekFrameAsync(path, TimeSpan.FromSeconds(60), width, height, ct));
+
+        var sheet = SeekPreviewsHandler.Join(frames!, layout.Columns);
+        using var image = Image.NewFromBuffer(sheet);
+        Assert.Equal("webpload_buffer", image.Get("vips-loader"));
+        Assert.Equal((10 * 256, 2 * 144), (image.Width, image.Height));
+        Assert.Equal(
+            new SeekPreviewSheet(2000, 12, 10, 256, 144),
+            SeekPreviewSheet.From(24, image.Width, image.Height)
+        );
+
+        // The test pattern's counter: frames a second apart differ, so each is its own seek.
+        using var first = image.ExtractArea(0, 0, 256, 144);
+        using var second = image.ExtractArea(256, 0, 256, 144);
+        using var difference = (first - second).Abs();
+        Assert.True(difference.Max() > 50);
+    }
+
+    [Fact]
     public async Task Says_nothing_about_files_that_arent_media()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -243,6 +382,63 @@ public sealed class FFmpegTests : IDisposable
 
         Assert.Null(await ffmpeg.ProbeAsync(text, ct));
         Assert.Null(await ffmpeg.ProbeAsync(png, ct));
+    }
+}
+
+public sealed class WaveformTests
+{
+    [Fact]
+    public void Keeps_the_shape_of_a_quiet_recording_in_20_ms_slices()
+    {
+        var waveform = new Waveform();
+        // Half a second of a quiet tone (a tenth of full scale), then half a second of silence.
+        var samples = new short[Waveform.SampleRate];
+        for (var i = 0; i < samples.Length / 2; i++)
+        {
+            samples[i] = (short)(3276 * Math.Sin(i * 2 * Math.PI * 440 / Waveform.SampleRate));
+        }
+
+        waveform.Add(samples);
+
+        var slices = Waveform.Decode(waveform.Encode(), out var seconds);
+        Assert.Equal(0.02, seconds, 4);
+        Assert.Equal(50, slices.Length);
+        // Scaled to the loudest moment, so a quiet tone still fills the height.
+        Assert.All(slices[..25], s => Assert.InRange(s.High, 245, 255));
+        Assert.All(slices[..25], s => Assert.InRange(s.Low, 245, 255));
+        // A sine's RMS is its peak over √2.
+        Assert.All(slices[..25], s => Assert.InRange(s.Rms, 170, 190));
+        Assert.All(slices[25..], s => Assert.Equal((0, 0, 0), (s.Low, s.High, s.Rms)));
+    }
+
+    [Fact]
+    public void Merges_slices_so_hours_of_audio_stay_small()
+    {
+        var waveform = new Waveform();
+        var second = new short[Waveform.SampleRate];
+        Array.Fill(second, (short)1000);
+        // Over twice what 20 ms slices allow, with a partly filled last slice.
+        for (var i = 0; i < 1400; i++)
+        {
+            waveform.Add(second);
+        }
+
+        waveform.Add(second.AsSpan(0, 123));
+
+        var encoded = waveform.Encode();
+        var slices = Waveform.Decode(encoded, out var seconds);
+        Assert.InRange(slices.Length, Waveform.MaxSlices / 2, Waveform.MaxSlices);
+        Assert.Equal(0.08, seconds, 4);
+        Assert.InRange(slices.Length * seconds, 1400, 1400.1);
+        Assert.Equal(Waveform.HeaderBytes + slices.Length * 3, encoded.Length);
+        Assert.All(slices, s => Assert.Equal(255, s.High));
+    }
+
+    [Fact]
+    public void An_empty_recording_has_no_slices()
+    {
+        Assert.Empty(Waveform.Decode(new Waveform().Encode(), out _));
+        Assert.Throws<FormatException>(() => Waveform.Decode("nope"u8, out _));
     }
 }
 

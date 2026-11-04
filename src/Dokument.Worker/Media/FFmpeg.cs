@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Dokument.Domain.Previews;
 using Dokument.Worker.Jobs;
@@ -61,6 +62,9 @@ public sealed class FFmpeg(IOptions<WorkerOptions> options)
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan FrameTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>Decoding is quick (a minute or so for hours of audio), but a NAS may be busy.</summary>
+    private static readonly TimeSpan WaveformTimeout = TimeSpan.FromMinutes(20);
 
     /// <summary>Probes <paramref name="path"/>. Null when ffprobe can't read it or it isn't audio or video.</summary>
     public async Task<MediaProbe?> ProbeAsync(string path, CancellationToken ct)
@@ -214,6 +218,47 @@ public sealed class FFmpeg(IOptions<WorkerOptions> options)
         return output.ExitCode == 0 && output.Stdout.Length > 0 ? output.Stdout : null;
     }
 
+    /// <summary>
+    /// One frame at <paramref name="at"/>, turned upright and scaled to exactly <paramref name="width"/> ×
+    /// <paramref name="height"/>, as PNG bytes: a seek preview (§14). ffmpeg seeks to the keyframe before it and decodes
+    /// from there, so only a few seconds of a long film are read. Null when there is no frame there.
+    /// </summary>
+    public async Task<byte[]?> SeekFrameAsync(
+        string path,
+        TimeSpan at,
+        int width,
+        int height,
+        CancellationToken ct
+    )
+    {
+        var output = await ExternalTool.RunAsync(
+            options.Value.FfmpegCommand,
+            [
+                "-nostdin",
+                "-v",
+                "error",
+                "-ss",
+                at.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
+                "-i",
+                path,
+                "-map",
+                "0:V:0",
+                "-vf",
+                FormattableString.Invariant($"scale={width}:{height},setsar=1"),
+                "-frames:v",
+                "1",
+                "-c:v",
+                "png",
+                "-f",
+                "image2pipe",
+                "-",
+            ],
+            FrameTimeout,
+            ct
+        );
+        return output.ExitCode == 0 && output.Stdout.Length > 0 ? output.Stdout : null;
+    }
+
     /// <summary>The embedded cover art of an audio file (or a video's attached picture), as PNG bytes.</summary>
     public async Task<byte[]?> CoverAsync(string path, int streamIndex, CancellationToken ct)
     {
@@ -239,6 +284,86 @@ public sealed class FFmpeg(IOptions<WorkerOptions> options)
             ct
         );
         return output.ExitCode == 0 && output.Stdout.Length > 0 ? output.Stdout : null;
+    }
+
+    /// <summary>
+    /// The loudness over time of the first audio stream (docs/design.md §14), decoded once as 8 kHz mono and folded
+    /// into a <see cref="Waveform"/> as it streams, so a long recording never sits in memory. Null when ffmpeg can't
+    /// decode it.
+    /// </summary>
+    public async Task<Waveform?> WaveformAsync(string path, CancellationToken ct)
+    {
+        var start = new ProcessStartInfo(options.Value.FfmpegCommand)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (
+            var argument in (string[])
+                [
+                    "-nostdin",
+                    "-v",
+                    "error",
+                    "-i",
+                    path,
+                    "-map",
+                    "0:a:0",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    Waveform.SampleRate.ToString(CultureInfo.InvariantCulture),
+                    "-f",
+                    "s16le",
+                    "-",
+                ]
+        )
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = new Process { StartInfo = start };
+        try
+        {
+            process.Start();
+        }
+        catch (Win32Exception e)
+        {
+            throw new ToolMissingException(start.FileName, e);
+        }
+
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(WaveformTimeout);
+        try
+        {
+            var stderr = ReadTailAsync(process.StandardError, deadline.Token);
+            var waveform = new Waveform();
+            var buffer = new byte[64 * 1024];
+            var carry = 0;
+            var stdout = process.StandardOutput.BaseStream;
+            int read;
+            while ((read = await stdout.ReadAsync(buffer.AsMemory(carry), deadline.Token)) > 0)
+            {
+                var available = carry + read;
+                var whole = available & ~1;
+                waveform.Add(MemoryMarshal.Cast<byte, short>(buffer.AsSpan(0, whole)));
+                carry = available - whole;
+                if (carry > 0)
+                {
+                    buffer[0] = buffer[whole];
+                }
+            }
+
+            await process.WaitForExitAsync(deadline.Token);
+            await stderr;
+            return process.ExitCode == 0 ? waveform : null;
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            ct.ThrowIfCancellationRequested();
+            throw new TimeoutException($"ffmpeg took longer than {WaveformTimeout}.");
+        }
     }
 
     /// <summary>
