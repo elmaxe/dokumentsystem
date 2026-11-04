@@ -1,0 +1,21 @@
+{
+  "name": "@dokument/scriptor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Scriptor (https://github.com/truespar/scriptor), the WebAssembly Word engine the web viewer shows .docx files with (docs/design.md §14). Built from the pinned commit below; it has no npm release.",
+  "license": "MIT OR Apache-2.0",
+  "scriptor": {
+    "repository": "https://github.com/truespar/scriptor.git",
+    "commit": "7d67ae99cfaf1cd342fb4949889fd681ee713c30"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./dist/core/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

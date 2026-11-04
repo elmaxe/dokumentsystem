@@ -661,7 +661,7 @@
         "tags": [
           "Files"
         ],
-        "description": "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18).",
+        "description": "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document (unless original=true, for the Word viewer), otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18).",
         "operationId": "GetPreview",
         "parameters": [
           {
@@ -2597,6 +2597,36 @@
         }
       }
     },
+    "/api/v1/admin/settings/word-viewer": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "AdminPutWordViewerSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WordViewerDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WordViewerDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/videos/copies": {
       "get": {
         "tags": [
@@ -3223,6 +3253,7 @@
           "textRecognition",
           "videos",
           "office",
+          "wordViewer",
           "transcription",
           "signIn"
         ],
@@ -3251,6 +3282,9 @@
           },
           "office": {
             "$ref": "#/components/schemas/OfficeSettingsDto"
+          },
+          "wordViewer": {
+            "$ref": "#/components/schemas/WordViewerDto"
           },
           "transcription": {
             "$ref": "#/components/schemas/TranscriptionSettingsDto"
@@ -3495,7 +3529,8 @@
         "required": [
           "user",
           "sessionId",
-          "csrfToken"
+          "csrfToken",
+          "features"
         ],
         "type": "object",
         "properties": {
@@ -3511,6 +3546,9 @@
               "null",
               "string"
             ]
+          },
+          "features": {
+            "$ref": "#/components/schemas/ServerFeatures"
           }
         }
       },
@@ -5460,6 +5498,17 @@
           }
         }
       },
+      "ServerFeatures": {
+        "required": [
+          "wordViewer"
+        ],
+        "type": "object",
+        "properties": {
+          "wordViewer": {
+            "type": "boolean"
+          }
+        }
+      },
       "ServerInfo": {
         "required": [
           "name",
@@ -6634,6 +6683,17 @@
           "freeBytes": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "WordViewerDto": {
+        "required": [
+          "enabled"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
           }
         }
       }

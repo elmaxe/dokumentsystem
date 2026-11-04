@@ -20,7 +20,20 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # The Word viewer's engine, built from the Scriptor commit pinned in packages/scriptor (docs/design.md §14). The
+      # build skips itself when dist/ already holds that commit, so Rust and wasm-pack are only needed on a cache miss.
+      - uses: actions/cache@v4
+        id: scriptor
+        with:
+          path: packages/scriptor/dist
+          key: scriptor-${{ hashFiles('packages/scriptor/package.json', 'packages/scriptor/build.mjs') }}
+      - name: Install wasm-pack
+        if: steps.scriptor.outputs.cache-hit != 'true'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo install wasm-pack --locked --version 0.15.1
       - run: pnpm install --frozen-lockfile
+      - run: SCRIPTOR_REQUIRED=1 pnpm --filter @dokument/scriptor build
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck

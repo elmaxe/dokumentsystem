@@ -65,7 +65,7 @@ public static class FileEndpoints
             .MapGet("/nodes/{id:guid}/preview", GetPreview)
             .WithName("GetPreview")
             .WithDescription(
-                "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18)."
+                "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document (unless original=true, for the Word viewer), otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18)."
             );
         files
             .MapGet("/nodes/{id:guid}/seek-previews", GetSeekPreviews)
@@ -385,7 +385,8 @@ public static class FileEndpoints
         }
 
         if (
-            await previews.FindAsync(content.Version.BlobHash, RenditionKind.Document, ct)
+            original != true
+            && await previews.FindAsync(content.Version.BlobHash, RenditionKind.Document, ct)
                 is { } document
             && File.Exists(document.PhysicalPath)
         )

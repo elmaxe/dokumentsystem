@@ -17,6 +17,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { sessionQuery } from "../api";
 import { onRemoteFileChange } from "../live";
 import {
   ApiError,
@@ -51,7 +52,18 @@ function viewTypeOf(node: NodeDto) {
   return node.media.hasVideo ? "video" : node.media.hasAudio ? "audio" : type;
 }
 
-function previewOf(node: NodeDto, versionId: string | null | undefined, refused: boolean): PreviewSource {
+const docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/**
+ * @param wordViewer Word files open with Scriptor (§14). Off when opened from search, since hits are marked in the
+ * PDF's text layer.
+ */
+function previewOf(node: NodeDto, versionId: string | null | undefined, refused: boolean, wordViewer: boolean): PreviewSource {
+  if (wordViewer && (node.mimeType === docxMime || (!node.mimeType && /\.docx$/i.test(node.name)))) {
+    const pdf = node.shownAsPdf ? previewUrl(node.id, versionId) : undefined;
+    const preparing = !pdf && node.thumbnail === "pending";
+    return { type: "word", src: previewUrl(node.id, versionId, { original: true }), pdf, preparing };
+  }
   // Office documents are shown as the PDF the worker had Gotenberg make of them (§14).
   if (node.shownAsPdf) return { type: "pdf", src: previewUrl(node.id, versionId) };
   const type = viewTypeOf(node);
@@ -117,6 +129,7 @@ export function ViewerPage({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const details = useQuery(nodeQuery(fileId));
+  const session = useQuery(sessionQuery);
   const parentId = details.data?.node.parentId ?? null;
   const listing = useQuery({ ...folderQuery(parentId), enabled: details.isSuccess && !from });
   const starred = useQuery({ ...starredQuery, enabled: from === "starred" });
@@ -155,7 +168,7 @@ export function ViewerPage({
   const newer = !!pin && !!current && pin.versionId !== current;
   const gone = details.isError && details.error instanceof ApiError && details.error.status === 404;
   // Which pages have recognized words, with page 1's; served for the current version only.
-  const showsWords = !!details.data && shownVersion === current && ["image", "pdf"].includes(previewOf(details.data.node, current, false).type);
+  const showsWords = !!details.data && shownVersion === current && ["image", "pdf"].includes(previewOf(details.data.node, current, false, false).type);
   const words = useQuery({ ...wordsQuery(fileId, current, 1), enabled: showsWords });
 
   // For the person's Recent page only; opening a preview is never audited (§18).
@@ -217,6 +230,7 @@ export function ViewerPage({
           i18n.language,
         );
   const index = siblings.findIndex((s) => s.id === fileId);
+  const preview = previewOf(details.data.node, shownVersion, refused === fileId, !!session.data?.features.wordViewer && !q);
   const go = (offset: number) => {
     const next = siblings[index + offset];
     if (next) void navigate({ to: "/files/$fileId", params: { fileId: next.id }, search: { from, q }, replace: true });
@@ -256,7 +270,7 @@ export function ViewerPage({
       <FileViewer
         key={`${item.id}-${shownVersion}-${q ?? ""}`}
         item={item}
-        preview={previewOf(details.data.node, shownVersion, refused === fileId)}
+        preview={preview}
         onClose={close}
         onDownload={() => {
           download(contentUrl(item.id, pin ? (shownVersion ?? undefined) : undefined));
@@ -286,7 +300,7 @@ export function ViewerPage({
             >
               {t("live.newerVersion", { date: format.date(item.modified, { inSentence: true }) })}
             </Banner>
-          ) : details.data.node.shownAsPdf ? (
+          ) : details.data.node.shownAsPdf && preview.type === "pdf" ? (
             <Banner icon="picture_as_pdf">{t("viewer.shownAsPdf")}</Banner>
           ) : undefined
         }

@@ -4,6 +4,16 @@
 ARG NODE_VERSION=22
 ARG DOTNET_VERSION=10.0
 
+# The Word viewer's engine (docs/design.md §14): Scriptor, built from the commit pinned in packages/scriptor. Its own
+# stage, so it's only rebuilt when that pin or the build script changes.
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS nodejs
+FROM --platform=$BUILDPLATFORM rust:1-bookworm AS scriptor
+COPY --from=nodejs /usr/local/bin/node /usr/local/bin/node
+RUN rustup target add wasm32-unknown-unknown && cargo install wasm-pack --locked --version 0.15.1
+WORKDIR /repo/packages/scriptor
+COPY packages/scriptor/package.json packages/scriptor/build.mjs ./
+RUN SCRIPTOR_REQUIRED=1 node build.mjs
+
 FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS web
 WORKDIR /repo
 RUN corepack enable
@@ -12,12 +22,14 @@ COPY apps/web/package.json apps/web/
 COPY packages/api/package.json packages/api/
 COPY packages/core/package.json packages/core/
 COPY packages/i18n/package.json packages/i18n/
+COPY packages/scriptor/package.json packages/scriptor/
 COPY packages/tokens/package.json packages/tokens/
 COPY packages/ui/package.json packages/ui/
 RUN pnpm install --frozen-lockfile
 COPY docs/design-system docs/design-system
 COPY apps/web apps/web
 COPY packages packages
+COPY --from=scriptor /repo/packages/scriptor/dist packages/scriptor/dist
 # Not turbo's ^build: that would also build packages/ui's Storybook, which the image doesn't serve.
 RUN pnpm --filter @dokument/tokens build && pnpm --filter @dokument/web build
 

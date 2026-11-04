@@ -38,6 +38,7 @@ export * from "./components/WordLayer";
 export * from "./lib/fileInfo";
 export * from "./lib/files";
 export * from "./lib/media";
+export * from "./lib/wordViewer";
 export * from "./lib/places";
 export * from "./lib/processing";
 export { useSnackbar } from "./lib/snackbar";

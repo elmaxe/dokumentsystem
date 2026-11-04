@@ -373,7 +373,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document, otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18). */
+        /** @description What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document (unless original=true, for the Word viewer), otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18). */
         get: operations["GetPreview"];
         put?: never;
         post?: never;
@@ -1285,6 +1285,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/settings/word-viewer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["AdminPutWordViewerSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/videos/copies": {
         parameters: {
             query?: never;
@@ -1570,6 +1586,7 @@ export interface components {
             textRecognition: components["schemas"]["TextRecognitionDto"];
             videos: components["schemas"]["VideoSettingsDto"];
             office: components["schemas"]["OfficeSettingsDto"];
+            wordViewer: components["schemas"]["WordViewerDto"];
             transcription: components["schemas"]["TranscriptionSettingsDto"];
             signIn: components["schemas"]["SignInInfo"];
         };
@@ -1633,6 +1650,7 @@ export interface components {
             /** Format: uuid */
             sessionId: string;
             csrfToken: null | string;
+            features: components["schemas"]["ServerFeatures"];
         };
         /** @enum {unknown} */
         DatePrecision: "year" | "month" | "day" | "time";
@@ -2122,6 +2140,9 @@ export interface components {
             /** Format: int32 */
             frameHeight: number;
         };
+        ServerFeatures: {
+            wordViewer: boolean;
+        };
         ServerInfo: {
             name: string;
             version: string;
@@ -2442,6 +2463,9 @@ export interface components {
             totalBytes: number;
             /** Format: int64 */
             freeBytes: number;
+        };
+        WordViewerDto: {
+            enabled: boolean;
         };
     };
     responses: never;
@@ -4406,6 +4430,30 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminPutWordViewerSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordViewerDto"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordViewerDto"];
                 };
             };
         };

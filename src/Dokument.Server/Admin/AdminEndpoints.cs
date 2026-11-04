@@ -60,6 +60,7 @@ public static class AdminEndpoints
         admin.MapPut("/settings/videos", PutVideos).WithName("AdminPutVideoSettings");
         admin.MapPut("/settings/office", PutOffice).WithName("AdminPutOfficeSettings");
         admin.MapPost("/office/test", TestOffice).WithName("AdminTestOffice");
+        admin.MapPut("/settings/word-viewer", PutWordViewer).WithName("AdminPutWordViewerSettings");
         admin
             .MapGet("/videos/copies", GetVideoCopies)
             .WithName("AdminGetVideoCopies")
@@ -109,6 +110,7 @@ public static class AdminEndpoints
         var textRecognition = await settings.GetAsync(SettingKeys.TextRecognition, ct);
         var videos = await settings.GetAsync(SettingKeys.Videos, ct);
         var office = await officeAddress.GetAsync(settings, ct);
+        var wordViewer = await settings.GetAsync(SettingKeys.WordViewer, ct);
         var transcription = await settings.GetAsync(SettingKeys.Transcription, ct);
         return TypedResults.Ok(
             new AdminSettingsDto(
@@ -123,6 +125,7 @@ public static class AdminEndpoints
                     office.GotenbergUrl?.Value,
                     officeAddress.Configured is not null
                 ),
+                new WordViewerDto(wordViewer.Enabled),
                 TranscriptionDto(transcription),
                 new SignInInfo(
                     oidc.Enabled,
@@ -192,6 +195,22 @@ public static class AdminEndpoints
         }
 
         await settings.SetAsync(SettingKeys.Trash, value, context.Actor(), ct);
+        return TypedResults.Ok(request);
+    }
+
+    private static async Task<Ok<WordViewerDto>> PutWordViewer(
+        WordViewerDto request,
+        HttpContext context,
+        SettingsStore settings,
+        CancellationToken ct
+    )
+    {
+        await settings.SetAsync(
+            SettingKeys.WordViewer,
+            new WordViewerSettings(request.Enabled),
+            context.Actor(),
+            ct
+        );
         return TypedResults.Ok(request);
     }
 

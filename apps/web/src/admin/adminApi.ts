@@ -93,6 +93,7 @@ export const admin = {
   redoTranscripts: () => unwrap(api.POST("/api/v1/admin/transcription/redo")),
   putVideos: (videos: AdminSettings["videos"]) => unwrap(api.PUT("/api/v1/admin/settings/videos", { body: videos })),
   putOffice: (gotenbergUrl: string | null) => unwrap(api.PUT("/api/v1/admin/settings/office", { body: { gotenbergUrl } })),
+  putWordViewer: (enabled: boolean) => unwrap(api.PUT("/api/v1/admin/settings/word-viewer", { body: { enabled } })),
   testOffice: (url: string) => unwrap(api.POST("/api/v1/admin/office/test", { body: { url } })),
   deleteVideoCopies: () => unwrap(api.DELETE("/api/v1/admin/videos/copies")),
   putScanner: (address: string | null) => unwrap(api.PUT("/api/v1/admin/settings/scanner", { body: { address } })),

@@ -140,6 +140,13 @@ public static class SettingKeys
         )
     );
 
+    public static readonly SettingKey<WordViewerSettings> WordViewer = new(
+        "word_viewer",
+        WordViewerSettings.Default,
+        s => new JsonObject { ["enabled"] = s.Enabled },
+        json => new WordViewerSettings(json.GetProperty("enabled").GetBoolean())
+    );
+
     public static readonly SettingKey<TranscriptionSettings> Transcription = new(
         "transcription",
         TranscriptionSettings.Default,

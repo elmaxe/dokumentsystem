@@ -9,3 +9,4 @@
 src/Dokument.Host/wwwroot
 src/Dokument.AppHost
 tests
+**/.cache
