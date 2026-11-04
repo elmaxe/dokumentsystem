@@ -3,7 +3,7 @@
 //
 // Sign in at http://localhost:5173 as alice/alice (admin), bob/bob (user) or carol/carol (no groups).
 // pgAdmin runs at http://localhost:5050, already connected to Postgres. The API reference (Scalar) is linked on the
-// server resource in the dashboard.
+// web resource in the dashboard; its Authorize button signs in at Keycloak too (docs/design.md §5, token endpoint).
 //
 // Telemetry is on in development: Aspire gives every project OTEL_EXPORTER_OTLP_ENDPOINT and friends, so the server's
 // and worker's traces, metrics and logs show up in the dashboard. Outside Aspire it stays off until that variable is
@@ -78,11 +78,6 @@ if (ml is not null)
     server.WithEnvironment("Ml__Url", ml.GetEndpoint("http"));
 }
 
-server.WithUrl(
-    ReferenceExpression.Create($"{server.GetEndpoint("http")}/scalar"),
-    "API reference (Scalar)"
-);
-
 // The worker runs in the app's image by default, so exiftool, Tesseract and libvips are there on any machine, the same
 // as in production. Start with `-- --WorkerOnHost=true` to run it as a project instead, e.g. to debug it; it then needs
 // those tools installed (README, Develop).
@@ -144,6 +139,12 @@ var web = builder
 
 // The browser reaches the server through Vite's proxy, so that is the public URL for redirects and cookies.
 server.WithEnvironment("PUBLIC_URL", web.GetEndpoint("http"));
+
+// Through Vite as well, because Keycloak sends Scalar's sign-in back to the public URL.
+web.WithUrl(
+    ReferenceExpression.Create($"{web.GetEndpoint("http")}/scalar/"),
+    "API reference (Scalar)"
+);
 
 builder.Build().Run();
 

@@ -87,6 +87,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description An OAuth token request (form: grant_type=authorization_code, code, code_verifier, redirect_uri) for a code from the IdP. Returns a bearer session as access_token. */
+        post: operations["RedeemCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/session": {
         parameters: {
             query?: never;
@@ -2508,6 +2525,24 @@ export interface operations {
             query?: {
                 returnTo?: string;
             };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RedeemCode: {
+        parameters: {
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;

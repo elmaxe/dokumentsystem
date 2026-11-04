@@ -16,7 +16,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using Scalar.AspNetCore;
 
 namespace Dokument.Server;
 
@@ -25,15 +24,7 @@ public static class ServerRole
 {
     public static WebApplicationBuilder AddServerRole(this WebApplicationBuilder builder)
     {
-        builder.Services.AddOpenApi(options =>
-            options.AddDocumentTransformer(
-                (document, _, _) =>
-                {
-                    document.Info.Title = "Dokumentsystem API";
-                    return Task.CompletedTask;
-                }
-            )
-        );
+        builder.AddApiReference();
         builder.Services.AddProblemDetails();
         builder.Services.AddExceptionHandler<DriveExceptionHandler>();
         builder.Services.AddHostedService<UploadCleanup>();
@@ -90,12 +81,7 @@ public static class ServerRole
             }
         );
 
-        app.MapOpenApi();
-        if (app.Environment.IsDevelopment())
-        {
-            // Interactive API reference at /scalar, reading /openapi/v1.json. Development only.
-            app.MapScalarApiReference();
-        }
+        app.MapApiReference();
 
         var api = app.MapGroup("/api/v1");
         api.MapGet("/server/info", GetServerInfo)
