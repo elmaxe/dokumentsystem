@@ -602,6 +602,31 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/seek-previews": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "A video's seek previews: one WebP of frames from along the video, laid out as NodeDto.media.seekPreviews says. 404 until the worker has made them, and for audio and clips under 10 s. Not audited, like previews.",
+        "operationId": "GetSeekPreviews",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/playable": {
       "post": {
         "tags": [
@@ -3757,7 +3782,8 @@
           "thumbnail",
           "metadata",
           "text",
-          "transcode"
+          "transcode",
+          "seekPreviews"
         ]
       },
       "FileTags": {
@@ -4324,6 +4350,7 @@
           "metadata",
           "text",
           "transcode",
+          "seekPreviews",
           "transcribe",
           "tagRule",
           "file",
@@ -4446,7 +4473,8 @@
           "hasAudio",
           "videoCodec",
           "copy",
-          "progress"
+          "progress",
+          "seekPreviews"
         ],
         "type": "object",
         "properties": {
@@ -4478,6 +4506,16 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "seekPreviews": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SeekPreviewsDto"
+              }
+            ]
           }
         }
       },
@@ -5187,6 +5225,38 @@
           "relevance",
           "modified"
         ]
+      },
+      "SeekPreviewsDto": {
+        "required": [
+          "intervalMs",
+          "count",
+          "columns",
+          "frameWidth",
+          "frameHeight"
+        ],
+        "type": "object",
+        "properties": {
+          "intervalMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "columns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frameWidth": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frameHeight": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
       },
       "ServerFeatures": {
         "required": [

@@ -332,6 +332,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/seek-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A video's seek previews: one WebP of frames from along the video, laid out as NodeDto.media.seekPreviews says. 404 until the worker has made them, and for audio and clips under 10 s. Not audited, like previews. */
+        get: operations["GetSeekPreviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/playable": {
         parameters: {
             query?: never;
@@ -1651,7 +1668,7 @@ export interface components {
             steps: components["schemas"]["ProcessingStepDto"][];
         };
         /** @enum {unknown} */
-        FileStep: "thumbnail" | "metadata" | "text" | "transcode";
+        FileStep: "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews";
         FileTags: {
             tags: components["schemas"]["TagDto"][];
             removed: string[];
@@ -1803,7 +1820,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "transcribe" | "tagRule" | "file" | "filingRule";
+        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews" | "transcribe" | "tagRule" | "file" | "filingRule";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;
@@ -1842,6 +1859,7 @@ export interface components {
             copy: components["schemas"]["CopyState"];
             /** Format: int32 */
             progress: null | number;
+            seekPreviews: null | components["schemas"]["SeekPreviewsDto"];
         };
         MlEndpointDto: {
             url: string;
@@ -2016,6 +2034,18 @@ export interface components {
         };
         /** @enum {unknown} */
         SearchSort: "relevance" | "modified";
+        SeekPreviewsDto: {
+            /** Format: int32 */
+            intervalMs: number;
+            /** Format: int32 */
+            count: number;
+            /** Format: int32 */
+            columns: number;
+            /** Format: int32 */
+            frameWidth: number;
+            /** Format: int32 */
+            frameHeight: number;
+        };
         ServerFeatures: {
             wordViewer: boolean;
         };
@@ -2805,6 +2835,26 @@ export interface operations {
         responses: {
             /** @description OK */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetSeekPreviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

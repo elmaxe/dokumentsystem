@@ -3,6 +3,15 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { Loading, ViewerToolbar, ZoomControls } from "./FileViewer";
 
+/** Why Scriptor didn't show a file: it couldn't read it, or this build doesn't include it (no Rust when it was built). */
+export type WordFailure = "unreadable" | "missing";
+
+class EngineMissing extends Error {
+  constructor(cause?: unknown) {
+    super("Scriptor isn't built into this web app: it needs Rust and wasm-pack (docs/design.md §14).", { cause });
+  }
+}
+
 /** Scriptor draws at 96 dpi at zoom 1: a twip is 1/1440 inch. */
 const pxPerTwip = 96 / 1440;
 
@@ -13,7 +22,7 @@ const pxPerTwip = 96 / 1440;
  * file is opened.
  *
  * At 100 % the page fits the window's width, as in the PDF viewer. `onFailed` is called when Scriptor can't read the
- * file, so the viewer can show the PDF instead.
+ * file, or isn't in this build at all ("missing"), so the viewer can show the PDF instead.
  */
 export default function WordPreview({
   src,
@@ -22,7 +31,7 @@ export default function WordPreview({
   fallback,
 }: {
   src: string;
-  onFailed: () => void;
+  onFailed: (reason: WordFailure) => void;
   /** Ctrl+S, which Word users press out of habit: the viewer downloads the original. */
   onSave: () => void;
   fallback: ReactNode;
@@ -44,24 +53,32 @@ export default function WordPreview({
     let cancelled = false;
     let created: ScriptorView | null = null;
     (async () => {
-      const [{ ScriptorView, available }, response] = await Promise.all([
-        import("@dokument/scriptor"),
-        fetch(src, { credentials: "include" }),
-      ]);
-      if (!available) throw new Error("Scriptor isn't built into this server.");
+      // A stub without Rust, or no build at all (a dev server started before packages/scriptor was built).
+      const engine = import("@dokument/scriptor").then(
+        (module) => (module.available ? module : Promise.reject(new EngineMissing())),
+        () => Promise.reject(new EngineMissing()),
+      );
+      const [{ ScriptorView }, response] = await Promise.all([engine, fetch(src, { credentials: "include" })]);
       if (!response.ok) throw new Error(`The file couldn't be loaded (${response.status}).`);
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (cancelled) return;
-      created = await ScriptorView.create(host, { mode: "read", selectable: true, onSave: () => latest.current.onSave() });
+      // The engine loads here, so a failure is the build's (a missing or stale .wasm), not the file's.
+      const shown = await ScriptorView.create(host, {
+        mode: "read",
+        selectable: true,
+        onSave: () => latest.current.onSave(),
+      }).catch((error: unknown) => Promise.reject(new EngineMissing(error)));
+      created = shown;
       if (cancelled) return;
-      created.loadDocx(bytes);
-      setView(created);
+      shown.loadDocx(bytes);
+      setView(shown);
       setState("ready");
     })().catch((error: unknown) => {
       if (cancelled) return;
-      console.warn("Scriptor couldn't show this file.", error);
+      const missing = error instanceof EngineMissing;
+      console.warn(missing ? "Scriptor isn't in this build of the web app." : "Scriptor couldn't show this file.", error);
       setState("failed");
-      latest.current.onFailed();
+      latest.current.onFailed(missing ? "missing" : "unreadable");
     });
     return () => {
       cancelled = true;

@@ -115,6 +115,14 @@ export function previewUrl(
 }
 
 /** A video's captions as WebVTT, made from its transcript (§11.1). Only there once the transcript has lines. */
+/**
+ * A video's seek previews: one WebP of frames along the video, laid out as `NodeDto.media.seekPreviews` says (§14).
+ * Not audited.
+ */
+export function seekPreviewsUrl(nodeId: string, baseUrl = ""): string {
+  return `${baseUrl}/api/v1/nodes/${nodeId}/seek-previews`;
+}
+
 export function captionsUrl(nodeId: string, baseUrl = ""): string {
   return `${baseUrl}/api/v1/nodes/${nodeId}/captions.vtt`;
 }

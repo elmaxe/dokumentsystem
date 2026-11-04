@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
-import { formatMs, leadInMs } from "../lib/media";
+import { formatMs, leadInMs, seekFrameAt, type SeekPreviews } from "../lib/media";
 import { Icon } from "./Icon";
 import type { TranscriptLineView } from "./Transcript";
 
@@ -14,6 +14,8 @@ export type MediaPlayerProps = {
   /** Tried in order: the first the browser can play is used, e.g. the original HEVC in Safari and the H.264 copy elsewhere. */
   sources: readonly string[];
   poster?: string;
+  /** A video's frames for the timeline: shown above it while pointing at it or dragging (§14). */
+  seekPreviews?: SeekPreviews;
   /** Above an audio file's controls: its cover art and name. */
   cover?: ReactNode;
   /** Shown when none of the sources play. */
@@ -43,6 +45,7 @@ export function MediaPlayer({
   type,
   sources,
   poster,
+  seekPreviews,
   cover,
   fallback,
   mediaRef,
@@ -242,6 +245,7 @@ export function MediaPlayer({
       onScrub={scrubTo}
       onTick={(time) => onSeek(time - leadInMs)}
       overlay={type === "video"}
+      seekPreviews={type === "video" ? seekPreviews : undefined}
     />
   );
   const speedButton = (
@@ -439,6 +443,7 @@ function Scrubber({
   onScrub,
   onTick,
   overlay,
+  seekPreviews,
 }: {
   nowMs: number;
   lengthMs: number;
@@ -447,11 +452,13 @@ function Scrubber({
   onScrub: (ms: number) => void;
   onTick: (ms: number) => void;
   overlay?: boolean;
+  seekPreviews?: SeekPreviews;
 }) {
   const { t } = useTranslation();
   const bar = useRef<HTMLDivElement | null>(null);
   const [dragMs, setDragMs] = useState<number | null>(null);
-  const [hover, setHover] = useState<{ ms: number; x: number } | null>(null);
+  const [hover, setHover] = useState<{ ms: number; x: number; width: number; touch: boolean } | null>(null);
+  const sheet = useSheet(seekPreviews);
   const shownMs = dragMs ?? nowMs;
   // Over a video the controls are dark in both themes, so the light theme's primary would be too dark there.
   const played = overlay ? "bg-primary-container dark:bg-primary" : "bg-primary";
@@ -459,7 +466,7 @@ function Scrubber({
   const msAt = (event: PointerEvent<HTMLDivElement>) => {
     const box = bar.current!.getBoundingClientRect();
     const x = Math.min(Math.max(0, event.clientX - box.left), box.width);
-    return { ms: box.width ? (x / box.width) * lengthMs : 0, x };
+    return { ms: box.width ? (x / box.width) * lengthMs : 0, x, width: box.width, touch: event.pointerType !== "mouse" };
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -492,7 +499,9 @@ function Scrubber({
         aria-valuenow={Math.round(shownMs / 1000)}
         aria-valuetext={t("player.positionText", { at: formatMs(shownMs), total: formatMs(lengthMs) })}
         onKeyDown={onKeyDown}
+        onPointerEnter={sheet.load}
         onPointerDown={(event) => {
+          sheet.load();
           if (!lengthMs) return;
           event.currentTarget.setPointerCapture(event.pointerId);
           setDragMs(msAt(event).ms);
@@ -542,16 +551,72 @@ function Scrubber({
             )}
           />
         ))}
-      {hover && (
-        <span
-          className="tabular pointer-events-none absolute bottom-full mb-1 -translate-x-1/2 rounded-xs bg-on-surface px-1.5 py-0.5 text-label-md text-surface"
-          style={{ left: hover.x }}
-        >
-          {formatMs(hover.ms)}
-        </span>
-      )}
+      {hover &&
+        (sheet.ready && seekPreviews ? (
+          <SeekPreview sheet={seekPreviews} hover={hover} />
+        ) : (
+          <span
+            className="tabular pointer-events-none absolute bottom-full mb-1 -translate-x-1/2 rounded-xs bg-on-surface px-1.5 py-0.5 text-label-md text-surface"
+            style={{ left: hover.x }}
+          >
+            {formatMs(hover.ms)}
+          </span>
+        ))}
     </div>
   );
+}
+
+/**
+ * The frame for the time under the pointer, cut from the seek-preview sheet, with the time under it (§14). It follows
+ * the pointer but stops at the ends, so the first and last frames are whole. A 192 × 171 box on desktop, so landscape
+ * frames are 192 px wide and portrait ones 171 px high; 144 × 128 on touch screens.
+ */
+function SeekPreview({
+  sheet,
+  hover,
+}: {
+  sheet: SeekPreviews;
+  hover: { ms: number; x: number; width: number; touch: boolean };
+}) {
+  const frame = hover.touch ? seekFrameAt(sheet, hover.ms, 144, 128) : seekFrameAt(sheet, hover.ms, 192, 171);
+  const half = frame.width / 2;
+  const left = hover.width > frame.width ? Math.min(Math.max(hover.x, half), hover.width - half) : hover.width / 2;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute bottom-full mb-1 flex -translate-x-1/2 flex-col items-center gap-1.5"
+      style={{ left }}
+    >
+      <div
+        className="rounded-sm bg-black bg-no-repeat shadow-elevation-2 ring-1 ring-white/35"
+        style={{
+          width: frame.width,
+          height: frame.height,
+          backgroundImage: `url("${sheet.src}")`,
+          backgroundSize: frame.backgroundSize,
+          backgroundPosition: frame.backgroundPosition,
+        }}
+      />
+      <span className="tabular rounded-xs bg-on-surface px-1.5 py-0.5 text-label-md text-surface">{formatMs(hover.ms)}</span>
+    </div>
+  );
+}
+
+/**
+ * Loads the seek-preview sheet the first time the pointer comes to the timeline, not before: most videos are watched
+ * without seeking, and the sheet is a few hundred kB. Until it has loaded, the timeline shows only the time.
+ */
+function useSheet(sheet: SeekPreviews | undefined) {
+  const [loaded, setLoaded] = useState<string | null>(null);
+  const started = useRef<string | null>(null);
+  const load = () => {
+    if (!sheet || started.current === sheet.src) return;
+    started.current = sheet.src;
+    const image = new Image();
+    image.onload = () => setLoaded(sheet.src);
+    image.src = sheet.src;
+  };
+  return { ready: !!sheet && loaded === sheet.src, load };
 }
 
 function PlayerButton({

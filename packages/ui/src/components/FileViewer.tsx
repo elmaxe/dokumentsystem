@@ -10,9 +10,10 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { ActionMenu, type MenuAction } from "./Menu";
 import { Progress } from "./Progress";
-import { leadInMs } from "../lib/media";
+import { leadInMs, type SeekPreviews } from "../lib/media";
 import { MediaPlayer } from "./MediaPlayer";
 import { TranscriptPanel, type TranscriptView } from "./Transcript";
+import type { WordFailure } from "./WordPreview";
 
 const PdfPreview = lazy(() => import("./PdfPreview"));
 const CodePreview = lazy(() => import("./CodePreview"));
@@ -23,9 +24,10 @@ const WordPreview = lazy(() => import("./WordPreview"));
 export type PreviewSource =
   | { type: "image" | "pdf" | "text" | "markdown"; src: string }
   /** A .docx drawn by Scriptor from the original bytes, with the PDF Gotenberg made of it as the other view (§14). */
-  | { type: "word"; src: string; pdf?: string }
+  /** `preparing`: the PDF is still being made, so it may yet come if Scriptor can't show the file. */
+  | { type: "word"; src: string; pdf?: string; preparing?: boolean }
   /** `fallbacks` are tried in turn if the browser can't play `src`, e.g. the playable copy after the HEVC original. */
-  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string }
+  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string; seekPreviews?: SeekPreviews }
   /** The worker is still making the rendition the viewer needs, e.g. for a HEIC photo. */
   | { type: "preparing" }
   /** A video or audio file browsers can't play, while the worker makes a copy that plays. `progress` is 0–100. */
@@ -114,7 +116,8 @@ export function FileViewer({
   const [markdownView, setMarkdownView] = useState<"formatted" | "source">("formatted");
   // A Word file is shown by Scriptor unless the person picks the PDF, or Scriptor can't read it.
   const [wordView, setWordView] = useState<"word" | "pdf">("word");
-  const [wordFailed, setWordFailed] = useState<string | null>(null);
+  const [wordFailure, setWordFailure] = useState<{ src: string; reason: WordFailure } | null>(null);
+  const wordFailed = wordFailure?.src ?? null;
   const word = preview.type === "word" ? preview : null;
   const wordAsPdf = word?.pdf && (wordView === "pdf" || wordFailed === word.src) ? word.pdf : null;
   const [wrap, setWrap] = useStoredFlag("dokument.viewer.wrap");
@@ -162,6 +165,15 @@ export function FileViewer({
           {t("actions.download")}
         </Button>
       }
+      className="m-4 max-w-md bg-surface-container-low"
+    />
+  );
+
+  const preparing = (
+    <EmptyState
+      icon="hourglass_top"
+      title={t("viewer.preparingTitle")}
+      text={t("viewer.preparingText")}
       className="m-4 max-w-md bg-surface-container-low"
     />
   );
@@ -267,7 +279,11 @@ export function FileViewer({
       {(banner || wordAsPdf) && (
         <div className="shrink-0 px-2 pt-2 sm:px-4">
           {banner ?? (
-            <Banner icon="picture_as_pdf">{wordFailed === word?.src ? t("viewer.wordFailedAsPdf") : t("viewer.shownAsPdf")}</Banner>
+            <Banner icon="picture_as_pdf">{wordFailed !== word?.src
+                ? t("viewer.shownAsPdf")
+                : wordFailure?.reason === "missing"
+                  ? t("viewer.wordMissingAsPdf")
+                  : t("viewer.wordFailedAsPdf")}</Banner>
           )}
         </div>
       )}
@@ -306,9 +322,9 @@ export function FileViewer({
               <WordPreview
                 key={preview.src}
                 src={preview.src}
-                onFailed={() => setWordFailed(preview.src)}
+                onFailed={(reason) => setWordFailure({ src: preview.src, reason })}
                 onSave={onDownload}
-                fallback={noPreview(true)}
+                fallback={preview.preparing ? preparing : noPreview(wordFailure?.reason !== "missing")}
               />
             </Suspense>
           ) : preview.type === "text" || preview.type === "markdown" ? (
@@ -329,6 +345,7 @@ export function FileViewer({
                 type={preview.type}
                 sources={[preview.src, ...(preview.fallbacks ?? [])]}
                 poster={preview.poster}
+                seekPreviews={preview.seekPreviews}
                 cover={<AudioCover item={item} />}
                 fallback={noPreview(true)}
                 mediaRef={media}
@@ -378,14 +395,7 @@ export function FileViewer({
               />
             </Centered>
           ) : preview.type === "preparing" ? (
-            <Centered>
-              <EmptyState
-                icon="hourglass_top"
-                title={t("viewer.preparingTitle")}
-                text={t("viewer.preparingText")}
-                className="m-4 max-w-md bg-surface-container-low"
-              />
-            </Centered>
+            <Centered>{preparing}</Centered>
           ) : (
             <Centered>{noPreview(false)}</Centered>
           )}

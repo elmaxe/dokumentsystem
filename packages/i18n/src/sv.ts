@@ -484,6 +484,7 @@ export const sv: Strings = {
       metadata: "Metadata",
       text: "Sökbar text",
       transcode: "Spelbar kopia",
+      seekPreviews: "Förhandsvisning vid spolning",
     },
     stepState: "{{step}}: {{state}}",
     running: "pågår",
@@ -580,6 +581,7 @@ export const sv: Strings = {
     unplayableText: "Webbläsare kan inte spela den som den är, och ingen kopia som går att spela kan göras. Ladda ned den för att spela den i en annan app.",
     cover: "Omslagsbild",
     shownAsPdf: "Visas som PDF, så layouten kan skilja sig lite. Ladda ned originalet för att redigera det.",
+    wordMissingAsPdf: "Word-visaren är inte inbyggd i den här servern, så filen visas som PDF. En administratör kan se varför under Inställningar › Office-dokument.",
     wordFailedAsPdf: "Scriptor kunde inte läsa filen, så den visas som PDF i stället. Layouten kan skilja sig lite.",
     asWord: "Word",
     asPdf: "PDF",
@@ -894,6 +896,7 @@ export const sv: Strings = {
         metadata: "Metadata",
         text: "Sökbar text",
         transcode: "Spelbara kopior",
+        seekPreviews: "Förhandsvisningar vid spolning",
         tagRule: "Taggregler",
         file: "Arkivering",
         filingRule: "Arkiveringsregler",
@@ -1012,6 +1015,8 @@ export const sv: Strings = {
       off: "Förhandsgranskning av Office-filer är avstängd. Dokumenten visas med sin typikon och kan laddas ned.",
       backfill: "Dokument som laddades upp medan den var avstängd förhandsgranskas i bakgrunden när du sparar.",
       wordViewer: "Visa Word-filer med Scriptor (experimentellt)",
+      wordViewerMissing:
+        "Den här versionen av webbappen saknar Scriptor, så Word-filer öppnas fortfarande som PDF. För att bygga den behövs Rust och wasm-pack (cargo install wasm-pack). Bygg sedan webbappen igen.",
       wordViewerHint:
         "Öppnar .docx-filer i webbläsaren som Word lägger upp dem, utan Gotenberg. PDF:en finns ett klick bort. Laddar 6 MB första gången någon öppnar en Word-fil.",
     },

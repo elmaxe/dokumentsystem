@@ -1,4 +1,4 @@
-import { captionsUrl, contentUrl, previewUrl, thumbnailUrl, type NodeDto } from "@dokument/api";
+import { captionsUrl, contentUrl, previewUrl, seekPreviewsUrl, thumbnailUrl, type NodeDto } from "@dokument/api";
 import {
   Banner,
   Button,
@@ -60,7 +60,8 @@ const docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml
 function previewOf(node: NodeDto, versionId: string | null | undefined, refused: boolean, wordViewer: boolean): PreviewSource {
   if (wordViewer && (node.mimeType === docxMime || (!node.mimeType && /\.docx$/i.test(node.name)))) {
     const pdf = node.shownAsPdf ? previewUrl(node.id, versionId) : undefined;
-    return { type: "word", src: previewUrl(node.id, versionId, { original: true }), pdf };
+    const preparing = !pdf && node.thumbnail === "pending";
+    return { type: "word", src: previewUrl(node.id, versionId, { original: true }), pdf, preparing };
   }
   // Office documents are shown as the PDF the worker had Gotenberg make of them (§14).
   if (node.shownAsPdf) return { type: "pdf", src: previewUrl(node.id, versionId) };
@@ -73,11 +74,14 @@ function previewOf(node: NodeDto, versionId: string | null | undefined, refused:
   const poster = type === "video" && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
   const media = versionId === node.currentVersionId ? node.media : null;
   if (!media && node.thumbnail === "pending" && !webMedia.test(node.mimeType ?? "")) return { type: "preparing" };
-  if (!media || media.copy === "notNeeded") return { type, src, poster };
+  // The frames over the timeline while seeking, once the worker has made them (§14).
+  const seekPreviews = media?.seekPreviews ? { src: seekPreviewsUrl(node.id), ...media.seekPreviews } : undefined;
+  if (!media || media.copy === "notNeeded") return { type, src, poster, seekPreviews };
 
   const original = playsOriginal(node) ? previewUrl(node.id, versionId, { original: true }) : null;
-  if (media.copy === "ready") return original ? { type, src: original, fallbacks: [src], poster } : { type, src, poster };
-  if (original) return { type, src: original, poster };
+  if (media.copy === "ready")
+    return original ? { type, src: original, fallbacks: [src], poster, seekPreviews } : { type, src, poster, seekPreviews };
+  if (original) return { type, src: original, poster, seekPreviews };
   if (media.copy === "failed" || refused) return { type: "unplayable" };
   return { type: "converting", waiting: media.copy !== "making", progress: media.progress ?? undefined };
 }

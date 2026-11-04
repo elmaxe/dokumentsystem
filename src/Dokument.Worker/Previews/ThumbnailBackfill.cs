@@ -39,6 +39,14 @@ internal sealed partial class ThumbnailBackfill(
                     .EnqueueOfficeAsync(time.GetUtcNow(), stoppingToken);
             }
 
+            var seekPreviews = await scope
+                .ServiceProvider.GetRequiredService<MediaService>()
+                .EnqueueMissingSeekPreviewsAsync(time.GetUtcNow(), stoppingToken);
+            if (seekPreviews > 0)
+            {
+                LogSeekPreviewsQueued(logger, seekPreviews);
+            }
+
             var videos = await scope
                 .ServiceProvider.GetRequiredService<SettingsStore>()
                 .GetAsync(SettingKeys.Videos, stoppingToken);
@@ -70,6 +78,12 @@ internal sealed partial class ThumbnailBackfill(
         Message = "Queued playable copies for {Count} existing videos"
     )]
     private static partial void LogCopiesQueued(ILogger logger, int count);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Queued seek previews for {Count} existing videos"
+    )]
+    private static partial void LogSeekPreviewsQueued(ILogger logger, int count);
 
     [LoggerMessage(
         Level = LogLevel.Warning,

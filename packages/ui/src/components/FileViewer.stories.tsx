@@ -181,7 +181,11 @@ const files: Record<string, { item: FileItem; preview: () => PreviewSource; extr
   },
   video: {
     item: { id: "13", name: "Årsstämma 2026.mp4", kind: "video", modified: "2026-05-12T19:00:00Z", owner: "Alice" },
-    preview: () => ({ type: "video", src: "sample.webm" }),
+    preview: () => ({
+      type: "video",
+      src: "sample.webm",
+      seekPreviews: { src: "sample-seek.webp", intervalMs: 2000, count: 15, columns: 10, frameWidth: 256, frameHeight: 144 },
+    }),
     extra: {
       transcript: {
         state: "ready",
@@ -269,7 +273,10 @@ export const Image: Story = { args: { file: "image" } };
 /** Opened from a search hit: plays from 10 s before it, with the transcript beside the player and ticks for each hit. */
 export const Transcript: Story = { args: { file: "transcript" } };
 export const StillListening: Story = { args: { file: "listening" } };
-/** Our own controls over the picture: ticks for the hits, captions from the transcript (CC), speed, volume, full screen. */
+/**
+ * Our own controls over the picture: ticks for the hits, captions from the transcript (CC), speed, volume, full screen.
+ * Pointing at the timeline shows the frame from that moment, cut from the seek-preview sheet.
+ */
 export const Video: Story = { args: { file: "video" } };
 export const Pdf: Story = { args: { file: "pdf" } };
 export const Markdown: Story = { args: { file: "markdown" } };

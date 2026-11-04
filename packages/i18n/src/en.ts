@@ -479,6 +479,7 @@ export const en = {
       metadata: "Metadata",
       text: "Searchable text",
       transcode: "Playable copy",
+      seekPreviews: "Seek previews",
     },
     stepState: "{{step}}: {{state}}",
     running: "running",
@@ -575,6 +576,7 @@ export const en = {
     unplayableText: "Browsers can't play it as it is, and no copy that plays can be made. Download it to play it in another app.",
     cover: "Cover art",
     shownAsPdf: "Shown as a PDF, so the layout may differ a little. Download the original to edit it.",
+    wordMissingAsPdf: "The Word viewer isn't built into this server, so this file is shown as a PDF. An admin can see why under Settings › Office documents.",
     wordFailedAsPdf: "Scriptor couldn't read this file, so it's shown as a PDF instead. The layout may differ a little.",
     asWord: "Word",
     asPdf: "PDF",
@@ -889,6 +891,7 @@ export const en = {
         metadata: "Metadata",
         text: "Searchable text",
         transcode: "Playable copies",
+        seekPreviews: "Seek previews",
         tagRule: "Tag rules",
         file: "Filing",
         filingRule: "Filing rules",
@@ -1007,6 +1010,8 @@ export const en = {
       off: "Office previews are off. Documents show their type icon and can be downloaded.",
       backfill: "Documents uploaded while previews were off get them in the background once you save.",
       wordViewer: "Show Word files with Scriptor (experimental)",
+      wordViewerMissing:
+        "This build of the web app doesn't include Scriptor, so Word files still open as PDFs. Building it needs Rust and wasm-pack (cargo install wasm-pack). Then build the web app again.",
       wordViewerHint:
         "Opens .docx files in the browser as Word lays them out, without Gotenberg. The PDF stays one click away. Loads 6 MB the first time someone opens a Word file.",
     },

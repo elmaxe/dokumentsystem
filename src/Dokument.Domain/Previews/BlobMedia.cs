@@ -79,5 +79,6 @@ public sealed record MediaState(
     bool HasAudio,
     string? VideoCodec,
     CopyState Copy,
-    int? Progress
+    int? Progress,
+    SeekPreviewSheet? SeekPreviews = null
 );

@@ -5,7 +5,7 @@ namespace Dokument.Domain.Previews;
 /// <summary>
 /// Where a rendition lives, relative to the derived volume (docs/design.md §7): images at
 /// <c>thumbs/ab/abcd…/thumb_m.webp</c>, playable copies of video and audio at <c>previews/ab/abcd…/playable.mp4</c>, PDFs of Office files at
-/// <c>previews/ab/abcd…/document.pdf</c>.
+/// <c>previews/ab/abcd…/document.pdf</c>, the video player's seek previews at <c>previews/ab/abcd…/seek.webp</c>.
 /// Renditions belong to a blob, not a version, so a copy or a restored version reuses them.
 /// </summary>
 public sealed record DerivedKey
@@ -21,6 +21,9 @@ public sealed record DerivedKey
         {
             RenditionKind.Playable => new DerivedKey($"previews/{hex[..2]}/{hex}/{kind.Key()}.mp4"),
             RenditionKind.Document => new DerivedKey($"previews/{hex[..2]}/{hex}/{kind.Key()}.pdf"),
+            RenditionKind.SeekPreviews => new DerivedKey(
+                $"previews/{hex[..2]}/{hex}/{kind.Key()}.webp"
+            ),
             _ => new DerivedKey($"thumbs/{hex[..2]}/{hex}/{kind.Key()}.webp"),
         };
     }

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @dokument/tokens build && vite",
+    "dev": "pnpm --filter @dokument/tokens --filter @dokument/scriptor build && vite",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",

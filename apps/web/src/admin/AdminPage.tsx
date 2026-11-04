@@ -1,6 +1,6 @@
 import type { AdminSettings, AdminUser, ProbeResult } from "@dokument/api";
 import { formatBytes, formatDuration } from "@dokument/core";
-import { Avatar, Banner, Button, Dialog, Icon, IconButton, Progress, Switch, TextField, useSnackbar } from "@dokument/ui";
+import { Avatar, Banner, Button, Dialog, Icon, IconButton, Progress, Switch, TextField, useSnackbar, wordViewerBuilt } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -932,6 +932,7 @@ function OfficeSection({ settings }: { settings: AdminSettings }) {
   const initial = settings.office.gotenbergUrl ?? "";
   const configured = settings.office.configured;
   const wordId = useId();
+  const built = useQuery({ queryKey: ["wordViewerBuilt"], queryFn: wordViewerBuilt, staleTime: Infinity });
   const [url, setUrl] = useState(initial);
   const [test, setTest] = useState<ProbeResult | "testing" | null>(null);
   const { busy, save } = useSave();
@@ -986,6 +987,11 @@ function OfficeSection({ settings }: { settings: AdminSettings }) {
           onCheckedChange={(checked) => !busy && void save(() => admin.putWordViewer(checked))}
         />
       </div>
+      {settings.wordViewer.enabled && built.data === false && (
+        <Banner tone="warning" icon="warning">
+          {t("admin.office.wordViewerMissing")}
+        </Banner>
+      )}
     </Section>
   );
 }

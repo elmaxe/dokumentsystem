@@ -61,6 +61,12 @@ public static class FileEndpoints
                 "What the viewer shows: a WebP for images browsers can't display or that are huge, the playable copy of a video or audio file browsers can't play (unless original=true), the PDF made of an Office document (unless original=true, for the Word viewer), otherwise the original bytes, inline. Supports ranges. Not audited, unlike downloads (§18)."
             );
         files
+            .MapGet("/nodes/{id:guid}/seek-previews", GetSeekPreviews)
+            .WithName("GetSeekPreviews")
+            .WithDescription(
+                "A video's seek previews: one WebP of frames from along the video, laid out as NodeDto.media.seekPreviews says. 404 until the worker has made them, and for audio and clips under 10 s. Not audited, like previews."
+            );
+        files
             .MapPost("/nodes/{id:guid}/playable", RequestPlayable)
             .WithName("RequestPlayableCopy")
             .WithDescription(
@@ -372,6 +378,29 @@ public static class FileEndpoints
             entityTag: new EntityTagHeaderValue($"\"{content.Version.BlobHash.Hex}\""),
             enableRangeProcessing: true
         );
+    }
+
+    private static async Task<Results<PhysicalFileHttpResult, NotFound>> GetSeekPreviews(
+        Guid id,
+        HttpContext context,
+        DriveService drive,
+        PreviewService previews,
+        CancellationToken ct
+    )
+    {
+        var content = await drive.OpenContentAsync(
+            context.Actor(),
+            id,
+            versionId: null,
+            audited: false,
+            ct
+        );
+        return
+            await previews.FindAsync(content.Version.BlobHash, RenditionKind.SeekPreviews, ct)
+                is { } sheet
+            && File.Exists(sheet.PhysicalPath)
+            ? Rendition(context, sheet)
+            : TypedResults.NotFound();
     }
 
     private static PhysicalFileHttpResult Rendition(HttpContext context, RenditionFile file)
