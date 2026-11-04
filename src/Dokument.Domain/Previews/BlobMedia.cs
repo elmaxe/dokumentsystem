@@ -87,5 +87,6 @@ public sealed record MediaState(
     CopyState Copy,
     int? Progress,
     bool HasCover,
-    bool HasWaveform
+    bool HasWaveform,
+    SeekPreviewSheet? SeekPreviews = null
 );

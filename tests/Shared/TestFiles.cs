@@ -220,17 +220,24 @@ internal static class TestFiles
     /// <paramref name="name"/>, whose extension picks the container. Needs ffmpeg on PATH, as the worker does.
     /// </summary>
     public static byte[] Video(string name, params string[] encode) =>
+        Video(name, seconds: 2, size: "320x240", encode);
+
+    /// <summary>
+    /// <paramref name="seconds"/> of ffmpeg's test pattern (whose counter changes every second) and a tone, at
+    /// <paramref name="size"/>, encoded with <paramref name="encode"/>.
+    /// </summary>
+    public static byte[] Video(string name, int seconds, string size, params string[] encode) =>
         Ffmpeg(
             name,
             [
                 "-f",
                 "lavfi",
                 "-i",
-                "testsrc=size=320x240:rate=25:duration=2",
+                $"testsrc=size={size}:rate=25:duration={seconds}",
                 "-f",
                 "lavfi",
                 "-i",
-                "sine=frequency=440:duration=2",
+                $"sine=frequency=440:duration={seconds}",
                 .. encode,
             ]
         );

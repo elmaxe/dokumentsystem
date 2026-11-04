@@ -27,6 +27,7 @@ const queueIcons: Record<JobKind, string> = {
   metadata: "info",
   text: "document_scanner",
   transcode: "movie",
+  seekPreviews: "view_carousel",
   transcribe: "graphic_eq",
   tagRule: "sell",
   file: "drive_file_move",
@@ -99,7 +100,7 @@ export function AdminJobsPage() {
           align="start"
           actions={[
             { id: "all", icon: !filter.type ? "check" : "", label: t("admin.jobs.allTypes") },
-            ...(["thumbnail", "metadata", "text", "transcode", "transcribe", "tagRule", "file", "filingRule"] as const).map((type) => ({
+            ...(["thumbnail", "metadata", "text", "transcode", "seekPreviews", "transcribe", "tagRule", "file", "filingRule"] as const).map((type) => ({
               id: type,
               icon: filter.type === type ? "check" : "",
               label: t(`admin.jobs.queues.${type}`),

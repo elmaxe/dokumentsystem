@@ -1,4 +1,4 @@
-import { captionsUrl, contentUrl, previewUrl, thumbnailUrl, waveformUrl, type NodeDto } from "@dokument/api";
+import { captionsUrl, contentUrl, previewUrl, seekPreviewsUrl, thumbnailUrl, waveformUrl, type NodeDto } from "@dokument/api";
 import {
   Banner,
   Button,
@@ -65,12 +65,14 @@ function previewOf(node: NodeDto, versionId: string | null | undefined, refused:
   const poster = pictured && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
   const waveform = type === "audio" && media?.hasWaveform ? waveformUrl(node.id, versionId) : undefined;
   if (!media && node.thumbnail === "pending" && !webMedia.test(node.mimeType ?? "")) return { type: "preparing" };
-  if (!media || media.copy === "notNeeded") return { type, src, poster, waveform };
+  // The frames over the timeline while seeking, once the worker has made them (§14).
+  const seekPreviews = media?.seekPreviews ? { src: seekPreviewsUrl(node.id), ...media.seekPreviews } : undefined;
+  if (!media || media.copy === "notNeeded") return { type, src, poster, seekPreviews, waveform };
 
   const original = playsOriginal(node) ? previewUrl(node.id, versionId, { original: true }) : null;
   if (media.copy === "ready")
-    return original ? { type, src: original, fallbacks: [src], poster, waveform } : { type, src, poster, waveform };
-  if (original) return { type, src: original, poster, waveform };
+    return original ? { type, src: original, fallbacks: [src], poster, seekPreviews, waveform } : { type, src, poster, seekPreviews, waveform };
+  if (original) return { type, src: original, poster, seekPreviews, waveform };
   if (media.copy === "failed" || refused) return { type: "unplayable" };
   return { type: "converting", waiting: media.copy !== "making", progress: media.progress ?? undefined };
 }

@@ -166,9 +166,13 @@ internal sealed partial class ThumbnailHandler(
             );
         }
 
-        // The playable copy is the transcode stage's, so making thumbnails again keeps it.
+        // The playable copy and seek previews are other stages', so making thumbnails again keeps them.
         var old = await db
-            .Renditions.Where(r => r.BlobHash == hash && r.Kind != RenditionKind.Playable)
+            .Renditions.Where(r =>
+                r.BlobHash == hash
+                && r.Kind != RenditionKind.Playable
+                && r.Kind != RenditionKind.SeekPreviews
+            )
             .ToListAsync(ct);
         db.Renditions.RemoveRange(old);
         db.Renditions.AddRange(renditions);
@@ -389,7 +393,10 @@ internal sealed partial class ThumbnailHandler(
         return (result, media, waveform?.Encode());
     }
 
-    /// <summary>Keeps what ffprobe found and queues a playable copy when one is needed and copies are made in the background.</summary>
+    /// <summary>
+    /// Keeps what ffprobe found and queues a playable copy when one is needed and copies are made in the background,
+    /// and seek previews for videos.
+    /// </summary>
     private async Task SaveMediaAsync(
         Job job,
         BlobMedia? media,
@@ -432,6 +439,19 @@ internal sealed partial class ThumbnailHandler(
         )
         {
             await jobs.EnqueueAsync(JobType.Transcode, stored.BlobHash.Hex, job.Priority, ct);
+        }
+
+        // The frames a video's timeline shows while seeking, for anything long enough to need them (§14).
+        if (
+            stored.HasVideo
+            && SeekPreviewLayout.For(stored.DurationSeconds) is not null
+            && !await db.Renditions.AnyAsync(
+                r => r.BlobHash == stored.BlobHash && r.Kind == RenditionKind.SeekPreviews,
+                ct
+            )
+        )
+        {
+            await jobs.EnqueueAsync(JobType.SeekPreviews, stored.BlobHash.Hex, job.Priority, ct);
         }
 
         // Speech to text needs to know there's sound, so it's queued from here (§11.1).

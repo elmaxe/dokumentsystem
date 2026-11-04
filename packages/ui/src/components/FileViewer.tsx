@@ -9,7 +9,7 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { ActionMenu, type MenuAction } from "./Menu";
 import { Progress } from "./Progress";
-import { leadInMs } from "../lib/media";
+import { leadInMs, type SeekPreviews } from "../lib/media";
 import { MediaPlayer } from "./MediaPlayer";
 import { TranscriptPanel, type TranscriptView } from "./Transcript";
 
@@ -25,7 +25,14 @@ export type PreviewSource =
    * `poster` is a video's poster frame or an audio file's cover art; `waveform` is where an audio file's waveform is,
    * drawn as the timeline (§14).
    */
-  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string; waveform?: string }
+  | {
+      type: "video" | "audio";
+      src: string;
+      fallbacks?: string[];
+      poster?: string;
+      seekPreviews?: SeekPreviews;
+      waveform?: string;
+    }
   /** The worker is still making the rendition the viewer needs, e.g. for a HEIC photo. */
   | { type: "preparing" }
   /** A video or audio file browsers can't play, while the worker makes a copy that plays. `progress` is 0–100. */
@@ -307,6 +314,7 @@ export function FileViewer({
                 type={preview.type}
                 sources={[preview.src, ...(preview.fallbacks ?? [])]}
                 poster={preview.type === "video" ? preview.poster : undefined}
+                seekPreviews={preview.seekPreviews}
                 cover={<AudioCover name={item.name} src={preview.poster} />}
                 waveform={preview.waveform}
                 fallback={noPreview(true)}
