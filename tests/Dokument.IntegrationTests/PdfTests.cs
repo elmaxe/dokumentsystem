@@ -87,6 +87,24 @@ public sealed class PdfTests(PostgresFixture postgres)
                 ct
             )
         );
+        // What exiftool read comes from the first source, not from the new document PDFium wrote.
+        var first = await db
+            .Nodes.Where(n => n.Id == contract)
+            .Select(n => n.CurrentVersion!.BlobHash)
+            .SingleAsync(ct);
+        var read = await db.BlobMetadata.SingleAsync(m => m.BlobHash == first, ct);
+        var copied = await db.BlobMetadata.SingleAsync(
+            m => m.BlobHash == node.CurrentVersion.BlobHash,
+            ct
+        );
+        Assert.Equal(read.Tags, copied.Tags);
+        Assert.False(
+            await db.Jobs.AnyAsync(
+                j => j.Type == JobType.Metadata && j.Subject == node.CurrentVersion.BlobHash.Hex,
+                ct
+            )
+        );
+
         Assert.Equal(
             3,
             (
@@ -287,7 +305,7 @@ public sealed class PdfTests(PostgresFixture postgres)
         return op;
     }
 
-    /// <summary>Waits until the thumbnail and text stages have run for <paramref name="files"/> blobs.</summary>
+    /// <summary>Waits until the thumbnail, metadata and text stages have run for <paramref name="files"/> blobs.</summary>
     private static Task WaitUntilReadAsync(DokumentApp app, int files) =>
         WaitUntilAsync(async () =>
         {
@@ -295,7 +313,11 @@ public sealed class PdfTests(PostgresFixture postgres)
             var db = scope.ServiceProvider.GetRequiredService<DokumentDbContext>();
             return await db.BlobPreviews.CountAsync() >= files
                 && !await db.Jobs.AnyAsync(j =>
-                    (j.Type == JobType.Thumbnail || j.Type == JobType.Text)
+                    (
+                        j.Type == JobType.Thumbnail
+                        || j.Type == JobType.Metadata
+                        || j.Type == JobType.Text
+                    )
                     && j.Status != JobStatus.Done
                     && j.Status != JobStatus.Failed
                 );

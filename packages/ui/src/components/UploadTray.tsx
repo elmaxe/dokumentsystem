@@ -48,9 +48,29 @@ export type UploadGroup = {
   error?: string;
 };
 
+export type TrayTaskState = "waiting" | "working" | "saving" | "done" | "failed" | "cancelled";
+
+/** Work the server does with files, shown beside the uploads: merging and splitting PDFs (§8.4). */
+export type TrayTask = {
+  id: string;
+  kind: "merge" | "split";
+  /** The new file's name for a merge, the original's for a split. */
+  name: string;
+  state: TrayTaskState;
+  pagesDone: number;
+  pagesTotal: number;
+  /** For a merge, how many files go in; for a split, how many come out. */
+  files: number;
+  /** How many of the new files have the same bytes as a file that was already there. */
+  duplicates?: number;
+  /** For failures: what happened, in words for people. */
+  error?: string;
+};
+
 export type UploadTrayProps = {
   items: UploadItem[];
   groups?: UploadGroup[];
+  tasks?: TrayTask[];
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
   onClose?: () => void;
@@ -65,6 +85,10 @@ export type UploadTrayProps = {
   onRetryGroup?: (id: string) => void;
   onOpenGroup?: (id: string) => void;
   onDismissGroup?: (id: string) => void;
+  onOpenTask?: (id: string) => void;
+  onCancelTask?: (id: string) => void;
+  onDismissTask?: (id: string) => void;
+  onRemoveTaskCopies?: (id: string) => void;
   className?: string;
 };
 
@@ -102,6 +126,11 @@ export function UploadTray({
   onRetryGroup,
   onOpenGroup,
   onDismissGroup,
+  tasks = [],
+  onOpenTask,
+  onCancelTask,
+  onDismissTask,
+  onRemoveTaskCopies,
   className,
 }: UploadTrayProps) {
   const { t, i18n } = useTranslation();
@@ -110,9 +139,11 @@ export function UploadTray({
   const count = (state: UploadState) => items.filter((item) => item.state === state).length;
   const busy = (item: UploadItem) => item.state === "hashing" || item.state === "uploading" || item.state === "paused";
   const summaries = new Map(groups.map((group) => [group.id, summarize(group, items)]));
-  const active =
+  const uploading =
     items.filter((item) => !item.group && busy(item)).length +
     [...summaries.values()].filter((summary) => summary.active).length;
+  const working = tasks.filter(taskBusy).length;
+  const active = uploading + working;
   const skipped = groups.reduce((sum, group) => sum + (group.skipped ?? 0), 0);
   const secondsLeft = Math.max(
     0,
@@ -125,9 +156,13 @@ export function UploadTray({
       : t("upload.minutesLeft", { count: Math.round(seconds / 60) });
 
   const title =
-    active > 0
-      ? t("upload.uploading", { count: active })
-      : t("upload.finished", { count: entries(items, groups).length });
+    uploading > 0
+      ? t("upload.uploading", { count: uploading })
+      : working > 0
+        ? t("upload.task.working", { count: working })
+        : items.length + groups.length === 0
+          ? t("upload.task.finished", { count: tasks.length })
+          : t("upload.finished", { count: entries(items, groups).length + tasks.length });
   const summary = [
     count("done") > 0 && t("upload.summary.done", { count: count("done") }),
     count("duplicate") > 0 && t("upload.summary.duplicate", { count: count("duplicate") }),
@@ -136,7 +171,7 @@ export function UploadTray({
   ]
     .filter(Boolean)
     .join(" · ");
-  const subtitle = collapsed && active > 0 ? timeLeft(secondsLeft) : summary;
+  const subtitle = collapsed && uploading > 0 ? timeLeft(secondsLeft) : summary;
 
   const status = (item: UploadItem) => {
     switch (item.state) {
@@ -271,6 +306,94 @@ export function UploadTray({
     );
   };
 
+  const taskStatus = (task: TrayTask) => {
+    switch (task.state) {
+      case "waiting":
+        return t("upload.task.waiting");
+      case "working":
+        return task.kind === "merge"
+          ? t("upload.task.merging", { done: task.pagesDone, total: task.pagesTotal })
+          : t("upload.task.splitting", { done: task.pagesDone, total: task.pagesTotal });
+      case "saving":
+        return t("upload.task.saving");
+      case "done": {
+        const done =
+          task.kind === "merge"
+            ? t("upload.task.merged", { count: task.files })
+            : t("upload.task.splitDone", { count: task.files });
+        return task.duplicates ? `${done} · ${t("upload.task.duplicates", { count: task.duplicates })}` : done;
+      }
+      case "failed":
+        return task.error ?? t("upload.task.failed");
+      case "cancelled":
+        return t("upload.task.cancelled");
+    }
+  };
+
+  const taskRow = (task: TrayTask) => {
+    const small = { size: "sm" as const, className: "text-inherit" };
+    const failed = task.state === "failed";
+    const icon = task.state === "done" ? (task.duplicates ? "content_copy" : "check_circle") : failed ? "error" : task.state === "cancelled" ? "block" : null;
+    return (
+      <li
+        key={task.id}
+        className={cn(
+          "grid grid-cols-[auto_1fr_auto] items-center gap-x-3 py-2 pr-2 pl-4",
+          failed && "bg-error-container text-on-error-container",
+        )}
+      >
+        <FileTypeIcon kind="pdf" />
+        <div className="flex min-w-0 flex-col gap-1">
+          <span title={task.name} className="truncate font-medium">
+            {task.name}
+          </span>
+          {taskBusy(task) && (
+            <Progress
+              value={task.state === "working" ? Math.round((task.pagesDone / Math.max(1, task.pagesTotal)) * 100) : undefined}
+              label={task.name}
+            />
+          )}
+          <span
+            className={cn(
+              "tabular flex min-w-0 items-center gap-1 text-body-sm",
+              task.state === "done" && (task.duplicates ? "text-warning" : "text-success"),
+              failed && "text-on-error-container",
+              (taskBusy(task) || task.state === "cancelled") && "text-on-surface-variant",
+            )}
+          >
+            {icon && <Icon name={icon} size={16} filled={task.state === "done" || failed} />}
+            <span className="truncate">{taskStatus(task)}</span>
+          </span>
+        </div>
+        <div className="flex items-center gap-0.5">
+          {taskBusy(task) && task.state !== "saving" && (
+            <IconButton icon="close" label={t("common.cancel")} onClick={() => onCancelTask?.(task.id)} {...small} />
+          )}
+          {task.state === "done" && !!task.duplicates && (
+            <button
+              type="button"
+              onClick={() => onRemoveTaskCopies?.(task.id)}
+              className="cursor-pointer rounded-xs px-1 text-label-md whitespace-nowrap text-primary hover:underline"
+            >
+              {t("upload.removeCopy")}
+            </button>
+          )}
+          {task.state === "done" && (
+            <IconButton
+              icon={task.kind === "merge" ? "open_in_new" : "folder_open"}
+              label={t(task.kind === "merge" ? "actions.open" : "upload.showInFolder")}
+              onClick={() => onOpenTask?.(task.id)}
+              {...small}
+            />
+          )}
+          {(failed || task.state === "cancelled") && (
+            <IconButton icon="close" label={t("upload.dismiss")} onClick={() => onDismissTask?.(task.id)} {...small} />
+          )}
+        </div>
+      </li>
+    );
+  };
+
   return (
     <section
       aria-label={t("upload.label")}
@@ -303,6 +426,7 @@ export function UploadTray({
       </div>
       {!collapsed && (
         <ul className="m-0 max-h-100 list-none overflow-auto p-0 py-1 max-sm:max-h-[40dvh]">
+          {tasks.map(taskRow)}
           {entries(items, groups).map((entry) => {
             if (entry.kind === "item") return row(entry.item);
             const { group } = entry;
@@ -430,6 +554,8 @@ export function UploadTray({
     </section>
   );
 }
+
+const taskBusy = (task: TrayTask) => task.state === "waiting" || task.state === "working" || task.state === "saving";
 
 type GroupState = "preparing" | "error" | "checking" | "uploading" | "paused" | "partly" | "done";
 

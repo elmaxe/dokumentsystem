@@ -328,6 +328,8 @@ public sealed class PdfService(
                 texted.Add(hash);
             }
 
+            await CopyMetadataAsync(op, part, hash, ct);
+
             var reserved = Math.Min(op.ReservedBytes, size);
             op.ReservedBytes -= reserved;
             var added = await drive.AddFileAsync(
@@ -626,6 +628,54 @@ public sealed class PdfService(
     /// Gives the new bytes the text the sources' pages have, so the text stage doesn't read or recognize them again.
     /// Only when every source has been read and the bytes have no text yet. The caller saves. True when it copied.
     /// </summary>
+    /// <summary>
+    /// Gives the new file what exiftool read from its first source, so its details are the source's and not what PDFium
+    /// writes into a new document (its own name as producer, the time as created). Done before the file is added, so no
+    /// metadata job is queued. Without a reading of the source, the metadata stage reads the new file as usual.
+    /// </summary>
+    private async Task CopyMetadataAsync(
+        PdfOperation op,
+        PdfPart part,
+        ContentHash hash,
+        CancellationToken ct
+    )
+    {
+        if (await db.BlobMetadata.AnyAsync(m => m.BlobHash == hash, ct))
+        {
+            return;
+        }
+
+        var first = HashOf(op.Sources[part.Pages[0].Source]);
+        var source = await db
+            .BlobMetadata.AsNoTracking()
+            .FirstOrDefaultAsync(
+                m =>
+                    m.BlobHash == first && m.PipelineVersion >= BlobMetadata.CurrentPipelineVersion,
+                ct
+            );
+        if (source is null)
+        {
+            return;
+        }
+
+        db.BlobMetadata.Add(
+            new BlobMetadata
+            {
+                BlobHash = hash,
+                PipelineVersion = source.PipelineVersion,
+                TakenAt = source.TakenAt,
+                TakenOffsetMinutes = source.TakenOffsetMinutes,
+                Camera = source.Camera,
+                DurationSeconds = source.DurationSeconds,
+                Latitude = source.Latitude,
+                Longitude = source.Longitude,
+                Tags = source.Tags,
+                Readable = source.Readable,
+                UpdatedAt = time.GetUtcNow(),
+            }
+        );
+    }
+
     private async Task<bool> CopyTextAsync(
         PdfOperation op,
         PdfPart part,

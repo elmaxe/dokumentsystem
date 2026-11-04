@@ -16,3 +16,13 @@ export {
 } from "./files";
 export { parseWaveform, waveColumns, wavePaths, type Waveform, type WaveColumn } from "./waveform";
 export { wordsToText, type PageWord } from "./words";
+export {
+  everyCuts,
+  parsePages,
+  partsFromCuts,
+  rangesText,
+  stemOf,
+  withPdfExtension,
+  type PageList,
+  type PagesProblem,
+} from "./pdf";

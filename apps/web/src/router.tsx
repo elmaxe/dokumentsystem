@@ -7,6 +7,7 @@ import { sessionQuery } from "./api";
 import { AppShell } from "./AppShell";
 import { FilesPage } from "./files/FilesPage";
 import { TrashPage } from "./files/TrashPage";
+import { SplitPage } from "./files/SplitPage";
 import { ViewerPage } from "./files/ViewerPage";
 import { PlacePage } from "./PlacePage";
 import { validateSearchParams } from "./search/search";
@@ -66,6 +67,20 @@ const fileRoute = createRoute({
     const { fileId } = fileRoute.useParams();
     const { from, q, page, at } = fileRoute.useSearch();
     return <ViewerPage fileId={fileId} from={from} q={q} page={page} at={at} />;
+  },
+});
+
+/** Splitting a PDF (§8.4), full screen like the viewer. Opened from the viewer, closing goes back to it. */
+const splitRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/files/$fileId/split",
+  validateSearch: (search: Record<string, unknown>): { from?: "viewer" } => ({
+    from: search.from === "viewer" ? "viewer" : undefined,
+  }),
+  component: function SplitRoute() {
+    const { fileId } = splitRoute.useParams();
+    const { from } = splitRoute.useSearch();
+    return <SplitPage key={fileId} fileId={fileId} from={from} />;
   },
 });
 
@@ -141,7 +156,7 @@ const signInRoute = createRoute({
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminJobsRoute, adminTagsRoute, adminSettingsRoute]), trashRoute, settingsRoute, sharedRoute, searchRoute, ...placeRoutes]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, splitRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminJobsRoute, adminTagsRoute, adminSettingsRoute]), trashRoute, settingsRoute, sharedRoute, searchRoute, ...placeRoutes]), signInRoute]),
     context: { queryClient },
   });
 }
