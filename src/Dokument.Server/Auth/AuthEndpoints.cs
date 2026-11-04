@@ -26,6 +26,8 @@ public static class AuthEndpoints
             .WithDescription(
                 "Starts the OIDC login in the browser. Navigate here; don't fetch it."
             );
+        auth.MapTokenEndpoint();
+        auth.MapAppSignIn();
         auth.MapGet("/session", GetSession).WithName("GetSession").RequireAuthorization();
         auth.MapPost("/logout", Logout).WithName("Logout").RequireAuthorization();
 
@@ -54,8 +56,19 @@ public static class AuthEndpoints
         return api;
     }
 
-    private static Ok<AuthConfig> GetConfig(OidcSettings oidc) =>
-        TypedResults.Ok(new AuthConfig(oidc.Enabled, oidc.ProviderName));
+    private static Ok<AuthConfig> GetConfig(HttpRequest request, OidcSettings oidc) =>
+        TypedResults.Ok(
+            oidc.Enabled
+                ? new AuthConfig(
+                    true,
+                    oidc.ProviderName,
+                    oidc.Issuer,
+                    oidc.ClientId,
+                    oidc.Scope,
+                    AppSignIn.RedirectUri(request)
+                )
+                : new AuthConfig(false, oidc.ProviderName, null, null, null, null)
+        );
 
     private static IResult Login(string? returnTo, OidcSettings oidc) =>
         oidc.Enabled
@@ -209,8 +222,19 @@ public static class AuthEndpoints
             : TypedResults.NotFound();
 }
 
-/// <summary>What the sign-in page needs to know before anyone is signed in.</summary>
-public sealed record AuthConfig(bool Enabled, string? ProviderName);
+/// <summary>
+/// What the sign-in page needs to know before anyone is signed in. The mobile app also runs the IdP's sign-in itself
+/// (docs/design.md §5): it signs in at <paramref name="Issuer"/> as <paramref name="ClientId"/>, sends the IdP back to
+/// <paramref name="AppRedirectUri"/> and redeems the code at the token endpoint. All null while sign-in is off.
+/// </summary>
+public sealed record AuthConfig(
+    bool Enabled,
+    string? ProviderName,
+    string? Issuer,
+    string? ClientId,
+    string? Scope,
+    string? AppRedirectUri
+);
 
 /// <param name="CsrfToken">Send this in <c>X-CSRF-Token</c> on mutations. Null for bearer sessions, which don't need it.</param>
 public sealed record CurrentSession(

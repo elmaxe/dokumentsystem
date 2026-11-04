@@ -87,6 +87,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description An OAuth token request (form: grant_type=authorization_code, code, code_verifier, redirect_uri, and optionally device_name) for a code from the IdP. Returns a bearer session as access_token. */
+        post: operations["RedeemCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/proof": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Proves this server issued a bearer session, for the app checking a local address. Returns an HMAC-SHA256 of the nonce keyed by the SHA-256 of the session token. 404 for unknown sessions. */
+        post: operations["ProveSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/session": {
         parameters: {
             query?: never;
@@ -1575,6 +1609,10 @@ export interface components {
         AuthConfig: {
             enabled: boolean;
             providerName: null | string;
+            issuer: null | string;
+            clientId: null | string;
+            scope: null | string;
+            appRedirectUri: null | string;
         };
         ChangeTagsRequest: {
             ids: string[];
@@ -2012,6 +2050,11 @@ export interface components {
             attempts: null | number;
             error: null | string;
         };
+        ProofRequest: {
+            /** Format: uuid */
+            sessionId: string;
+            nonce: string;
+        };
         QuotaDto: {
             kind: components["schemas"]["UserQuotaKind"];
             /** Format: int64 */
@@ -2117,6 +2160,9 @@ export interface components {
         };
         /** @enum {unknown} */
         SessionKind: "cookie" | "bearer";
+        SessionProof: {
+            proof: string;
+        };
         SetLanguageRequest: {
             language: null | string;
         };
@@ -2540,6 +2586,64 @@ export interface operations {
         responses: {
             /** @description OK */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RedeemCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProveSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProofRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionProof"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

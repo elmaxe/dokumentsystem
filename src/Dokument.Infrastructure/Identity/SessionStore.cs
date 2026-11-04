@@ -61,6 +61,21 @@ public sealed class SessionStore(DokumentDbContext db, LiveChanges live, TimePro
         return (session, refreshed);
     }
 
+    /// <summary>An active session of an enabled user by id, without touching it.</summary>
+    public async Task<Session?> FindActiveAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        var session = await db
+            .Sessions.AsNoTracking()
+            .Include(s => s.User)
+            .SingleOrDefaultAsync(s => s.Id == sessionId, ct);
+        return
+            session is not null
+            && session.IsActive(time.GetUtcNow())
+            && session.User is { IsDisabled: false }
+            ? session
+            : null;
+    }
+
     public Task<List<Session>> ListActiveAsync(Guid userId, CancellationToken ct = default)
     {
         var now = time.GetUtcNow();

@@ -1,0 +1,53 @@
+import type { NodeDto } from "@dokument/api";
+import { useQuery } from "@tanstack/react-query";
+import { router } from "expo-router";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { ActivityIndicator, View } from "react-native";
+import { folderQuery } from "../state/queries";
+import { useTheme } from "../state/theme";
+import { EmptyState } from "./EmptyState";
+import { FileList, openFile } from "./FileList";
+import { ItemSheet } from "./ItemSheet";
+import { ListActions } from "./ListActions";
+import { Notice } from "./Notice";
+import { ScanButton } from "./Scan";
+import { TopBar } from "./TopBar";
+
+/** My files, or a folder in it (docs/design.md §16.3). */
+export function FolderView({ folderId }: { folderId: string | null }) {
+  const { t } = useTranslation();
+  const theme = useTheme();
+  const listing = useQuery(folderQuery(folderId));
+  const [selected, setSelected] = useState<NodeDto | null>(null);
+  const title = folderId ? (listing.data?.folder?.name ?? "") : t("nav.myFiles");
+  const openFolder = (node: NodeDto) => router.push({ pathname: "/folder/[id]", params: { id: node.id } });
+
+  return (
+    <View className="flex-1 bg-surface">
+      <TopBar title={title} back={!!folderId} actions={<ListActions account={!folderId} />} />
+      {listing.isPending ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color={theme.color("primary")} />
+        </View>
+      ) : listing.isError && !listing.data ? (
+        <View className="p-4">
+          <Notice tone="error" icon="error" text={t("errors.generic")} />
+        </View>
+      ) : (
+        <FileList
+          nodes={listing.data.items}
+          onOpenFolder={openFolder}
+          onOpenFile={openFile}
+          onMore={setSelected}
+          refreshing={listing.isRefetching}
+          onRefresh={() => void listing.refetch()}
+          empty={<EmptyState icon="folder_open" title={t("files.empty.folderTitle")} />}
+        />
+      )}
+      {/* Below My files the tab bar is gone, so the button keeps clear of the system's own bar. */}
+      <ScanButton folderId={folderId} folderName={title} safeArea={!!folderId} />
+      <ItemSheet node={selected} onClose={() => setSelected(null)} onOpenFolder={openFolder} />
+    </View>
+  );
+}
