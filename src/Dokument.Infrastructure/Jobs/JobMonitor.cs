@@ -295,7 +295,7 @@ public sealed class JobMonitor(
 
     /// <summary>
     /// Every step for one file's current content, in pipeline order (the details panel), then its playable copy when
-    /// it is a video or audio file browsers can't play as it is (§14).
+    /// it is a video or audio file browsers can't play as it is, and a video's seek previews (§14).
     /// </summary>
     public async Task<List<ProcessingStep>> StepsAsync(
         ContentHash hash,
@@ -367,7 +367,52 @@ public sealed class JobMonitor(
             );
         }
 
+        if (media is { HasVideo: true } && SeekPreviewLayout.For(media.DurationSeconds) is not null)
+        {
+            steps.Add(
+                await SeekPreviewsStepAsync(
+                    hash,
+                    jobs.Where(j => j.Type == JobType.SeekPreviews && j.Status != JobStatus.Done)
+                        .OrderByDescending(j => j.CreatedAt)
+                        .FirstOrDefault(),
+                    paused,
+                    ct
+                )
+            );
+        }
+
         return steps;
+    }
+
+    /// <summary>The frames a video's timeline shows while seeking (§14): made in the background for every video of 10 s or more.</summary>
+    private async Task<ProcessingStep> SeekPreviewsStepAsync(
+        ContentHash hash,
+        Job? job,
+        JobSettings paused,
+        CancellationToken ct
+    )
+    {
+        var type = JobType.SeekPreviews;
+        return job switch
+        {
+            { Status: JobStatus.Running } => new(type, StepState.Running, job.StartedAt, null, job),
+            { Status: JobStatus.Queued } => new(
+                type,
+                paused.IsPaused(type) ? StepState.Paused : StepState.Waiting,
+                null,
+                await AheadAsync(job, ct),
+                job
+            ),
+            { Status: JobStatus.Failed } => new(type, StepState.Failed, job.FinishedAt, null, job),
+            _ => await db
+                .Renditions.AsNoTracking()
+                .Where(r => r.BlobHash == hash && r.Kind == RenditionKind.SeekPreviews)
+                .Select(r => (DateTimeOffset?)r.CreatedAt)
+                .FirstOrDefaultAsync(ct)
+                is { } made
+                ? new(type, StepState.Done, made, null, null)
+                : new(type, StepState.NotStarted, null, null, null),
+        };
     }
 
     /// <summary>

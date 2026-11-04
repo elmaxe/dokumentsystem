@@ -2,9 +2,9 @@ import type { TFunction } from "i18next";
 
 /**
  * A step of the worker's pipeline (docs/design.md §10.2), in the order it runs, then the playable copy that only
- * video and audio files browsers can't play get (§14).
+ * video and audio files browsers can't play get, and a video's seek previews (§14).
  */
-export type ProcessingStepName = "thumbnail" | "metadata" | "text" | "transcode";
+export type ProcessingStepName = "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews";
 
 /** A step that is still waiting or running, as file lists show it. */
 export type ActiveProcessingStep = { step: ProcessingStepName; running: boolean };

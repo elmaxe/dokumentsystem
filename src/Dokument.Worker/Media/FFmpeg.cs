@@ -214,6 +214,47 @@ public sealed class FFmpeg(IOptions<WorkerOptions> options)
         return output.ExitCode == 0 && output.Stdout.Length > 0 ? output.Stdout : null;
     }
 
+    /// <summary>
+    /// One frame at <paramref name="at"/>, turned upright and scaled to exactly <paramref name="width"/> ×
+    /// <paramref name="height"/>, as PNG bytes: a seek preview (§14). ffmpeg seeks to the keyframe before it and decodes
+    /// from there, so only a few seconds of a long film are read. Null when there is no frame there.
+    /// </summary>
+    public async Task<byte[]?> SeekFrameAsync(
+        string path,
+        TimeSpan at,
+        int width,
+        int height,
+        CancellationToken ct
+    )
+    {
+        var output = await ExternalTool.RunAsync(
+            options.Value.FfmpegCommand,
+            [
+                "-nostdin",
+                "-v",
+                "error",
+                "-ss",
+                at.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
+                "-i",
+                path,
+                "-map",
+                "0:V:0",
+                "-vf",
+                FormattableString.Invariant($"scale={width}:{height},setsar=1"),
+                "-frames:v",
+                "1",
+                "-c:v",
+                "png",
+                "-f",
+                "image2pipe",
+                "-",
+            ],
+            FrameTimeout,
+            ct
+        );
+        return output.ExitCode == 0 && output.Stdout.Length > 0 ? output.Stdout : null;
+    }
+
     /// <summary>The embedded cover art of an audio file (or a video's attached picture), as PNG bytes.</summary>
     public async Task<byte[]?> CoverAsync(string path, int streamIndex, CancellationToken ct)
     {
