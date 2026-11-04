@@ -54,6 +54,7 @@ export type FileProcessing = components["schemas"]["FileProcessing"];
 export type ProcessingStep = components["schemas"]["ProcessingStepDto"];
 export type FileDetailsDto = components["schemas"]["FileDetailsDto"];
 export type FileTextDto = components["schemas"]["FileTextDto"];
+export type RecognizedWordsDto = components["schemas"]["RecognizedWordsDto"];
 export type TextPage = components["schemas"]["TextPageDto"];
 export type TakenDto = components["schemas"]["TakenDto"];
 export type DetailField = components["schemas"]["DetailField"];

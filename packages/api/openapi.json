@@ -1048,6 +1048,47 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/words": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "The words recognized on one page of a scan or photo, with their boxes, for the viewer to show and select, and which pages have any. What was read, not corrections.",
+        "operationId": "GetRecognizedWords",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecognizedWordsDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/text/{pageNo}": {
       "put": {
         "tags": [
@@ -5067,6 +5108,59 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RecentItem"
+            }
+          }
+        }
+      },
+      "RecognizedWordDto": {
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "format": "double"
+          },
+          "y": {
+            "type": "number",
+            "format": "double"
+          },
+          "width": {
+            "type": "number",
+            "format": "double"
+          },
+          "height": {
+            "type": "number",
+            "format": "double"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "RecognizedWordsDto": {
+        "required": [
+          "pages",
+          "words"
+        ],
+        "type": "object",
+        "properties": {
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecognizedWordDto"
             }
           }
         }
