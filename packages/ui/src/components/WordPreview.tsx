@@ -8,7 +8,7 @@ export type WordFailure = "unreadable" | "missing";
 
 class EngineMissing extends Error {
   constructor(cause?: unknown) {
-    super("Scriptor isn't built into this web app: it needs Rust and wasm-pack (docs/design.md §14).", { cause });
+    super("Scriptor isn't built into this web app: it needs Docker, or Rust and wasm-pack (docs/design.md §14).", { cause });
   }
 }
 

@@ -1011,7 +1011,7 @@ export const en = {
       backfill: "Documents uploaded while previews were off get them in the background once you save.",
       wordViewer: "Show Word files with Scriptor (experimental)",
       wordViewerMissing:
-        "This build of the web app doesn't include Scriptor, so Word files still open as PDFs. Building it needs Rust and wasm-pack (cargo install wasm-pack). Then build the web app again.",
+        "This build of the web app doesn't include Scriptor, so Word files still open as PDFs. Building it needs Docker running, or Rust and wasm-pack. Then build the web app again, or restart aspire run.",
       wordViewerHint:
         "Opens .docx files in the browser as Word lays them out, without Gotenberg. The PDF stays one click away. Loads 6 MB the first time someone opens a Word file.",
     },

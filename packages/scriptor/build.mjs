@@ -1,7 +1,8 @@
 // Builds Scriptor from the commit pinned in package.json into dist/ (decision 42, docs/design.md §14):
 //   dist/wasm/  the engine, compiled to WebAssembly by wasm-pack
 //   dist/core/  its headless canvas view (@truespar/scriptor-core), TypeScript that Vite compiles
-// Needs git, a Rust toolchain with the wasm32-unknown-unknown target, and wasm-pack. Without them it writes a stub,
+// Needs git, a Rust toolchain with the wasm32-unknown-unknown target, and wasm-pack, or else Docker, which runs the same
+// build in the image's `scriptor` stage. Without either it writes a stub,
 // so the web app still builds and Word files open as PDFs; SCRIPTOR_REQUIRED=1 (CI, Docker) makes that an error.
 import { execFileSync } from "node:child_process";
 import {
@@ -40,9 +41,39 @@ const has = (cmd) => {
   }
 };
 
+// Without Rust here, Docker can build it: the image's `scriptor` stage does exactly this build, and Docker caches it, so
+// only the first run is slow. That covers `aspire run`, which already needs Docker.
+if ((!has("wasm-pack") || !has("cargo")) && has("docker") && process.env.SCRIPTOR_DOCKER !== "0") {
+  const repo = resolve(here, "..", "..");
+  const image = `dokumentsystem-scriptor:${commit.slice(0, 12)}`;
+  const container = `dokumentsystem-scriptor-${process.pid}`;
+  console.log(
+    `Building Scriptor ${commit.slice(0, 7)} in Docker (the image's scriptor stage). The first time takes a few minutes.`,
+  );
+  try {
+    run(
+      "docker",
+      ["build", "--target", "scriptor", "--tag", image, "--file", join(repo, "Dockerfile"), repo],
+      repo,
+    );
+    rmSync(dist, { recursive: true, force: true });
+    run("docker", ["create", "--name", container, image], repo);
+    try {
+      run("docker", ["cp", `${container}:/repo/packages/scriptor/dist`, dist], repo);
+    } finally {
+      run("docker", ["rm", container], repo);
+    }
+    console.log(`Built Scriptor ${commit.slice(0, 7)} in Docker.`);
+    process.exit(0);
+  } catch (error) {
+    if (required) throw error;
+    console.warn(`Couldn't build Scriptor in Docker (is Docker running?): ${error.message}`);
+  }
+}
+
 if (!has("wasm-pack") || !has("cargo")) {
   const message =
-    "Scriptor needs Rust and wasm-pack (cargo install wasm-pack). Word files will open as PDFs.";
+    "Scriptor needs Rust and wasm-pack (cargo install wasm-pack), or Docker. Word files will open as PDFs.";
   if (required) {
     console.error(message);
     process.exit(1);
@@ -55,7 +86,7 @@ if (!has("wasm-pack") || !has("cargo")) {
     `export const available = false;
 export class ScriptorView {
   static create(): Promise<never> {
-    return Promise.reject(new Error("Scriptor wasn't built: it needs Rust and wasm-pack."));
+    return Promise.reject(new Error("Scriptor wasn't built: it needs Docker, or Rust and wasm-pack."));
   }
 }
 `,

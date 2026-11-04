@@ -1016,7 +1016,7 @@ export const sv: Strings = {
       backfill: "Dokument som laddades upp medan den var avstängd förhandsgranskas i bakgrunden när du sparar.",
       wordViewer: "Visa Word-filer med Scriptor (experimentellt)",
       wordViewerMissing:
-        "Den här versionen av webbappen saknar Scriptor, så Word-filer öppnas fortfarande som PDF. För att bygga den behövs Rust och wasm-pack (cargo install wasm-pack). Bygg sedan webbappen igen.",
+        "Den här versionen av webbappen saknar Scriptor, så Word-filer öppnas fortfarande som PDF. För att bygga den behövs Docker igång, eller Rust och wasm-pack. Bygg sedan webbappen igen, eller starta om aspire run.",
       wordViewerHint:
         "Öppnar .docx-filer i webbläsaren som Word lägger upp dem, utan Gotenberg. PDF:en finns ett klick bort. Laddar 6 MB första gången någon öppnar en Word-fil.",
     },
