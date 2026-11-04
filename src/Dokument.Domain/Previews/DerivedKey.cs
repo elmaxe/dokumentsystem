@@ -21,6 +21,7 @@ public sealed record DerivedKey
         {
             RenditionKind.Playable => new DerivedKey($"previews/{hex[..2]}/{hex}/{kind.Key()}.mp4"),
             RenditionKind.Document => new DerivedKey($"previews/{hex[..2]}/{hex}/{kind.Key()}.pdf"),
+            RenditionKind.Waveform => new DerivedKey($"previews/{hex[..2]}/{hex}/{kind.Key()}.bin"),
             RenditionKind.SeekPreviews => new DerivedKey(
                 $"previews/{hex[..2]}/{hex}/{kind.Key()}.webp"
             ),

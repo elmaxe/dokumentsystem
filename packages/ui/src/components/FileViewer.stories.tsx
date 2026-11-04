@@ -111,6 +111,36 @@ function sampleWav(seconds: number): string {
   return URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
 }
 
+/**
+ * A made-up waveform in the worker's format (§14): speech in bursts, quieter at times, with the given stretches of
+ * silence, in 20 ms slices.
+ */
+function sampleWaveform(seconds: number, silences: readonly (readonly [number, number])[] = []) {
+  const count = seconds * 50;
+  const bytes = new Uint8Array(16 + count * 3);
+  const view = new DataView(bytes.buffer);
+  [..."DKWF"].forEach((c, i) => view.setUint8(i, c.charCodeAt(0)));
+  view.setUint8(4, 1);
+  view.setFloat32(8, 0.02, true);
+  view.setUint32(12, count, true);
+  const noise = (i: number) => {
+    const x = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  for (let i = 0; i < count; i++) {
+    const t = i / 50;
+    const quiet = silences.some(([from, to]) => t >= from && t < to);
+    const gate = Math.sin(t * 1.25 + 0.9 * Math.sin(t * 0.37)) < -0.82 ? 0.05 : 1;
+    const syllable = Math.abs(Math.sin(t * Math.PI * 4.1 + 1.6 * Math.sin(t * 0.83))) ** 0.9;
+    const level = 0.58 + 0.3 * Math.sin(t * 0.23 + 1.1);
+    const amp = quiet ? 0.012 + 0.01 * noise(i) : Math.min(1, gate * syllable * level * (0.7 + 0.3 * noise(i)) + 0.02);
+    bytes[16 + i * 3] = Math.round(255 * amp * (0.8 + 0.2 * noise(i + 7)));
+    bytes[17 + i * 3] = Math.round(255 * amp);
+    bytes[18 + i * 3] = Math.round(255 * amp * (0.36 + 0.14 * noise(i + 3)));
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+}
+
 const meetingLines = [
   [0, "Hej, tack för att du kunde ses. Jag tänkte vi kunde gå igenom det som hänt med fönstren först."],
   [9_000, "Ja, och sen var det frågan om balkongen, som de ska renovera nästa år."],
@@ -140,7 +170,7 @@ const textUrl = (body: string) => URL.createObjectURL(new Blob([body], { type: "
 const files: Record<string, { item: FileItem; preview: () => PreviewSource; extra?: Partial<FileViewerProps> }> = {
   transcript: {
     item: { id: "11", name: "Möte med hyresvärden.m4a", kind: "audio", modified: "2026-03-12T17:40:00Z", owner: "Alice" },
-    preview: () => ({ type: "audio", src: sampleWav(150) }),
+    preview: () => ({ type: "audio", src: sampleWav(150), waveform: sampleWaveform(150, [[60, 120]]) }),
     extra: {
       transcript: meeting,
       onTranscriptRedo: () => {},
@@ -156,7 +186,7 @@ const files: Record<string, { item: FileItem; preview: () => PreviewSource; extr
   },
   listening: {
     item: { id: "12", name: "Röstmemo 2026-09-02.m4a", kind: "audio", modified: "2026-09-02T08:12:00Z", owner: "Alice" },
-    preview: () => ({ type: "audio", src: sampleWav(60) }),
+    preview: () => ({ type: "audio", src: sampleWav(60), waveform: sampleWaveform(60) }),
     extra: { transcript: { ...meeting, state: "running", doneMs: 36_000, lines: meeting.lines.slice(0, 4) } },
   },
   image: {

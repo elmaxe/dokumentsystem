@@ -47,6 +47,12 @@ public sealed class BlobMedia
     public int? Width { get; set; }
     public int? Height { get; set; }
     public PlaybackPlan Plan { get; set; }
+
+    /// <summary>An audio file with embedded cover art, which is then its thumbnail. Without one, its thumbnail is drawn from its waveform.</summary>
+    public bool HasCover { get; set; }
+
+    /// <summary>The waveform rendition exists: audio files only (§14).</summary>
+    public bool HasWaveform { get; set; }
     public CopyStatus CopyStatus { get; set; }
 
     /// <summary>How far the copy being made has got, 0 to 100. Null when none is being made.</summary>
@@ -80,5 +86,7 @@ public sealed record MediaState(
     string? VideoCodec,
     CopyState Copy,
     int? Progress,
+    bool HasCover,
+    bool HasWaveform,
     SeekPreviewSheet? SeekPreviews = null
 );

@@ -25,6 +25,12 @@ public enum RenditionKind
     Document,
 
     /// <summary>
+    /// An audio file's loudness over time, for the player's waveform (§14): <see cref="Waveform"/>'s binary format.
+    /// Not an image.
+    /// </summary>
+    Waveform,
+
+    /// <summary>
     /// The frames the video player shows above its timeline while seeking: one WebP sheet of up to 100 frames, 10 to a
     /// row (§14). Its width and height are the sheet's; <see cref="SeekPreviewLayout"/> says where each frame is. Made by
     /// its own stage, so making thumbnails again keeps it.
@@ -44,7 +50,7 @@ public static class RenditionKinds
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
-    /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>, <c>playable</c>, <c>document</c>, <c>seek</c>.</summary>
+    /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>, <c>playable</c>, <c>document</c>, <c>waveform</c>, <c>seek</c>.</summary>
     public static string Key(this RenditionKind kind) =>
         kind switch
         {
@@ -53,6 +59,7 @@ public static class RenditionKinds
             RenditionKind.Preview => "preview",
             RenditionKind.Playable => "playable",
             RenditionKind.Document => "document",
+            RenditionKind.Waveform => "waveform",
             RenditionKind.SeekPreviews => "seek",
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
@@ -65,6 +72,7 @@ public static class RenditionKinds
             "preview" => RenditionKind.Preview,
             "playable" => RenditionKind.Playable,
             "document" => RenditionKind.Document,
+            "waveform" => RenditionKind.Waveform,
             "seek" => RenditionKind.SeekPreviews,
             _ => throw new ArgumentException($"\"{key}\" isn't a rendition kind.", nameof(key)),
         };

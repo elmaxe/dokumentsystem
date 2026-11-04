@@ -65,6 +65,7 @@ internal sealed partial class ThumbnailHandler(
         RenderResult result;
         BlobMedia? media;
         DerivedKey? document = null;
+        byte[]? waveform = null;
         using (var render = DokumentTelemetry.ActivitySource.StartActivity("thumbnail render"))
         {
             render?.SetTag("dokument.blob.size", blob.Size);
@@ -89,7 +90,7 @@ internal sealed partial class ThumbnailHandler(
             else if (result.Status == PreviewStatus.Unsupported)
             {
                 RenderResult? fromMedia;
-                (fromMedia, probed) = await RenderMediaAsync(
+                (fromMedia, probed, waveform) = await RenderMediaAsync(
                     hash,
                     blobs.PathOf(blob.StorageKey),
                     ct
@@ -125,6 +126,24 @@ internal sealed partial class ThumbnailHandler(
                     MimeType = "application/pdf",
                     Width = result.Width ?? 0,
                     Height = result.Height ?? 0,
+                    CreatedAt = now,
+                }
+            );
+        }
+
+        if (waveform is not null)
+        {
+            var key = DerivedKey.For(hash, RenditionKind.Waveform);
+            await derived.WriteAsync(key, waveform, ct);
+            renditions.Add(
+                new Rendition
+                {
+                    BlobHash = hash,
+                    Kind = RenditionKind.Waveform,
+                    StorageKey = key,
+                    MimeType = "application/octet-stream",
+                    Width = 0,
+                    Height = 0,
                     CreatedAt = now,
                 }
             );
@@ -288,9 +307,10 @@ internal sealed partial class ThumbnailHandler(
 
     /// <summary>
     /// A poster or cover for video and audio, and what ffprobe found; Unsupported, with no media, for anything else.
-    /// Null when ffmpeg isn't installed.
+    /// Audio also gets its waveform (§14), which is its thumbnail when it has no cover art. Null when ffmpeg isn't
+    /// installed.
     /// </summary>
-    private async Task<(RenderResult?, BlobMedia?)> RenderMediaAsync(
+    private async Task<(RenderResult?, BlobMedia?, byte[]?)> RenderMediaAsync(
         ContentHash hash,
         string path,
         CancellationToken ct
@@ -309,12 +329,12 @@ internal sealed partial class ThumbnailHandler(
                 LogToolMissing(logger, e.Message);
             }
 
-            return (null, null);
+            return (null, null, null);
         }
 
         if (probe is null)
         {
-            return (RenderResult.Unsupported, null);
+            return (RenderResult.Unsupported, null, null);
         }
 
         var size = probe.DisplaySize;
@@ -348,11 +368,29 @@ internal sealed partial class ThumbnailHandler(
             still = await ffmpeg.CoverAsync(path, cover.Index, ct);
         }
 
+        // Videos have seek previews instead; a waveform is for listening.
+        Waveform? waveform = null;
+        if (probe.Video is null && probe.Audio is not null)
+        {
+            using (DokumentTelemetry.ActivitySource.StartActivity("waveform"))
+            {
+                waveform = await ffmpeg.WaveformAsync(path, ct);
+            }
+
+            if (waveform is { Count: 0 })
+            {
+                waveform = null;
+            }
+        }
+
+        media.HasCover = probe.Video is null && still is not null;
+        media.HasWaveform = waveform is not null;
         var result =
             still is not null ? thumbnailer.RenderStill(still, size?.Width, size?.Height, ct)
             : probe.Video is not null ? RenderResult.Failed("ffmpeg couldn't read a frame.")
+            : waveform is not null ? thumbnailer.RenderWaveform(waveform, ct)
             : RenderResult.Unsupported;
-        return (result, media);
+        return (result, media, waveform?.Encode());
     }
 
     /// <summary>
@@ -389,6 +427,8 @@ internal sealed partial class ThumbnailHandler(
             stored.Width = media.Width;
             stored.Height = media.Height;
             stored.Plan = media.Plan;
+            stored.HasCover = media.HasCover;
+            stored.HasWaveform = media.HasWaveform;
         }
 
         stored.UpdatedAt = now;

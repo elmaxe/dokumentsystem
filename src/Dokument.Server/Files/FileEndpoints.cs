@@ -55,6 +55,13 @@ public static class FileEndpoints
                 "A WebP thumbnail of the file: small (256 px) for lists, medium (640 px) for the grid. 404 until the worker has made one; see NodeDto.thumbnail."
             );
         files
+            .MapGet("/nodes/{id:guid}/waveform", GetWaveform)
+            .WithName("GetWaveform")
+            .WithDescription(
+                "An audio file's loudness over time, for the player's timeline: a 16-byte header (\"DKWF\", version 1, three zero bytes, seconds per slice as float32, slice count as uint32, little-endian), then three bytes per slice: the lowest sample's size, the highest sample and the RMS, scaled so the loudest sample is 255. 404 until the worker has made one; see NodeDto.media.hasWaveform. Not audited."
+            )
+            .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream");
+        files
             .MapGet("/nodes/{id:guid}/preview", GetPreview)
             .WithName("GetPreview")
             .WithDescription(
@@ -313,6 +320,30 @@ public static class FileEndpoints
             await previews.FindAsync(content.Version.BlobHash, kind, ct) is { } thumbnail
             && File.Exists(thumbnail.PhysicalPath)
             ? Rendition(context, thumbnail)
+            : TypedResults.NotFound();
+    }
+
+    private static async Task<Results<PhysicalFileHttpResult, NotFound>> GetWaveform(
+        Guid id,
+        Guid? versionId,
+        HttpContext context,
+        DriveService drive,
+        PreviewService previews,
+        CancellationToken ct
+    )
+    {
+        var content = await drive.OpenContentAsync(
+            context.Actor(),
+            id,
+            versionId,
+            audited: false,
+            ct
+        );
+        return
+            await previews.FindAsync(content.Version.BlobHash, RenditionKind.Waveform, ct)
+                is { } waveform
+            && File.Exists(waveform.PhysicalPath)
+            ? Rendition(context, waveform)
             : TypedResults.NotFound();
     }
 

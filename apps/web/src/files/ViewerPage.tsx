@@ -1,4 +1,4 @@
-import { captionsUrl, contentUrl, previewUrl, seekPreviewsUrl, thumbnailUrl, type NodeDto } from "@dokument/api";
+import { captionsUrl, contentUrl, previewUrl, seekPreviewsUrl, thumbnailUrl, waveformUrl, type NodeDto } from "@dokument/api";
 import {
   Banner,
   Button,
@@ -59,17 +59,20 @@ function previewOf(node: NodeDto, versionId: string | null | undefined, refused:
   const src = previewUrl(node.id, versionId);
   // What the worker found applies to the current version; an older one just gets what the server has for it.
   if (type !== "video" && type !== "audio") return { type, src };
-  const poster = type === "video" && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
   const media = versionId === node.currentVersionId ? node.media : null;
+  // An audio file without cover art has its waveform as its thumbnail, which isn't a cover for the player.
+  const pictured = type === "video" || !!media?.hasCover;
+  const poster = pictured && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
+  const waveform = type === "audio" && media?.hasWaveform ? waveformUrl(node.id, versionId) : undefined;
   if (!media && node.thumbnail === "pending" && !webMedia.test(node.mimeType ?? "")) return { type: "preparing" };
   // The frames over the timeline while seeking, once the worker has made them (§14).
   const seekPreviews = media?.seekPreviews ? { src: seekPreviewsUrl(node.id), ...media.seekPreviews } : undefined;
-  if (!media || media.copy === "notNeeded") return { type, src, poster, seekPreviews };
+  if (!media || media.copy === "notNeeded") return { type, src, poster, seekPreviews, waveform };
 
   const original = playsOriginal(node) ? previewUrl(node.id, versionId, { original: true }) : null;
   if (media.copy === "ready")
-    return original ? { type, src: original, fallbacks: [src], poster, seekPreviews } : { type, src, poster, seekPreviews };
-  if (original) return { type, src: original, poster, seekPreviews };
+    return original ? { type, src: original, fallbacks: [src], poster, seekPreviews, waveform } : { type, src, poster, seekPreviews, waveform };
+  if (original) return { type, src: original, poster, seekPreviews, waveform };
   if (media.copy === "failed" || refused) return { type: "unplayable" };
   return { type: "converting", waiting: media.copy !== "making", progress: media.progress ?? undefined };
 }

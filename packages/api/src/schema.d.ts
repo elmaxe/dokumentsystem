@@ -315,6 +315,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/waveform": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description An audio file's loudness over time, for the player's timeline: a 16-byte header ("DKWF", version 1, three zero bytes, seconds per slice as float32, slice count as uint32, little-endian), then three bytes per slice: the lowest sample's size, the highest sample and the RMS, scaled so the loudest sample is 255. 404 until the worker has made one; see NodeDto.media.hasWaveform. Not audited. */
+        get: operations["GetWaveform"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/preview": {
         parameters: {
             query?: never;
@@ -1841,6 +1858,8 @@ export interface components {
             copy: components["schemas"]["CopyState"];
             /** Format: int32 */
             progress: null | number;
+            hasCover: boolean;
+            hasWaveform: boolean;
             seekPreviews: null | components["schemas"]["SeekPreviewsDto"];
         };
         MlEndpointDto: {
@@ -2786,6 +2805,35 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetWaveform: {
+        parameters: {
+            query?: {
+                versionId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Not Found */
             404: {
                 headers: {

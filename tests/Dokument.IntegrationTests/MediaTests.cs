@@ -188,6 +188,47 @@ public sealed class MediaTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Audio_gets_a_waveform_that_is_its_tile_without_cover_art()
+    {
+        await using var app = await DokumentApp.StartAsync(postgres, FastWorker);
+        using var admin = await SignInAsync(app, Admin);
+        var song = await UploadAsync(
+            admin,
+            "tone.mp3",
+            TestFiles.Audio("tone.mp3", "-c:a", "libmp3lame"),
+            null
+        );
+        var clip = await UploadAsync(admin, "phone.mp4", Mp4, null);
+
+        var nodes = await WaitAsync(admin, n => n.Media is not null);
+        var audio = nodes[song].Media!;
+        Assert.True(audio.HasWaveform);
+        Assert.False(audio.HasCover);
+        // Its tile is drawn from the waveform.
+        Assert.Equal(ThumbnailState.Ready, nodes[song].Thumbnail);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await admin.GetAsync($"/api/v1/nodes/{song}/thumbnail")).StatusCode
+        );
+
+        var response = await admin.GetAsync($"/api/v1/nodes/{song}/waveform");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/octet-stream", response.Content.Headers.ContentType!.MediaType);
+        var slices = Dokument.Worker.Media.Waveform.Decode(
+            await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken),
+            out var seconds
+        );
+        Assert.InRange(slices.Length * seconds, 3.9, 4.2);
+
+        // Videos have seek previews instead.
+        Assert.False(nodes[clip].Media!.HasWaveform);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await admin.GetAsync($"/api/v1/nodes/{clip}/waveform")).StatusCode
+        );
+    }
+
+    [Fact]
     public async Task Videos_of_ten_seconds_or_more_get_seek_previews_for_the_timeline()
     {
         await using var app = await DokumentApp.StartAsync(postgres, FastWorker);
