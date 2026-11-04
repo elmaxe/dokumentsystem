@@ -81,6 +81,16 @@ public static class WorkerRole
             )
         );
 
+        services.AddScoped<SeekPreviewsHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(
+                JobType.SeekPreviews,
+                typeof(SeekPreviewsHandler),
+                worker.SeekPreviewsConcurrency,
+                worker.SeekPreviewsJobTimeout
+            )
+        );
+
         services.AddScoped<TranscribeHandler>();
         services.AddSingleton(
             new JobHandlerRegistration(

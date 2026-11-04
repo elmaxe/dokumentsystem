@@ -14,3 +14,5 @@ export {
   type Sortable,
   type SortKey,
 } from "./files";
+export { parseWaveform, waveColumns, wavePaths, type Waveform, type WaveColumn } from "./waveform";
+export { wordsToText, type PageWord } from "./words";

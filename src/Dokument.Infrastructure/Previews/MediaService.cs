@@ -16,7 +16,10 @@ public sealed record CopyStats(int Count, long Bytes, int Waiting, int Failed);
 /// </summary>
 public sealed class MediaService(DokumentDbContext db, JobQueue jobs, DerivedStore derived)
 {
-    /// <summary>For a listing or the viewer: duration, streams and the copy's state of each media blob. Others are left out.</summary>
+    /// <summary>
+    /// For a listing or the viewer: duration, streams, the copy's state and the seek previews of each media blob.
+    /// Others are left out.
+    /// </summary>
     public async Task<Dictionary<ContentHash, MediaState>> StatesAsync(
         IReadOnlyCollection<ContentHash> hashes,
         CancellationToken ct = default
@@ -48,6 +51,14 @@ public sealed class MediaService(DokumentDbContext db, JobQueue jobs, DerivedSto
             .Select(j => new { j.Subject, j.Status })
             .ToListAsync(ct);
         var jobStatus = active.ToDictionary(j => j.Subject, j => j.Status);
+        var videos = media.Where(m => m.HasVideo).Select(m => m.BlobHash).ToList();
+        var sheets =
+            videos.Count == 0
+                ? []
+                : await db
+                    .Renditions.AsNoTracking()
+                    .Where(r => r.Kind == RenditionKind.SeekPreviews && videos.Contains(r.BlobHash))
+                    .ToDictionaryAsync(r => r.BlobHash, r => (r.Width, r.Height), ct);
         return media.ToDictionary(
             m => m.BlobHash,
             m => new MediaState(
@@ -56,7 +67,12 @@ public sealed class MediaService(DokumentDbContext db, JobQueue jobs, DerivedSto
                 m.HasAudio,
                 m.VideoCodec,
                 CopyStateOf(m, jobStatus.TryGetValue(m.BlobHash.Hex, out var s) ? s : null),
-                m.CopyProgress
+                m.CopyProgress,
+                m.HasCover,
+                m.HasWaveform,
+                sheets.TryGetValue(m.BlobHash, out var sheet)
+                    ? SeekPreviewSheet.From(m.DurationSeconds, sheet.Width, sheet.Height)
+                    : null
             )
         );
     }
@@ -121,6 +137,29 @@ public sealed class MediaService(DokumentDbContext db, JobQueue jobs, DerivedSto
             WHERE m.plan <> 'direct' AND m.copy_status = 'none'
               AND EXISTS (SELECT 1 FROM blobs b WHERE b.hash = m.blob_hash AND b.ref_count > 0)
               AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.type = {JobType.Transcode.Name} AND j.subject = encode(m.blob_hash, 'hex')
+                              AND j.status IN ('queued', 'running', 'failed'))
+            """,
+            ct
+        );
+
+    /// <summary>
+    /// Queues seek previews (§14) for every video of 10 s or more that has none, at background priority, when the
+    /// worker starts. Failed ones are left for an admin. Returns how many were queued.
+    /// </summary>
+    public Task<int> EnqueueMissingSeekPreviewsAsync(
+        DateTimeOffset now,
+        CancellationToken ct = default
+    ) =>
+        db.Database.ExecuteSqlAsync(
+            $"""
+            INSERT INTO jobs (id, type, subject, status, priority, attempts, run_after, created_at)
+            SELECT gen_random_uuid(), {JobType.SeekPreviews.Name}, encode(m.blob_hash, 'hex'), 'queued', {(int)
+                JobPriority.Background}, 0, {now}, {now}
+            FROM blob_media m
+            WHERE m.has_video AND m.duration_seconds >= {SeekPreviewLayout.MinDuration.TotalSeconds}
+              AND EXISTS (SELECT 1 FROM blobs b WHERE b.hash = m.blob_hash AND b.ref_count > 0)
+              AND NOT EXISTS (SELECT 1 FROM renditions r WHERE r.blob_hash = m.blob_hash AND r.kind = {RenditionKind.SeekPreviews.Key()})
+              AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.type = {JobType.SeekPreviews.Name} AND j.subject = encode(m.blob_hash, 'hex')
                               AND j.status IN ('queued', 'running', 'failed'))
             """,
             ct

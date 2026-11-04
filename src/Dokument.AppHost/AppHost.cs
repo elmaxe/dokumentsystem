@@ -175,6 +175,12 @@ web.WithUrl(
 );
 web.WithUrl($"http://{lanHost}:5173", "Server address for the app");
 
+// Through Vite as well, because Keycloak sends Scalar's sign-in back to the public URL.
+web.WithUrl(
+    ReferenceExpression.Create($"{web.GetEndpoint("http")}/scalar/"),
+    "API reference (Scalar)"
+);
+
 builder.Build().Run();
 
 static class Lan

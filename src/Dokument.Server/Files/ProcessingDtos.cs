@@ -4,7 +4,8 @@ using Dokument.Infrastructure.Jobs;
 namespace Dokument.Server.Files;
 
 /// <summary>
-/// A kind of job, as the API names it: a file's processing steps (docs/design.md §10.2), playable copies (§14), speech
+/// A kind of job, as the API names it: a file's processing steps (docs/design.md §10.2), playable copies and seek
+/// previews (§14), speech
 /// to text (§11.1), keyword-rule runs (§13.4), then filing a file and a filing rule's "file existing" run (§13.6).
 /// </summary>
 public enum JobKind
@@ -13,6 +14,7 @@ public enum JobKind
     Metadata,
     Text,
     Transcode,
+    SeekPreviews,
     Transcribe,
     TagRule,
     File,
@@ -20,8 +22,8 @@ public enum JobKind
 }
 
 /// <summary>
-/// A step every file goes through, as the API names it (docs/design.md §10.2), and the playable copy only video and
-/// audio files browsers can't play get (§14).
+/// A step every file goes through, as the API names it (docs/design.md §10.2), the playable copy only video and audio
+/// files browsers can't play get, and a video's seek previews (§14).
 /// </summary>
 public enum FileStep
 {
@@ -29,6 +31,7 @@ public enum FileStep
     Metadata,
     Text,
     Transcode,
+    SeekPreviews,
 }
 
 public static class JobKinds
@@ -40,6 +43,7 @@ public static class JobKinds
             _ when type == JobType.Metadata => FileStep.Metadata,
             _ when type == JobType.Text => FileStep.Text,
             _ when type == JobType.Transcode => FileStep.Transcode,
+            _ when type == JobType.SeekPreviews => FileStep.SeekPreviews,
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Not a file step."),
         };
 
@@ -50,6 +54,7 @@ public static class JobKinds
             _ when type == JobType.Metadata => JobKind.Metadata,
             _ when type == JobType.Text => JobKind.Text,
             _ when type == JobType.Transcode => JobKind.Transcode,
+            _ when type == JobType.SeekPreviews => JobKind.SeekPreviews,
             _ when type == JobType.Transcribe => JobKind.Transcribe,
             _ when type == JobType.TagRule => JobKind.TagRule,
             _ when type == JobType.File => JobKind.File,
@@ -71,6 +76,7 @@ public static class JobKinds
             JobKind.Thumbnail => JobType.Thumbnail,
             JobKind.Metadata => JobType.Metadata,
             JobKind.Transcode => JobType.Transcode,
+            JobKind.SeekPreviews => JobType.SeekPreviews,
             JobKind.Transcribe => JobType.Transcribe,
             JobKind.TagRule => JobType.TagRule,
             JobKind.File => JobType.File,
@@ -80,7 +86,7 @@ public static class JobKinds
 }
 
 /// <summary>Where the worker is with one file (the Processing section of the details panel).</summary>
-/// <param name="Steps">Thumbnail, metadata and text, in that order, then the playable copy for media that needs one.</param>
+/// <param name="Steps">Thumbnail, metadata and text, in that order, then the playable copy for media that needs one and a video's seek previews.</param>
 public sealed record FileProcessing(List<ProcessingStepDto> Steps);
 
 /// <param name="At">When it started (running), finished, or gave up (failed).</param>

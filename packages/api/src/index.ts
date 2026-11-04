@@ -54,6 +54,7 @@ export type FileProcessing = components["schemas"]["FileProcessing"];
 export type ProcessingStep = components["schemas"]["ProcessingStepDto"];
 export type FileDetailsDto = components["schemas"]["FileDetailsDto"];
 export type FileTextDto = components["schemas"]["FileTextDto"];
+export type RecognizedWordsDto = components["schemas"]["RecognizedWordsDto"];
 export type TextPage = components["schemas"]["TextPageDto"];
 export type TakenDto = components["schemas"]["TakenDto"];
 export type DetailField = components["schemas"]["DetailField"];
@@ -101,6 +102,11 @@ export function thumbnailUrl(nodeId: string, versionId?: string | null, size: "s
   return `${baseUrl}/api/v1/nodes/${nodeId}/thumbnail${query ? `?${query}` : ""}`;
 }
 
+/** An audio file's waveform for the player (§14), once `media.hasWaveform`. Parse it with `parseWaveform`. Not audited. */
+export function waveformUrl(nodeId: string, versionId?: string | null, baseUrl = ""): string {
+  return `${baseUrl}/api/v1/nodes/${nodeId}/waveform${versionId ? `?versionId=${versionId}` : ""}`;
+}
+
 /**
  * What the viewer loads: a rendition for images browsers can't show, the playable copy of a video browsers can't
  * play, otherwise the original, inline. `original` asks for the original video even when there is a copy. Not audited.
@@ -115,6 +121,14 @@ export function previewUrl(
 }
 
 /** A video's captions as WebVTT, made from its transcript (§11.1). Only there once the transcript has lines. */
+/**
+ * A video's seek previews: one WebP of frames along the video, laid out as `NodeDto.media.seekPreviews` says (§14).
+ * Not audited.
+ */
+export function seekPreviewsUrl(nodeId: string, baseUrl = ""): string {
+  return `${baseUrl}/api/v1/nodes/${nodeId}/seek-previews`;
+}
+
 export function captionsUrl(nodeId: string, baseUrl = ""): string {
   return `${baseUrl}/api/v1/nodes/${nodeId}/captions.vtt`;
 }
