@@ -188,6 +188,26 @@ public sealed class FileDetailsTests(PostgresFixture postgres)
         );
         Assert.NotEmpty(Assert.Single(matches!.Pages).Boxes);
 
+        // So does the Text toggle: every word that was read, with its box.
+        var words = await alice.GetFromJsonAsync<RecognizedWordsDto>(
+            $"/api/v1/nodes/{scan}/words?page=1",
+            Json.Options,
+            TestContext.Current.CancellationToken
+        );
+        Assert.Equal([1], words!.Pages);
+        Assert.Contains(words.Words, w => w.Text == "Apotek");
+        Assert.All(
+            words.Words,
+            w => Assert.True(w is { X: >= 0 and < 1, Y: >= 0 and < 1, Width: > 0, Height: > 0 })
+        );
+        var none = await alice.GetFromJsonAsync<RecognizedWordsDto>(
+            $"/api/v1/nodes/{scan}/words?page=2",
+            Json.Options,
+            TestContext.Current.CancellationToken
+        );
+        Assert.Equal([1], none!.Pages);
+        Assert.Empty(none.Words);
+
         // Bob has the same bytes, but Alice's correction is hers.
         Assert.False(Assert.Single((await TextAsync(bob, bobsCopy)).Pages).Edited);
         Assert.Empty((await SearchAsync(bob, "medicin")).Results);

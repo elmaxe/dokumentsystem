@@ -34,6 +34,7 @@ export * from "./components/TextField";
 export * from "./components/Transcript";
 export * from "./components/UploadTray";
 export * from "./components/VersionHistory";
+export * from "./components/WordLayer";
 export * from "./lib/fileInfo";
 export * from "./lib/files";
 export * from "./lib/media";

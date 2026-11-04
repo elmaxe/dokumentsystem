@@ -32,6 +32,12 @@ public static class FileDetailsEndpoints
                 "The searchable text of the current version, page by page from `from`, with corrections in place."
             );
         group
+            .MapGet("/nodes/{id:guid}/words", GetWords)
+            .WithName("GetRecognizedWords")
+            .WithDescription(
+                "The words recognized on one page of a scan or photo, with their boxes, for the viewer to show and select, and which pages have any. What was read, not corrections."
+            );
+        group
             .MapPut("/nodes/{id:guid}/text/{pageNo:int}", SetPage)
             .WithName("SetFileTextPage")
             .WithDescription(
@@ -84,6 +90,25 @@ public static class FileDetailsEndpoints
         TypedResults.Ok(
             FileTextDto.From(await details.GetTextAsync(context.Actor(), id, from, limit, ct))
         );
+
+    private static async Task<Ok<RecognizedWordsDto>> GetWords(
+        Guid id,
+        HttpContext context,
+        FileDetailsService details,
+        CancellationToken ct,
+        int page = 1
+    )
+    {
+        var words = await details.GetWordsAsync(context.Actor(), id, page, ct);
+        return TypedResults.Ok(
+            new RecognizedWordsDto(
+                [.. words.Pages],
+                words
+                    .Words.Select(w => new RecognizedWordDto(w.X, w.Y, w.Width, w.Height, w.Text))
+                    .ToList()
+            )
+        );
+    }
 
     private static async Task<NoContent> SetPage(
         Guid id,
@@ -247,3 +272,16 @@ public sealed record FileTextDto(
 }
 
 public sealed record FileTextPageRequest(string Text);
+
+/// <summary>A recognized word; the box is <c>x</c>, <c>y</c>, <c>width</c> and <c>height</c> as fractions of the page.</summary>
+public sealed record RecognizedWordDto(
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    string Text
+);
+
+/// <param name="Pages">Pages with recognized words, from 1. Empty when nothing was recognized.</param>
+/// <param name="Words">The asked-for page's words, in reading order.</param>
+public sealed record RecognizedWordsDto(List<int> Pages, List<RecognizedWordDto> Words);

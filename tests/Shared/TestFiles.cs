@@ -200,6 +200,22 @@ internal static class TestFiles
     }
 
     /// <summary>
+    /// Two seconds of a tone, then two of silence, encoded with <paramref name="encode"/> into an audio file named like
+    /// <paramref name="name"/>. Needs ffmpeg on PATH, as the worker does.
+    /// </summary>
+    public static byte[] Audio(string name, params string[] encode) =>
+        Ffmpeg(
+            name,
+            [
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=4,volume='if(lt(t,2),1,0)':eval=frame",
+                .. encode,
+            ]
+        );
+
+    /// <summary>
     /// Two seconds of ffmpeg's test pattern and a tone, encoded with <paramref name="encode"/> into a file named like
     /// <paramref name="name"/>, whose extension picks the container. Needs ffmpeg on PATH, as the worker does.
     /// </summary>
@@ -210,31 +226,30 @@ internal static class TestFiles
     /// <paramref name="seconds"/> of ffmpeg's test pattern (whose counter changes every second) and a tone, at
     /// <paramref name="size"/>, encoded with <paramref name="encode"/>.
     /// </summary>
-    public static byte[] Video(string name, int seconds, string size, params string[] encode)
+    public static byte[] Video(string name, int seconds, string size, params string[] encode) =>
+        Ffmpeg(
+            name,
+            [
+                "-f",
+                "lavfi",
+                "-i",
+                $"testsrc=size={size}:rate=25:duration={seconds}",
+                "-f",
+                "lavfi",
+                "-i",
+                $"sine=frequency=440:duration={seconds}",
+                .. encode,
+            ]
+        );
+
+    private static byte[] Ffmpeg(string name, string[] arguments)
     {
-        var dir = Directory.CreateTempSubdirectory("dokument-video-").FullName;
+        var dir = Directory.CreateTempSubdirectory("dokument-media-").FullName;
         try
         {
             var path = Path.Combine(dir, name);
             var start = new ProcessStartInfo("ffmpeg") { RedirectStandardError = true };
-            foreach (
-                var argument in (string[])
-                    [
-                        "-v",
-                        "error",
-                        "-f",
-                        "lavfi",
-                        "-i",
-                        $"testsrc=size={size}:rate=25:duration={seconds}",
-                        "-f",
-                        "lavfi",
-                        "-i",
-                        $"sine=frequency=440:duration={seconds}",
-                        .. encode,
-                        "-y",
-                        path,
-                    ]
-            )
+            foreach (var argument in (string[])["-v", "error", .. arguments, "-y", path])
             {
                 start.ArgumentList.Add(argument);
             }

@@ -54,6 +54,7 @@ export type FileProcessing = components["schemas"]["FileProcessing"];
 export type ProcessingStep = components["schemas"]["ProcessingStepDto"];
 export type FileDetailsDto = components["schemas"]["FileDetailsDto"];
 export type FileTextDto = components["schemas"]["FileTextDto"];
+export type RecognizedWordsDto = components["schemas"]["RecognizedWordsDto"];
 export type TextPage = components["schemas"]["TextPageDto"];
 export type TakenDto = components["schemas"]["TakenDto"];
 export type DetailField = components["schemas"]["DetailField"];
@@ -99,6 +100,11 @@ export function contentUrl(nodeId: string, versionId?: string, baseUrl = ""): st
 export function thumbnailUrl(nodeId: string, versionId?: string | null, size: "small" | "medium" = "medium", baseUrl = ""): string {
   const query = new URLSearchParams({ ...(versionId ? { versionId } : {}), ...(size === "small" ? { size } : {}) }).toString();
   return `${baseUrl}/api/v1/nodes/${nodeId}/thumbnail${query ? `?${query}` : ""}`;
+}
+
+/** An audio file's waveform for the player (§14), once `media.hasWaveform`. Parse it with `parseWaveform`. Not audited. */
+export function waveformUrl(nodeId: string, versionId?: string | null, baseUrl = ""): string {
+  return `${baseUrl}/api/v1/nodes/${nodeId}/waveform${versionId ? `?versionId=${versionId}` : ""}`;
 }
 
 /**

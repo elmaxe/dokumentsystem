@@ -68,6 +68,8 @@ public sealed class MediaService(DokumentDbContext db, JobQueue jobs, DerivedSto
                 m.VideoCodec,
                 CopyStateOf(m, jobStatus.TryGetValue(m.BlobHash.Hex, out var s) ? s : null),
                 m.CopyProgress,
+                m.HasCover,
+                m.HasWaveform,
                 sheets.TryGetValue(m.BlobHash, out var sheet)
                     ? SeekPreviewSheet.From(m.DurationSeconds, sheet.Width, sheet.Height)
                     : null
