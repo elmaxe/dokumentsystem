@@ -19,7 +19,8 @@ namespace Dokument.Server.Auth;
 /// <c>POST /api/v1/auth/token</c>, for clients that run the IdP's sign-in themselves: the API reference now, the mobile
 /// app in M5 (docs/design.md §5). They send the IdP's code with their PKCE verifier as an OAuth token request. The
 /// server redeems the code as the confidential client, provisions the person as at web login and answers with one of
-/// our own bearer sessions as the access token. The IdP's tokens are dropped.
+/// our own bearer sessions as the access token. The IdP's tokens are dropped. <c>device_name</c> names the session
+/// under active devices.
 /// </summary>
 public static class TokenEndpoint
 {
@@ -31,8 +32,8 @@ public static class TokenEndpoint
             .AllowAnonymous()
             .RequireRateLimiting(AuthSetup.AuthRateLimitPolicy)
             .WithDescription(
-                "An OAuth token request (form: grant_type=authorization_code, code, code_verifier, redirect_uri) "
-                    + "for a code from the IdP. Returns a bearer session as access_token."
+                "An OAuth token request (form: grant_type=authorization_code, code, code_verifier, redirect_uri, and "
+                    + "optionally device_name) for a code from the IdP. Returns a bearer session as access_token."
             );
 
     /// <summary>
@@ -43,6 +44,7 @@ public static class TokenEndpoint
         IHostEnvironment environment
     )
     {
+        yield return AppSignIn.RedirectUri(request);
         if (environment.IsDevelopment())
         {
             yield return ApiReference.RedirectUri(request);
@@ -140,7 +142,9 @@ public static class TokenEndpoint
         var (session, token) = await sessions.CreateAsync(
             user.Id,
             SessionKind.Bearer,
-            DeviceName.FromUserAgent(context.Request.Headers.UserAgent),
+            // The app names the phone ("Pixel 9"); other clients get a name from their User-Agent.
+            DeviceName.From(form["device_name"])
+                ?? DeviceName.FromUserAgent(context.Request.Headers.UserAgent),
             ct
         );
         logger.LogInformation("User {UserId} got a bearer session as {Role}", user.Id, user.Role);

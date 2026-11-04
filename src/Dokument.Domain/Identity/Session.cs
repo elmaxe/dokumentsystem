@@ -1,3 +1,7 @@
+using System.Buffers.Text;
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Dokument.Domain.Identity;
 
 /// <summary>
@@ -26,6 +30,16 @@ public sealed class Session
     public DateTimeOffset? RevokedAt { get; set; }
 
     public bool IsActive(DateTimeOffset now) => RevokedAt is null && ExpiresAt > now;
+
+    /// <summary>
+    /// Proves to the app that this server issued its session, without the token crossing the network (§15.3): an
+    /// HMAC-SHA256 of the nonce keyed by the stored token hash, which the app can compute from its token. The token
+    /// hash never leaves the server, and a proof can't be turned into a session.
+    /// </summary>
+    public string Prove(ProofNonce nonce) =>
+        Base64Url.EncodeToString(
+            HMACSHA256.HashData(TokenHash, Encoding.UTF8.GetBytes(nonce.Value))
+        );
 
     /// <summary>Slides the expiry forward. Returns false when nothing needed saving.</summary>
     public bool Touch(DateTimeOffset now)

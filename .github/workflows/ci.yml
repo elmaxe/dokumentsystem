@@ -27,6 +27,42 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  android:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      # The native build needs more disk than the runner leaves free.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/share/swift
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @dokument/tokens build
+      # The native project is generated from app.config.ts, never committed (docs/design.md §15.3, decision 37).
+      - name: Generate the Android project
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --platform android --no-install
+      # Set up after prebuild: the Gradle files it caches by don't exist until then.
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build the debug APK
+        working-directory: apps/mobile/android
+        # One ABI (most phones) keeps the native build within the runner's memory and time.
+        run: ./gradlew assembleDebug --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dokumentsystem-debug-apk
+          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
   ml:
     name: ML service
     runs-on: ubuntu-latest

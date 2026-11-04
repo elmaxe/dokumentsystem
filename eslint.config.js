@@ -5,7 +5,9 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/node_modules/**", "**/*.d.ts", "src/**", "tests/**"] },
+  {
+    ignores: ["**/dist/**", "**/node_modules/**", "**/.expo/**", "**/*.d.ts", "src/**", "tests/**"],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -19,6 +21,21 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
     },
+  },
+  {
+    files: ["apps/mobile/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    languageOptions: { globals: { __DEV__: "readonly" } },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      // Metro bundles fonts and images through require.
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  {
+    files: ["apps/mobile/*.config.js", "apps/mobile/plugins/*.js"],
+    languageOptions: { sourceType: "commonjs", globals: globals.node },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
   },
   {
     files: ["packages/ui/.storybook/**", "**/*.stories.tsx"],

@@ -132,6 +132,16 @@ public sealed class SessionAuthenticationHandler(
             return (bearer.Length > 0 ? bearer : null, false);
         }
 
+        // WebSockets can't send headers from a browser or React Native, so SignalR puts the token in the query. Only
+        // the live hub reads it there, so tokens don't end up in other URLs (docs/design.md §15.4).
+        if (
+            Request.Path.StartsWithSegments(Live.LiveHub.Path)
+            && Request.Query["access_token"].ToString() is { Length: > 0 } queryToken
+        )
+        {
+            return (queryToken, false);
+        }
+
         return
             Request.Cookies.TryGetValue(SessionAuthentication.CookieName, out var cookie)
             && cookie.Length > 0
