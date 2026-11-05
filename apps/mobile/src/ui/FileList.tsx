@@ -29,7 +29,8 @@ const pairs = (nodes: NodeDto[]) =>
 
 /**
  * Folders, then files, as a grid or a list (docs/design.md §16.4). Rows are flattened so long folders scroll
- * smoothly. A tap opens a file, a long press or the more button its actions.
+ * smoothly. A tap opens a file and the more button its actions. With `onSelect`, a long press on a file selects it,
+ * and while any are selected a tap selects or unselects (§8.4); without it, a long press opens the actions.
  */
 export function FileList({
   nodes,
@@ -43,6 +44,8 @@ export function FileList({
   meta,
   keepOrder,
   view,
+  selected,
+  onSelect,
 }: {
   nodes: NodeDto[];
   onOpenFolder: (node: NodeDto) => void;
@@ -58,10 +61,17 @@ export function FileList({
   keepOrder?: boolean;
   /** A fixed look, such as a list for Recent, whose lines say more than a tile has room for. */
   view?: "grid" | "list";
+  /** The selected files' ids. */
+  selected?: ReadonlySet<string>;
+  /** Selects or unselects a file. */
+  onSelect?: (node: NodeDto) => void;
 }) {
   const { t, i18n } = useTranslation();
   const prefs = useListPrefs();
   const theme = useTheme();
+  const selecting = !!selected && selected.size > 0;
+  const press = (node: NodeDto) => (selecting && onSelect ? onSelect(node) : onOpenFile(node));
+  const longPress = (node: NodeDto) => (onSelect ? onSelect(node) : onMore(node));
 
   const rows = useMemo<Row[]>(() => {
     const sorted = keepOrder
@@ -155,7 +165,10 @@ export function FileList({
                     key={node.id}
                     node={node}
                     meta={meta}
-                    onPress={() => onOpenFile(node)}
+                    selected={selected?.has(node.id)}
+                    selecting={selecting}
+                    onPress={() => press(node)}
+                    onLongPress={() => longPress(node)}
                     onMore={() => onMore(node)}
                   />
                 ))}
@@ -167,7 +180,10 @@ export function FileList({
               <FileRow
                 node={row.node}
                 meta={meta}
-                onPress={() => onOpenFile(row.node)}
+                selected={selected?.has(row.node.id)}
+                selecting={selecting}
+                onPress={() => press(row.node)}
+                onLongPress={() => longPress(row.node)}
                 onMore={() => onMore(row.node)}
               />
             );
@@ -250,29 +266,54 @@ function Thumbnail({
   );
 }
 
+/** A round check in a file's corner while files are being selected. */
+function SelectMark({ selected }: { selected?: boolean }) {
+  return (
+    <View
+      className={`h-6 w-6 items-center justify-center rounded-full ${selected ? "bg-primary" : "border-2 border-outline bg-surface"}`}
+    >
+      {selected ? <Icon name="check" size={16} color="on-primary" /> : null}
+    </View>
+  );
+}
+
 function FileTile({
   node,
   meta,
+  selected,
+  selecting,
   onPress,
+  onLongPress,
   onMore,
 }: {
   node: NodeDto;
   meta?: (node: NodeDto) => string;
+  selected?: boolean;
+  selecting?: boolean;
   onPress: () => void;
+  onLongPress: () => void;
   onMore: () => void;
 }) {
   const { t } = useTranslation();
   const metaOf = useMeta(meta);
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={selecting ? "checkbox" : "button"}
+      accessibilityState={selecting ? { checked: !!selected } : undefined}
       accessibilityLabel={node.name}
       accessibilityHint={metaOf(node)}
       onPress={onPress}
-      onLongPress={onMore}
-      className="min-w-0 flex-1 overflow-hidden rounded-md border border-outline-variant bg-surface-container-lowest active:opacity-80"
+      onLongPress={onLongPress}
+      className={`min-w-0 flex-1 overflow-hidden rounded-md active:opacity-80 ${selected ? "border-2 border-primary bg-secondary-container" : "border border-outline-variant bg-surface-container-lowest"}`}
     >
-      <Thumbnail node={node} size="medium" className="h-32" />
+      <View>
+        <Thumbnail node={node} size="medium" className="h-32" />
+        {selecting ? (
+          <View className="absolute left-2 top-2">
+            <SelectMark selected={selected} />
+          </View>
+        ) : null}
+      </View>
       <View className="flex-row items-center gap-1.5 py-2 pl-2.5 pr-1">
         <FileTypeIcon kind={kindOfNode(node)} size={20} />
         <View className="min-w-0 flex-1">
@@ -300,25 +341,33 @@ function FileTile({
 function FileRow({
   node,
   meta,
+  selected,
+  selecting,
   onPress,
+  onLongPress,
   onMore,
 }: {
   node: NodeDto;
   meta?: (node: NodeDto) => string;
+  selected?: boolean;
+  selecting?: boolean;
   onPress: () => void;
+  onLongPress: () => void;
   onMore: () => void;
 }) {
   const { t } = useTranslation();
   const metaOf = useMeta(meta);
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={selecting ? "checkbox" : "button"}
+      accessibilityState={selecting ? { checked: !!selected } : undefined}
       accessibilityLabel={node.name}
       accessibilityHint={metaOf(node)}
       onPress={onPress}
-      onLongPress={onMore}
-      className="-mx-4 min-h-16 flex-row items-center gap-3 py-2 pl-4 pr-1 active:bg-surface-container-high"
+      onLongPress={onLongPress}
+      className={`-mx-4 min-h-16 flex-row items-center gap-3 py-2 pl-4 pr-1 active:bg-surface-container-high ${selected ? "bg-secondary-container" : ""}`}
     >
+      {selecting ? <SelectMark selected={selected} /> : null}
       <Thumbnail node={node} size="small" className="h-10 w-10 rounded-sm" />
       <View className="min-w-0 flex-1">
         <View className="flex-row items-center gap-0.5">
