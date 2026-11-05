@@ -6,7 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage, nodeQuery } from "./drive";
-import { pageSheetsQuery, pdf, usePdfTasks } from "./pdf";
+import { pageSheetsQuery, pdf, pdfProblem, usePdfTasks } from "./pdf";
 
 /** The most parts one split makes, as the server says (§8.4). */
 const maxParts = 500;
@@ -143,7 +143,7 @@ export function SplitPage({ fileId, from }: { fileId: string; from?: "viewer" })
         ? navigate({ to: "/folders/$folderId", params: { folderId: node.parentId } })
         : navigate({ to: "/" }));
     } catch (problem) {
-      setError(errorMessage(t, problem));
+      setError(pdfProblem(t, problem));
       setBusy(false);
     }
   };

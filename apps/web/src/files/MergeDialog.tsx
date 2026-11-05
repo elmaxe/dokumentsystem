@@ -2,8 +2,8 @@ import { stemOf, withPdfExtension } from "@dokument/core";
 import { ActionMenu, Button, Dialog, FileTypeIcon, Icon, IconButton, Switch, TextField } from "@dokument/ui";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { errorMessage, type Item } from "./drive";
-import { pdf, usePdfTasks } from "./pdf";
+import type { Item } from "./drive";
+import { pdf, pdfProblem, usePdfTasks } from "./pdf";
 
 /** The most PDFs one merge takes, and the most pages, as the server says (§8.4). */
 const maxFiles = 100;
@@ -75,7 +75,7 @@ export function MergeDialog({ items, onClose, onStarted }: { items: Item[]; onCl
       onStarted();
       onClose();
     } catch (problem) {
-      setError(errorMessage(t, problem));
+      setError(pdfProblem(t, problem));
     }
     setBusy(false);
   };

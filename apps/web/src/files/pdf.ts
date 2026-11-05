@@ -3,7 +3,17 @@ import type { TrayTask } from "@dokument/ui";
 import { queryOptions } from "@tanstack/react-query";
 import { createContext, use } from "react";
 import { api } from "../api";
-import { unwrap } from "./drive";
+import type { useTranslation } from "react-i18next";
+import { ApiError, errorMessage, unwrap } from "./drive";
+
+/**
+ * Why a merge or split was refused. The server's sentence for a refused request names the file and what's wrong ("is
+ * still being processed", "has fewer pages"), which says more than the general one about names.
+ */
+export function pdfProblem(t: ReturnType<typeof useTranslation>["t"], error: unknown): string {
+  if (error instanceof ApiError && error.problem.code === "invalidRequest" && error.problem.detail) return error.problem.detail;
+  return errorMessage(t, error);
+}
 
 /** Merging and splitting PDFs (docs/design.md §8.4). */
 export const pdf = {
