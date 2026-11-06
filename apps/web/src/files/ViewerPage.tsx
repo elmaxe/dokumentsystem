@@ -310,11 +310,18 @@ export function ViewerPage({
           ) : undefined
         }
         menuActions={[
+          ...(details.data.node.pdf?.readable && !pin
+            ? [{ id: "split", icon: "call_split", label: t("pdf.split.action") }]
+            : []),
           item.starred
             ? { id: "unstar", icon: "star", label: t("actions.unstar") }
             : { id: "star", icon: "star", label: t("actions.star") },
         ]}
-        onAction={(id) => void setStar(id === "star")}
+        onAction={(id) =>
+          id === "split"
+            ? void navigate({ to: "/files/$fileId/split", params: { fileId }, search: { from: "viewer" } })
+            : void setStar(id === "star")
+        }
         marks={marks}
         recognized={
           showsWords && words.data

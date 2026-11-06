@@ -31,6 +31,12 @@ public static class AuditActions
     public const string FolderCreate = "folder.create";
     public const string FileUpload = "file.upload";
     public const string FileCopy = "file.copy";
+
+    /// <summary>A new file made by merging PDFs (§8.4), naming its sources.</summary>
+    public const string PdfMerge = "file.pdf_merge";
+
+    /// <summary>A new file made by splitting a PDF (§8.4), naming the source and its pages.</summary>
+    public const string PdfSplit = "file.pdf_split";
     public const string VersionUpload = "version.upload";
     public const string VersionRestore = "version.restore";
     public const string VersionKeepForever = "version.keep_forever";

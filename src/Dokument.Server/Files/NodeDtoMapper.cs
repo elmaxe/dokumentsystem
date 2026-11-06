@@ -38,6 +38,13 @@ public sealed class NodeDtoMapper(
         var processing = await jobs.ActiveAsync(hashes, ct);
         var media = await mediaService.StatesAsync(hashes, ct);
         var documents = await previews.DocumentsAsync(hashes, ct);
+        var pdfs = await previews.PdfStatesAsync(
+            nodes
+                .Where(n => n.CurrentVersion?.MimeType == PdfService.PdfMimeType)
+                .Select(n => n.CurrentVersion!.BlobHash)
+                .ToList(),
+            ct
+        );
         var folders = await drive.FolderContentsAsync(nodes, ct);
         var starred =
             http.HttpContext?.User.Identity?.IsAuthenticated == true
@@ -62,7 +69,8 @@ public sealed class NodeDtoMapper(
                     media,
                     documents,
                     roles,
-                    shared
+                    shared,
+                    pdfs
                 )
             )
             .ToList();

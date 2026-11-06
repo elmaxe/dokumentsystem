@@ -36,6 +36,13 @@ public enum RenditionKind
     /// its own stage, so making thumbnails again keeps it.
     /// </summary>
     SeekPreviews,
+
+    /// <summary>
+    /// Every page of a PDF, small, for the split screen (§8.4): WebP sheets of up to <see cref="PageSheetLayout.PerSheet"/>
+    /// pages, each fitted into a transparent cell. <see cref="Rendition.Count"/> is the page count; the rendition's
+    /// <see cref="Rendition.StorageKey"/> is the first sheet, and <see cref="DerivedKey.ForPageSheet"/> names the rest.
+    /// </summary>
+    PageSheets,
 }
 
 public static class RenditionKinds
@@ -50,7 +57,7 @@ public static class RenditionKinds
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
-    /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>, <c>playable</c>, <c>document</c>, <c>waveform</c>, <c>seek</c>.</summary>
+    /// <summary>The name used in the database and in file names, as in §6: <c>thumb_s</c>, <c>thumb_m</c>, <c>preview</c>, <c>playable</c>, <c>document</c>, <c>waveform</c>, <c>seek</c>, <c>pages</c>.</summary>
     public static string Key(this RenditionKind kind) =>
         kind switch
         {
@@ -61,6 +68,7 @@ public static class RenditionKinds
             RenditionKind.Document => "document",
             RenditionKind.Waveform => "waveform",
             RenditionKind.SeekPreviews => "seek",
+            RenditionKind.PageSheets => "pages",
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
@@ -74,6 +82,7 @@ public static class RenditionKinds
             "document" => RenditionKind.Document,
             "waveform" => RenditionKind.Waveform,
             "seek" => RenditionKind.SeekPreviews,
+            "pages" => RenditionKind.PageSheets,
             _ => throw new ArgumentException($"\"{key}\" isn't a rendition kind.", nameof(key)),
         };
 }

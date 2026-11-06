@@ -166,12 +166,13 @@ internal sealed partial class ThumbnailHandler(
             );
         }
 
-        // The playable copy and seek previews are other stages', so making thumbnails again keeps them.
+        // The playable copy, seek previews and page sheets are other stages', so making thumbnails again keeps them.
         var old = await db
             .Renditions.Where(r =>
                 r.BlobHash == hash
                 && r.Kind != RenditionKind.Playable
                 && r.Kind != RenditionKind.SeekPreviews
+                && r.Kind != RenditionKind.PageSheets
             )
             .ToListAsync(ct);
         db.Renditions.RemoveRange(old);

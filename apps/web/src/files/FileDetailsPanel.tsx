@@ -21,6 +21,7 @@ import {
   type Item,
 } from "./drive";
 import { accessPeople, canEdit } from "./sharing";
+import { MadeFrom } from "./MadeFrom";
 import { FileTagsSection } from "./tags";
 
 type Props = {
@@ -209,7 +210,14 @@ export function FileDetailsPanel({
       onManageAccess={item.node.access === "owner" ? onShare : undefined}
       onLeave={sharedDirectly ? onLeave : undefined}
       onStarChange={onStarChange}
-      tags={isFile ? <FileTagsSection item={item} canEdit={editable} /> : undefined}
+      tags={
+        isFile ? (
+          <>
+            <FileTagsSection item={item} canEdit={editable} />
+            {item.node.pdf && tab === "info" && <MadeFrom id={item.id} versionId={versionId} />}
+          </>
+        ) : undefined
+      }
       fileDetails={fileDetails.data && { details: fileDetails.data, onSave: editable ? saveDetails : undefined }}
       fileText={
         fileText.data && {

@@ -101,6 +101,15 @@ public static class WorkerRole
             )
         );
 
+        services.AddScoped<PageSheetsHandler>();
+        services.AddSingleton(
+            new JobHandlerRegistration(JobType.PageSheets, typeof(PageSheetsHandler), 1)
+        );
+
+        // One at a time: PDFium works under one lock anyway (docs/design.md §8.4).
+        services.AddScoped<PdfHandler>();
+        services.AddSingleton(new JobHandlerRegistration(JobType.Pdf, typeof(PdfHandler), 1));
+
         services.AddHostedService<JobRunner>();
         services.AddHostedService<ThumbnailBackfill>();
         services.AddHostedService<ContentBackfill>();

@@ -27,9 +27,11 @@ import { useLiveOffline, useLiveUpdates } from "./live";
 import { useAccountSettings } from "./settings/account";
 import { useFiledMessages } from "./settings/filing";
 import { NameDialog } from "./files/dialogs";
-import { drive, errorMessage, folderQuery, invalidateFolders, nameKey, storageQuery } from "./files/drive";
+import { drive, errorMessage, folderQuery, invalidateFolders, nameKey, nodeQuery, storageQuery } from "./files/drive";
 import { canPickFolders, fromDrop, fromFolderInput } from "./files/folderPicking";
 import { canEdit, useSharedWithYou } from "./files/sharing";
+import { usePdfTasks } from "./files/pdf";
+import { PdfTasksProvider } from "./files/PdfTasksProvider";
 import { UploadProvider } from "./files/uploads";
 import { useUploads } from "./files/uploadsContext";
 import { SearchBox } from "./search/SearchBox";
@@ -47,7 +49,9 @@ const placePaths: Record<Place, string> = {
 export function AppShell() {
   return (
     <UploadProvider>
+      <PdfTasksProvider>
       <Shell />
+      </PdfTasksProvider>
     </UploadProvider>
   );
 }
@@ -58,6 +62,7 @@ function Shell() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const uploads = useUploads();
+  const pdfTasks = usePdfTasks();
   const session = useQuery(sessionQuery);
   useLiveUpdates();
   useFiledMessages();
@@ -249,7 +254,7 @@ function Shell() {
         )}
       </div>
 
-      {inFiles && uploads.items.length + uploads.groups.length === 0 && (
+      {inFiles && uploads.items.length + uploads.groups.length + pdfTasks.tasks.length === 0 && (
         <ActionMenu
           actions={newActions}
           onAction={onNew}
@@ -265,13 +270,39 @@ function Shell() {
         />
       )}
 
-      {uploads.items.length + uploads.groups.length > 0 && (
+      {uploads.items.length + uploads.groups.length + pdfTasks.tasks.length > 0 && (
         <UploadTray
           items={uploads.items}
           groups={uploads.groups}
+          tasks={pdfTasks.tasks}
           collapsed={trayCollapsed}
           onCollapsedChange={setTrayCollapsed}
-          onClose={uploads.clear}
+          onClose={() => {
+            uploads.clear();
+            pdfTasks.clear();
+          }}
+          onCancelTask={(id) => void pdfTasks.cancel(id).catch((error: unknown) => toast(errorMessage(t, error)))}
+          onDismissTask={pdfTasks.dismiss}
+          onRemoveTaskCopies={(id) =>
+            void pdfTasks
+              .removeCopies(id)
+              .then((count) => toast(t("toasts.trashed", { count })))
+              .catch((error: unknown) => toast(errorMessage(t, error)))
+          }
+          onOpenTask={(id) => {
+            const op = pdfTasks.operations.find((o) => o.id === id);
+            const first = op?.results[0];
+            if (!op || !first) return;
+            setTrayCollapsed(true);
+            if (op.kind === "merge") return void navigate({ to: "/files/$fileId", params: { fileId: first.nodeId } });
+            // A split may have made a folder for its files, so it's the new files' folder that opens.
+            void queryClient
+              .fetchQuery(nodeQuery(first.nodeId))
+              .then(({ node }) =>
+                node.parentId ? navigate({ to: "/folders/$folderId", params: { folderId: node.parentId } }) : navigate({ to: "/" }),
+              )
+              .catch((error: unknown) => toast(errorMessage(t, error)));
+          }}
           onPause={uploads.pause}
           onResume={uploads.resume}
           onRetry={uploads.retry}

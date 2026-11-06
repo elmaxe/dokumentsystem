@@ -29,6 +29,7 @@ public static class ServerRole
         builder.Services.AddExceptionHandler<DriveExceptionHandler>();
         builder.Services.AddHostedService<UploadCleanup>();
         builder.Services.AddHostedService<PurgeSchedule>();
+        builder.Services.AddHostedService<PdfSaveRunner>();
         builder
             .Services.AddSignalR()
             .AddJsonProtocol(options =>
@@ -97,6 +98,7 @@ public static class ServerRole
         api.MapSearchEndpoints();
         api.MapTagEndpoints();
         api.MapFilingEndpoints();
+        api.MapPdfEndpoints();
         api.MapTranscriptEndpoints();
         api.MapTusEndpoints();
         api.MapAdminEndpoints();

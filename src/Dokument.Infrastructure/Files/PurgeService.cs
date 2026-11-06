@@ -283,10 +283,13 @@ public sealed partial class PurgeService(
         List<DerivedKey> renditions = [];
         if (!await db.Blobs.AnyAsync(b => b.Hash == hash, ct))
         {
-            renditions = await db
-                .Renditions.Where(r => r.BlobHash == hash)
-                .Select(r => r.StorageKey)
-                .ToListAsync(ct);
+            renditions = (await db.Renditions.Where(r => r.BlobHash == hash).ToListAsync(ct))
+                .SelectMany(r =>
+                    r.Kind == RenditionKind.PageSheets
+                        ? PageSheetLayout.Keys(hash, r.Count ?? 0)
+                        : [r.StorageKey]
+                )
+                .ToList();
             await db.Renditions.Where(r => r.BlobHash == hash).ExecuteDeleteAsync(ct);
             await db.BlobPreviews.Where(p => p.BlobHash == hash).ExecuteDeleteAsync(ct);
             await db.BlobMedia.Where(m => m.BlobHash == hash).ExecuteDeleteAsync(ct);

@@ -23,6 +23,8 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<FileVersion> FileVersions => Set<FileVersion>();
     public DbSet<Blob> Blobs => Set<Blob>();
     public DbSet<Upload> Uploads => Set<Upload>();
+    public DbSet<PdfOperation> PdfOperations => Set<PdfOperation>();
+    public DbSet<FileOrigin> FileOrigins => Set<FileOrigin>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<BlobPreview> BlobPreviews => Set<BlobPreview>();
@@ -232,6 +234,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(r => r.MimeType).HasColumnName("mime_type");
             e.Property(r => r.Width).HasColumnName("width");
             e.Property(r => r.Height).HasColumnName("height");
+            e.Property(r => r.Count).HasColumnName("count");
             e.Property(r => r.CreatedAt).HasColumnName("created_at");
         });
 
@@ -648,6 +651,61 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(u => u.UserId);
             e.HasIndex(u => u.ExpiresAt);
+        });
+
+        modelBuilder.Entity<PdfOperation>(e =>
+        {
+            e.ToTable("pdf_operations");
+            e.HasKey(o => o.Id);
+            e.Property(o => o.Id).HasColumnName("id");
+            e.Property(o => o.Kind)
+                .HasColumnName("kind")
+                .HasConversion(LowercaseEnum<PdfOperationKind>());
+            e.Property(o => o.UserId).HasColumnName("user_id");
+            e.Property(o => o.OwnerId).HasColumnName("owner_id");
+            e.Property(o => o.FolderId).HasColumnName("folder_id");
+            e.Property(o => o.NewFolderName)
+                .HasColumnName("new_folder_name")
+                .HasConversion(nodeName!);
+            e.Property(o => o.TrashSources).HasColumnName("trash_sources");
+            e.Property(o => o.Sources).HasColumnName("sources").AsJson();
+            e.Property(o => o.Parts).HasColumnName("parts").AsJson();
+            e.Property(o => o.State)
+                .HasColumnName("state")
+                .HasConversion(LowercaseEnum<PdfOperationState>());
+            e.Property(o => o.PagesDone).HasColumnName("pages_done");
+            e.Property(o => o.PagesTotal).HasColumnName("pages_total");
+            e.Property(o => o.ReservedBytes).HasColumnName("reserved_bytes");
+            e.Property(o => o.Made).HasColumnName("made").AsJson();
+            e.Property(o => o.Results).HasColumnName("results").AsJson();
+            e.Property(o => o.Error).HasColumnName("error");
+            e.Property(o => o.CreatedAt).HasColumnName("created_at");
+            e.Property(o => o.FinishedAt).HasColumnName("finished_at");
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(o => o.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(o => new { o.UserId, o.CreatedAt });
+        });
+
+        modelBuilder.Entity<FileOrigin>(e =>
+        {
+            e.ToTable("file_origins");
+            e.HasKey(o => new { o.VersionId, o.Position });
+            e.Property(o => o.VersionId).HasColumnName("version_id");
+            e.Property(o => o.Position).HasColumnName("position");
+            e.Property(o => o.Kind)
+                .HasColumnName("kind")
+                .HasConversion(LowercaseEnum<PdfOperationKind>());
+            e.Property(o => o.SourceNodeId).HasColumnName("source_node_id");
+            e.Property(o => o.SourceName).HasColumnName("source_name").HasConversion(nodeName);
+            e.Property(o => o.SourceFirst).HasColumnName("source_first");
+            e.Property(o => o.SourceLast).HasColumnName("source_last");
+            e.Property(o => o.First).HasColumnName("first_page");
+            e.HasOne<FileVersion>()
+                .WithMany()
+                .HasForeignKey(o => o.VersionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Star>(e =>

@@ -45,6 +45,7 @@ import {
 } from "./drive";
 import { ShareNodeDialog } from "./ShareNodeDialog";
 import { canEdit, invalidateSharing } from "./sharing";
+import { MergeDialog } from "./MergeDialog";
 import { BulkTagsDialog } from "./tags";
 import { useUploads } from "./uploadsContext";
 
@@ -154,6 +155,7 @@ export function FilesPage({ source }: { source: FilesSource }) {
   const [sharing, setSharing] = useState<Item | null>(null);
   const [leaving, setLeaving] = useState<Item | null>(null);
   const [losing, setLosing] = useState<{ items: Item[]; target: string | null; people: Person[] } | null>(null);
+  const [merging, setMerging] = useState<Item[]>([]);
   const versionInput = useRef<HTMLInputElement>(null);
 
   const rows: Row[] =
@@ -328,6 +330,12 @@ export function FilesPage({ source }: { source: FilesSource }) {
       case "trash":
         void trash(targets);
         break;
+      case "merge":
+        setMerging(targets);
+        break;
+      case "split":
+        void navigate({ to: "/files/$fileId/split", params: { fileId: first.id } });
+        break;
       default:
         toast(t("common.notYet"));
     }
@@ -337,6 +345,10 @@ export function FilesPage({ source }: { source: FilesSource }) {
     targets.every((item) => item.starred)
       ? { id: "unstar", icon: "star", label: t("actions.unstar") }
       : { id: "star", icon: "star", label: t("actions.star") };
+
+  /** PDFs the server could read: only those can be merged or split (§8.4). */
+  const readablePdf = (item: Item) => !!item.node.pdf?.readable;
+  const splitAction: MenuAction = { id: "split", icon: "call_split", label: t("pdf.split.action") };
 
   const menu = (item: Row): MenuAction[] => {
     const edit = editable([item]);
@@ -351,6 +363,8 @@ export function FilesPage({ source }: { source: FilesSource }) {
       ...(edit ? [{ id: "rename", icon: "edit", label: t("actions.rename"), separatorBefore: isFolder(item) }] : []),
       ...(movable([item]) ? [{ id: "move", icon: "drive_file_move", label: t("actions.move") }] : []),
       ...(edit && !isFolder(item) ? [{ id: "tags", icon: "sell", label: t("tags.action") }] : []),
+      // Split adds the parts next to the file, so it takes being able to change that folder (§9).
+      ...(edit && readablePdf(item) ? [splitAction] : []),
       starAction([item]),
       ...(source.place === "folder" || source.place === "shared"
         ? []
@@ -508,11 +522,15 @@ export function FilesPage({ source }: { source: FilesSource }) {
                   ...(editable(chosen) && chosen.some((item) => !isFolder(item))
                     ? [{ id: "tags", icon: "sell", label: t("tags.action") }]
                     : []),
+                  ...(editable(chosen) && chosen.length > 1 && chosen.every(readablePdf)
+                    ? [{ id: "merge", icon: "call_merge", label: t("pdf.merge.action") }]
+                    : []),
                   ...(editable(chosen) && source.place !== "shared"
                     ? [{ id: "trash", icon: "delete", label: t("actions.trash") }]
                     : []),
                 ]}
                 moreActions={[
+                  ...(single && editable([single]) && readablePdf(single) ? [splitAction] : []),
                   ...(single?.node.access === "owner"
                     ? [{ id: "share", icon: "person_add", label: t("actions.share") }]
                     : []),
@@ -646,6 +664,13 @@ export function FilesPage({ source }: { source: FilesSource }) {
       />
 
       <BulkTagsDialog items={tagging} onClose={() => setTagging([])} />
+
+      <MergeDialog
+        key={merging.map((item) => item.id).join()}
+        items={merging}
+        onClose={() => setMerging([])}
+        onStarted={() => setSelected([])}
+      />
 
       <MoveDialog
         key={moving.map((item) => item.id).join()}

@@ -33,6 +33,18 @@ public sealed record JobType
     /// <summary>Speech to text for a video or audio blob, through the ML service (§11.1).</summary>
     public static readonly JobType Transcribe = new("transcribe");
 
+    /// <summary>Every page of a PDF as small images, for the split screen (§8.4). The subject is the blob's hash.</summary>
+    public static readonly JobType PageSheets = new("page-sheets");
+
+    /// <summary>Puts the pages of a merge or split together with PDFium (§8.4). The subject is the operation's id.</summary>
+    public static readonly JobType Pdf = new("pdf");
+
+    /// <summary>
+    /// Adds the PDFs a <see cref="Pdf"/> job made to the drive (§8.4). Run by the server, not the worker, since only the
+    /// server may write originals (§10.4). The subject is the operation's id.
+    /// </summary>
+    public static readonly JobType PdfSave = new("pdf-save");
+
     /// <summary>The steps every file goes through, in pipeline order (§10.2).</summary>
     public static readonly IReadOnlyList<JobType> FileSteps = [Thumbnail, Metadata, Text];
 
@@ -43,6 +55,9 @@ public sealed record JobType
         Transcode,
         SeekPreviews,
         Transcribe,
+        PageSheets,
+        Pdf,
+        PdfSave,
         TagRule,
         File,
         FilingRule,

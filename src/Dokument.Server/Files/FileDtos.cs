@@ -3,6 +3,7 @@ using Dokument.Domain.Previews;
 using Dokument.Domain.Tags;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Jobs;
+using Dokument.Infrastructure.Previews;
 using Dokument.Infrastructure.Tags;
 
 namespace Dokument.Server.Files;
@@ -22,6 +23,7 @@ namespace Dokument.Server.Files;
 /// <param name="ShownAsPdf">Whether <c>/nodes/{id}/preview</c> serves a PDF made of the file, for Office documents.</param>
 /// <param name="Access">What the person asking may do: own it, edit it or only view it (§9).</param>
 /// <param name="Shared">For the owner: whether this node itself is shared with someone. Always false for others.</param>
+/// <param name="Pdf">For PDFs the worker has looked at: pages, for merging and splitting (§8.4). Null for everything else.</param>
 public sealed record NodeDto(
     Guid Id,
     Guid? ParentId,
@@ -44,7 +46,8 @@ public sealed record NodeDto(
     MediaDto? Media,
     bool ShownAsPdf,
     NodeRole Access,
-    bool Shared
+    bool Shared,
+    PdfDto? Pdf
 )
 {
     public static NodeDto From(
@@ -58,7 +61,8 @@ public sealed record NodeDto(
         IReadOnlyDictionary<ContentHash, MediaState> media,
         IReadOnlySet<ContentHash> documents,
         IReadOnlyDictionary<Guid, NodeRole> roles,
-        IReadOnlySet<Guid> shared
+        IReadOnlySet<Guid> shared,
+        IReadOnlyDictionary<ContentHash, PdfState> pdfs
     ) =>
         new(
             node.Id,
@@ -111,9 +115,16 @@ public sealed record NodeDto(
                 : null,
             node.CurrentVersion is { } converted && documents.Contains(converted.BlobHash),
             roles.GetValueOrDefault(node.Id, NodeRole.Viewer),
-            shared.Contains(node.Id)
+            shared.Contains(node.Id),
+            node.CurrentVersion is { } read && pdfs.TryGetValue(read.BlobHash, out var pdf)
+                ? new PdfDto(pdf.PageCount, Readable: pdf.PageCount is not null)
+                : null
         );
 }
+
+/// <param name="PageCount">Null when it can't be read.</param>
+/// <param name="Readable">False for a PDF that is damaged or locked with a password: it can't be merged or split.</param>
+public sealed record PdfDto(int? PageCount, bool Readable);
 
 /// <summary>What the signed-in person may do with a node (§9).</summary>
 public enum NodeRole
