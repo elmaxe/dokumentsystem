@@ -1,4 +1,4 @@
-import { formatBytes } from "@dokument/core";
+import { formatBytes, type PageWord } from "@dokument/core";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
@@ -9,9 +9,10 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { ActionMenu, type MenuAction } from "./Menu";
 import { Progress } from "./Progress";
-import { leadInMs } from "../lib/media";
+import { leadInMs, type SeekPreviews } from "../lib/media";
 import { MediaPlayer } from "./MediaPlayer";
 import { TranscriptPanel, type TranscriptView } from "./Transcript";
+import { TextControls, TextFloatingToggle, useWords, WordLayer, type ViewerText } from "./WordLayer";
 
 const PdfPreview = lazy(() => import("./PdfPreview"));
 const CodePreview = lazy(() => import("./CodePreview"));
@@ -21,7 +22,18 @@ const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 export type PreviewSource =
   | { type: "image" | "pdf" | "text" | "markdown"; src: string }
   /** `fallbacks` are tried in turn if the browser can't play `src`, e.g. the playable copy after the HEVC original. */
-  | { type: "video" | "audio"; src: string; fallbacks?: string[]; poster?: string }
+  /**
+   * `poster` is a video's poster frame or an audio file's cover art; `waveform` is where an audio file's waveform is,
+   * drawn as the timeline (§14).
+   */
+  | {
+      type: "video" | "audio";
+      src: string;
+      fallbacks?: string[];
+      poster?: string;
+      seekPreviews?: SeekPreviews;
+      waveform?: string;
+    }
   /** The worker is still making the rendition the viewer needs, e.g. for a HEIC photo. */
   | { type: "preparing" }
   /** A video or audio file browsers can't play, while the worker makes a copy that plays. `progress` is 0–100. */
@@ -75,6 +87,14 @@ export type FileViewerProps = {
   captions?: string;
   /** Where a recording starts playing, in milliseconds: just before the hit it was opened from. */
   startAtMs?: number;
+  /**
+   * Words the server recognized in scans and photos, for the Text toggle (§14): the pages that have any, and a page's
+   * words. Leave out for an older version, whose words aren't served.
+   */
+  recognized?: { pages: readonly number[]; wordsOn: (page: number) => Promise<readonly PageWord[]> };
+  /** Whether the Text toggle is on. Kept by the page, so it stays on while stepping between files. */
+  textShown?: boolean;
+  onTextShownChange?: (shown: boolean) => void;
 };
 
 /** The file viewer (§14, §16.4): a full-screen preview with the file's actions, its siblings and its details. */
@@ -98,6 +118,9 @@ export function FileViewer({
   onTranscriptRedo,
   captions,
   startAtMs,
+  recognized,
+  textShown = false,
+  onTextShownChange,
 }: FileViewerProps) {
   const { t } = useTranslation();
   const swipe = useRef<{ x: number; y: number } | null>(null);
@@ -107,6 +130,15 @@ export function FileViewer({
   const previousMarked = markedPages.filter((p) => p < page).at(-1);
   const nextMarked = markedPages.find((p) => p > page);
   const boxesOn = (pageNo: number) => marks?.pages.find((p) => p.pageNo === pageNo)?.boxes ?? [];
+  // Photos and scans with recognized words, and every PDF, which may have text of its own.
+  const text: ViewerText | undefined =
+    onTextShownChange && (preview.type === "pdf" || (preview.type === "image" && recognized?.pages.includes(1)))
+      ? {
+          shown: textShown,
+          onShownChange: onTextShownChange,
+          wordsOn: (pageNo) => (recognized?.pages.includes(pageNo) ? recognized.wordsOn(pageNo) : null),
+        }
+      : undefined;
   const [markdownView, setMarkdownView] = useState<"formatted" | "source">("formatted");
   const [wrap, setWrap] = useStoredFlag("dokument.viewer.wrap");
   const [findRequest, setFindRequest] = useState(0);
@@ -272,7 +304,7 @@ export function FileViewer({
           }}
         >
           {preview.type === "image" ? (
-            <ImagePreview key={preview.src} src={preview.src} alt={item.name} boxes={boxesOn(1)} fallback={noPreview(true)} />
+            <ImagePreview key={preview.src} src={preview.src} alt={item.name} boxes={boxesOn(1)} text={text} fallback={noPreview(true)} />
           ) : preview.type === "pdf" ? (
             <Suspense fallback={<Loading />}>
               <PdfPreview
@@ -282,6 +314,7 @@ export function FileViewer({
                 onPageChange={setPage}
                 terms={marks?.terms}
                 boxes={boxesOn(page)}
+                text={text}
                 fallback={noPreview(true)}
               />
             </Suspense>
@@ -302,8 +335,10 @@ export function FileViewer({
                 key={preview.src}
                 type={preview.type}
                 sources={[preview.src, ...(preview.fallbacks ?? [])]}
-                poster={preview.poster}
-                cover={<AudioCover item={item} />}
+                poster={preview.type === "video" ? preview.poster : undefined}
+                seekPreviews={preview.seekPreviews}
+                cover={<AudioCover name={item.name} src={preview.poster} />}
+                waveform={preview.waveform}
                 fallback={noPreview(true)}
                 mediaRef={media}
                 startAtMs={startAtMs}
@@ -495,12 +530,25 @@ export function MarkOverlay({ boxes }: { boxes: readonly MarkBox[] }) {
   );
 }
 
-function ImagePreview({ src, alt, boxes, fallback }: { src: string; alt: string; boxes: readonly MarkBox[]; fallback: ReactNode }) {
+function ImagePreview({
+  src,
+  alt,
+  boxes,
+  text,
+  fallback,
+}: {
+  src: string;
+  alt: string;
+  boxes: readonly MarkBox[];
+  text?: ViewerText;
+  fallback: ReactNode;
+}) {
   const [zoom, setZoom] = useState(1);
   const [state, setState] = useState<"loading" | "loaded" | "failed">("loading");
   const [fit, setFit] = useState<{ width: number; height: number } | null>(null);
   const pan = useDragToPan();
   const image = useRef<HTMLImageElement>(null);
+  const words = useWords(text?.shown ? () => text.wordsOn(1) ?? Promise.resolve([]) : null, src);
 
   // At 100 % the image fits the window with a margin; zooming scales that fitted size, and the area scrolls.
   useEffect(() => {
@@ -540,11 +588,14 @@ function ImagePreview({ src, alt, boxes, fallback }: { src: string; alt: string;
             onError={() => setState("failed")}
             className="size-full max-w-none rounded-sm shadow-elevation-2 select-none"
           />
+          {fit && words && <WordLayer words={words} />}
           {fit && boxes.length > 0 && <MarkOverlay boxes={boxes} />}
         </span>
       </div>
+      {text && state === "loaded" && <TextFloatingToggle text={text} />}
       <ViewerToolbar>
         <ZoomControls zoom={zoom} onZoom={setZoom} disabled={state !== "loaded"} />
+        {text && <TextControls text={text} words={words} />}
       </ViewerToolbar>
     </>
   );
@@ -677,14 +728,14 @@ function useStoredFlag(key: string) {
 }
 
 /** An audio file's cover art, or a note when it has none, and its name, above the player's controls. */
-function AudioCover({ item }: { item: FileItem }) {
+function AudioCover({ name, src }: { name: string; src?: string }) {
   const { t } = useTranslation();
   const [failed, setFailed] = useState(false);
   return (
     <>
-      {item.thumbnail && !failed ? (
+      {src && !failed ? (
         <img
-          src={item.thumbnail}
+          src={src}
           alt={t("viewer.cover")}
           onError={() => setFailed(true)}
           className="size-60 rounded-lg object-cover shadow-elevation-1 max-sm:size-32"
@@ -694,7 +745,7 @@ function AudioCover({ item }: { item: FileItem }) {
           <Icon name="music_note" filled size={96} />
         </span>
       )}
-      <p className="m-0 max-w-full truncate text-title-md">{item.name}</p>
+      <p className="m-0 max-w-full truncate text-title-md">{name}</p>
     </>
   );
 }

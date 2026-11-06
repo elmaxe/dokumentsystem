@@ -140,6 +140,64 @@
         }
       }
     },
+    "/api/v1/auth/token": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "description": "An OAuth token request (form: grant_type=authorization_code, code, code_verifier, redirect_uri, and optionally device_name) for a code from the IdP. Returns a bearer session as access_token.",
+        "operationId": "RedeemCode",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/proof": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "description": "Proves this server issued a bearer session, for the app checking a local address. Returns an HMAC-SHA256 of the nonce keyed by the SHA-256 of the session token. 404 for unknown sessions.",
+        "operationId": "ProveSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProofRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionProof"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/session": {
       "get": {
         "tags": [
@@ -562,6 +620,42 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/waveform": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "An audio file's loudness over time, for the player's timeline: a 16-byte header (\"DKWF\", version 1, three zero bytes, seconds per slice as float32, slice count as uint32, little-endian), then three bytes per slice: the lowest sample's size, the highest sample and the RMS, scaled so the loudest sample is 255. 404 until the worker has made one; see NodeDto.media.hasWaveform. Not audited.",
+        "operationId": "GetWaveform",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          },
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/preview": {
       "get": {
         "tags": [
@@ -598,6 +692,31 @@
         "responses": {
           "200": {
             "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/seek-previews": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "A video's seek previews: one WebP of frames from along the video, laid out as NodeDto.media.seekPreviews says. 404 until the worker has made them, and for audio and clips under 10 s. Not audited, like previews.",
+        "operationId": "GetSeekPreviews",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -980,6 +1099,47 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FileTextDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/words": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "The words recognized on one page of a scan or photo, with their boxes, for the viewer to show and select, and which pages have any. What was read, not corrections.",
+        "operationId": "GetRecognizedWords",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecognizedWordsDto"
                 }
               }
             }
@@ -3513,7 +3673,11 @@
       "AuthConfig": {
         "required": [
           "enabled",
-          "providerName"
+          "providerName",
+          "issuer",
+          "clientId",
+          "scope",
+          "appRedirectUri"
         ],
         "type": "object",
         "properties": {
@@ -3521,6 +3685,30 @@
             "type": "boolean"
           },
           "providerName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "issuer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "clientId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scope": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "appRedirectUri": {
             "type": [
               "null",
               "string"
@@ -4080,7 +4268,8 @@
           "thumbnail",
           "metadata",
           "text",
-          "transcode"
+          "transcode",
+          "seekPreviews"
         ]
       },
       "FileTags": {
@@ -4652,6 +4841,7 @@
           "metadata",
           "text",
           "transcode",
+          "seekPreviews",
           "transcribe",
           "tagRule",
           "file",
@@ -4774,7 +4964,10 @@
           "hasAudio",
           "videoCodec",
           "copy",
-          "progress"
+          "progress",
+          "hasCover",
+          "hasWaveform",
+          "seekPreviews"
         ],
         "type": "object",
         "properties": {
@@ -4806,6 +4999,22 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "hasCover": {
+            "type": "boolean"
+          },
+          "hasWaveform": {
+            "type": "boolean"
+          },
+          "seekPreviews": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SeekPreviewsDto"
+              }
+            ]
           }
         }
       },
@@ -5356,6 +5565,22 @@
           }
         }
       },
+      "ProofRequest": {
+        "required": [
+          "sessionId",
+          "nonce"
+        ],
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nonce": {
+            "type": "string"
+          }
+        }
+      },
       "QuotaDto": {
         "required": [
           "kind",
@@ -5426,6 +5651,59 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RecentItem"
+            }
+          }
+        }
+      },
+      "RecognizedWordDto": {
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "format": "double"
+          },
+          "y": {
+            "type": "number",
+            "format": "double"
+          },
+          "width": {
+            "type": "number",
+            "format": "double"
+          },
+          "height": {
+            "type": "number",
+            "format": "double"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "RecognizedWordsDto": {
+        "required": [
+          "pages",
+          "words"
+        ],
+        "type": "object",
+        "properties": {
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecognizedWordDto"
             }
           }
         }
@@ -5598,6 +5876,38 @@
           "modified"
         ]
       },
+      "SeekPreviewsDto": {
+        "required": [
+          "intervalMs",
+          "count",
+          "columns",
+          "frameWidth",
+          "frameHeight"
+        ],
+        "type": "object",
+        "properties": {
+          "intervalMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "columns": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frameWidth": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "frameHeight": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "ServerInfo": {
         "required": [
           "name",
@@ -5655,6 +5965,17 @@
           "cookie",
           "bearer"
         ]
+      },
+      "SessionProof": {
+        "required": [
+          "proof"
+        ],
+        "type": "object",
+        "properties": {
+          "proof": {
+            "type": "string"
+          }
+        }
       },
       "SetLanguageRequest": {
         "required": [

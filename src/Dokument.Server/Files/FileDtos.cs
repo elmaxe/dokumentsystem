@@ -95,7 +95,18 @@ public sealed record NodeDto(
                     m.HasAudio,
                     m.VideoCodec,
                     m.Copy,
-                    m.Progress
+                    m.Progress,
+                    m.HasCover,
+                    m.HasWaveform,
+                    m.SeekPreviews is { } sheet
+                        ? new SeekPreviewsDto(
+                            sheet.IntervalMs,
+                            sheet.Count,
+                            sheet.Columns,
+                            sheet.FrameWidth,
+                            sheet.FrameHeight
+                        )
+                        : null
                 )
                 : null,
             node.CurrentVersion is { } converted && documents.Contains(converted.BlobHash),
@@ -140,13 +151,35 @@ public sealed record TagSuggestions(List<TagSuggestion> Tags);
 /// <param name="VideoCodec">ffprobe's name, e.g. <c>hevc</c>: the viewer tries the original first when the browser says it plays it.</param>
 /// <param name="Copy">Whether <c>/nodes/{id}/preview</c> serves a playable copy, or will. NotNeeded means the original plays as it is.</param>
 /// <param name="Progress">How far a copy being made has got, 0 to 100.</param>
+/// <param name="HasCover">An audio file with cover art. Without it, an audio file's thumbnail is its waveform, not a cover for the player.</param>
+/// <param name="HasWaveform">For audio: <c>/nodes/{id}/waveform</c> has its loudness over time, for the player's timeline.</param>
+/// <param name="SeekPreviews">The frames <c>/nodes/{id}/seek-previews</c> serves for the timeline, once they're made. Null for audio and short clips.</param>
 public sealed record MediaDto(
     double? DurationSeconds,
     bool HasVideo,
     bool HasAudio,
     string? VideoCodec,
     CopyState Copy,
-    int? Progress
+    int? Progress,
+    bool HasCover,
+    bool HasWaveform,
+    SeekPreviewsDto? SeekPreviews
+);
+
+/// <summary>
+/// A video's seek previews (docs/design.md §14): one image of <paramref name="Count"/> frames, <paramref name="Columns"/>
+/// to a row, left to right and top to bottom. Frame <c>i</c> stands for the time from <c>i × IntervalMs</c> up to the
+/// next one; the last frame also covers whatever is left at the end.
+/// </summary>
+/// <param name="IntervalMs">How much of the video each frame stands for.</param>
+/// <param name="FrameWidth">One frame's width in the image, in pixels.</param>
+/// <param name="FrameHeight">One frame's height in the image, in pixels.</param>
+public sealed record SeekPreviewsDto(
+    int IntervalMs,
+    int Count,
+    int Columns,
+    int FrameWidth,
+    int FrameHeight
 );
 
 /// <summary>What a folder holds, at any depth.</summary>

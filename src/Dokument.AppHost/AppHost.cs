@@ -1,17 +1,28 @@
 // Local development: `dotnet run --project src/Dokument.AppHost` starts Postgres (our image), Keycloak as a test IdP,
 // Gotenberg for Office previews, the server, a worker and the Vite dev server, and opens the Aspire dashboard. See docs/design.md §3.2.
 //
-// Sign in at http://localhost:5173 as alice/alice (admin), bob/bob (user) or carol/carol (no groups).
+// Sign in at http://localhost:5173 as alice/alice (admin), bob/bob (user) or carol/carol (no groups). The mobile app
+// signs in at this machine's network address, which the dashboard lists on the web resource.
 // pgAdmin runs at http://localhost:5050, already connected to Postgres. The API reference (Scalar) is linked on the
-// server resource in the dashboard.
+// web resource in the dashboard; its Authorize button signs in at Keycloak too (docs/design.md §5, token endpoint).
 //
 // Telemetry is on in development: Aspire gives every project OTEL_EXPORTER_OTLP_ENDPOINT and friends, so the server's
 // and worker's traces, metrics and logs show up in the dashboard. Outside Aspire it stays off until that variable is
 // set (docs/design.md §22.1).
 
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.Configuration;
 
 var builder = DistributedApplication.CreateBuilder(args);
+
+// The app on a phone reaches Keycloak and the web app at this machine's address on the network, so both listen on all
+// addresses and everything signs in at that address. Keycloak names its issuer after the address it's asked at, so the
+// server must use the same one. Pass `-- --LanHost=192.168.1.20` when the guess picks the wrong network.
+var lanHost = builder.Configuration["LanHost"] ?? Lan.Address() ?? "localhost";
+Console.WriteLine(
+    $"Sign-in and the mobile app use http://{lanHost}:5173 (Keycloak at http://{lanHost}:8180)."
+);
 
 var dataRoot = Path.GetFullPath(Path.Combine(builder.AppHostDirectory, "../../.data"));
 
@@ -26,7 +37,19 @@ var postgres = builder
 var database = postgres.AddDatabase("Dokument", databaseName: "dokument");
 
 // The realm, client and test users are imported on every start, so the dev IdP needs no setup or volume.
-var keycloak = builder.AddKeycloak("keycloak", port: 8180).WithRealmImport("keycloak");
+#pragma warning disable ASPIRECERTIFICATES001 // WithoutHttpsCertificate is still marked experimental.
+var keycloak = builder
+    .AddKeycloak("keycloak", port: 8180)
+    .WithEndpoint("http", endpoint => endpoint.TargetHost = "0.0.0.0")
+    // Plain http: Aspire otherwise serves Keycloak with the ASP.NET dev certificate where one is trusted, and that only
+    // covers localhost, so a phone would refuse it.
+    .WithoutHttpsCertificate()
+    // The dashboard links the address everything signs in at.
+    .WithUrlForEndpoint("http", url => url.Url = $"http://{lanHost}:8180")
+    .WithRealmImport("keycloak")
+    // The realm allows the app's sign-in page at this address too.
+    .WithEnvironment("DOKUMENT_LAN_WEB_URL", $"http://{lanHost}:5173");
+#pragma warning restore ASPIRECERTIFICATES001
 
 // Office previews (docs/design.md §14). Each role gets the address it reaches Gotenberg at as GOTENBERG_URL, which wins
 // over the admin setting. Long documents take a while; the worker waits up to 3 minutes.
@@ -62,10 +85,7 @@ IResourceBuilder<ProjectResource> AddRole(string role, string? launchProfile) =>
 
 var server = AddRole("server", launchProfile: "http")
     .WithHttpHealthCheck("/health/ready")
-    .WithEnvironment(
-        "OIDC_ISSUER",
-        ReferenceExpression.Create($"{keycloak.GetEndpoint("http")}/realms/dokument")
-    )
+    .WithEnvironment("OIDC_ISSUER", $"http://{lanHost}:8180/realms/dokument")
     .WithEnvironment("OIDC_CLIENT_ID", "dokument")
     .WithEnvironment("OIDC_CLIENT_SECRET", "dokument-dev-secret")
     .WithEnvironment("OIDC_PROVIDER_NAME", "Keycloak (dev)")
@@ -77,11 +97,6 @@ if (ml is not null)
 {
     server.WithEnvironment("Ml__Url", ml.GetEndpoint("http"));
 }
-
-server.WithUrl(
-    ReferenceExpression.Create($"{server.GetEndpoint("http")}/scalar"),
-    "API reference (Scalar)"
-);
 
 // The worker runs in the app's image by default, so exiftool, Tesseract and libvips are there on any machine, the same
 // as in production. Start with `-- --WorkerOnHost=true` to run it as a project instead, e.g. to debug it; it then needs
@@ -138,14 +153,65 @@ else
 var web = builder
     .AddViteApp("web", "../../apps/web")
     .WithPnpm()
-    .WithEndpoint("http", endpoint => endpoint.Port = 5173)
+    .WithEndpoint(
+        "http",
+        endpoint =>
+        {
+            endpoint.Port = 5173;
+            endpoint.TargetHost = "0.0.0.0";
+        }
+    )
     .WithReference(server)
     .WaitFor(server);
 
-// The browser reaches the server through Vite's proxy, so that is the public URL for redirects and cookies.
-server.WithEnvironment("PUBLIC_URL", web.GetEndpoint("http"));
+// No PUBLIC_URL: Vite's proxy passes on the address each device used, so redirects go back to localhost:5173 in the
+// browser on this machine and to the network address on a phone. A browser needs localhost, because plain http
+// anywhere else isn't a secure context.
+
+// Through Vite as well, because Keycloak sends Scalar's sign-in back to the public URL.
+web.WithUrl(
+    ReferenceExpression.Create($"{web.GetEndpoint("http")}/scalar/"),
+    "API reference (Scalar)"
+);
+web.WithUrl($"http://{lanHost}:5173", "Server address for the app");
+
+// Through Vite as well, because Keycloak sends Scalar's sign-in back to the public URL.
+web.WithUrl(
+    ReferenceExpression.Create($"{web.GetEndpoint("http")}/scalar/"),
+    "API reference (Scalar)"
+);
 
 builder.Build().Run();
+
+static class Lan
+{
+    /// <summary>
+    /// The IPv4 address this machine reaches other networks from: a UDP socket "connected" to a public address picks
+    /// it from the routing table without sending anything. That skips Docker's, WSL's and VPN-less bridges on every OS.
+    /// Null when there's no network, and then everything stays on localhost.
+    /// </summary>
+    internal static string? Address()
+    {
+        try
+        {
+            using var socket = new Socket(
+                AddressFamily.InterNetwork,
+                SocketType.Dgram,
+                ProtocolType.Udp
+            );
+            socket.Connect("8.8.8.8", 53);
+            return
+                socket.LocalEndPoint is IPEndPoint { Address: var address }
+                && !IPAddress.IsLoopback(address)
+                ? address.ToString()
+                : null;
+        }
+        catch (SocketException)
+        {
+            return null;
+        }
+    }
+}
 
 static class Unix
 {

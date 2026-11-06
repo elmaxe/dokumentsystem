@@ -124,6 +124,75 @@ public sealed class Thumbnailer
         }
     }
 
+    /// <summary>The tile of an audio file without cover art: its waveform as bars, on a clear 4:3 ground.</summary>
+    public RenderResult RenderWaveform(Media.Waveform waveform, CancellationToken ct)
+    {
+        const int width = 640,
+            height = 480,
+            bar = 4,
+            gap = 2,
+            margin = 40;
+        var slices = Media.Waveform.Decode(waveform.Encode(), out _);
+        if (slices.Length == 0)
+        {
+            return RenderResult.Unsupported;
+        }
+
+        // The file-audio colour between its light and dark tokens, so the same tile reads in both themes.
+        ReadOnlySpan<byte> colour = [0x2a, 0x98, 0xa8, 0xff];
+        var pixels = new byte[width * height * 4];
+        var bars = (width - 2 * margin + gap) / (bar + gap);
+        const int middle = height / 2;
+        const double reach = height * 0.36;
+        for (var b = 0; b < bars; b++)
+        {
+            ct.ThrowIfCancellationRequested();
+            int from = b * slices.Length / bars,
+                to = Math.Max(from + 1, (b + 1) * slices.Length / bars);
+            byte low = 0,
+                high = 0;
+            for (var i = from; i < to && i < slices.Length; i++)
+            {
+                low = Math.Max(low, slices[i].Low);
+                high = Math.Max(high, slices[i].High);
+            }
+
+            // At least a dot, so silence still shows where the bars are.
+            var top = middle - Math.Max(2, (int)Math.Round(high / 255.0 * reach));
+            var bottom = middle + Math.Max(2, (int)Math.Round(low / 255.0 * reach));
+            var left = margin + b * (bar + gap);
+            for (var y = top; y < bottom; y++)
+            {
+                for (var x = left; x < left + bar; x++)
+                {
+                    colour.CopyTo(pixels.AsSpan((y * width + x) * 4));
+                }
+            }
+        }
+
+        try
+        {
+            using var image = Image.NewFromMemory(pixels, width, height, 4, Enums.BandFormat.Uchar);
+            using var srgb = image.Copy(interpretation: Enums.Interpretation.Srgb);
+            var images = new List<RenderedImage>();
+            foreach (var kind in Thumbnails)
+            {
+                using var thumb = srgb.ThumbnailImage(
+                    kind.MaxEdge(),
+                    height: kind.MaxEdge(),
+                    size: Enums.Size.Down
+                );
+                images.Add(Encode(kind, thumb));
+            }
+
+            return new RenderResult(PreviewStatus.Ready, null, null, PageCount: null, images);
+        }
+        catch (VipsException e)
+        {
+            return RenderResult.Failed(e.Message);
+        }
+    }
+
     private static bool IsPdf(string path)
     {
         // Readers accept "%PDF-" anywhere in the first KiB.

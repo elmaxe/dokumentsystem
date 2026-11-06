@@ -4,6 +4,7 @@ import type {
   FileDetailsDto,
   FileProcessing,
   FileTextDto,
+  RecognizedWordsDto,
   FolderConflictPolicy,
   FolderListing,
   FolderTreeEntry,
@@ -164,6 +165,15 @@ export const fileTextQuery = (id: string, versionId: string | null) =>
 
 export const fileTextPage = (id: string, from: number, limit = 20): Promise<FileTextDto> =>
   unwrap(api.GET("/api/v1/nodes/{id}/text", { params: { path: { id }, query: { from, limit } } }));
+
+/** The words recognized on a page of a scan or photo, with their boxes, for the viewer's Text toggle (§14). */
+export const wordsQuery = (id: string, versionId: string | null, page: number) =>
+  queryOptions({
+    queryKey: ["words", id, versionId, page],
+    queryFn: (): Promise<RecognizedWordsDto> =>
+      unwrap(api.GET("/api/v1/nodes/{id}/words", { params: { path: { id }, query: { page } } })),
+    staleTime: 5 * 60_000,
+  });
 
 export const versionsQuery = (id: string) =>
   queryOptions({

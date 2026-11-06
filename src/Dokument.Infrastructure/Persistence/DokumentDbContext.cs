@@ -253,6 +253,8 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(m => m.Plan)
                 .HasColumnName("plan")
                 .HasConversion(LowercaseEnum<PlaybackPlan>());
+            e.Property(m => m.HasCover).HasColumnName("has_cover");
+            e.Property(m => m.HasWaveform).HasColumnName("has_waveform");
             e.Property(m => m.CopyStatus)
                 .HasColumnName("copy_status")
                 .HasConversion(LowercaseEnum<CopyStatus>());

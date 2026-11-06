@@ -3,6 +3,12 @@ const day = 24 * 60 * 60 * 1000;
 // Plain English uses British order and a 24-hour clock ("12 Mar", "09:14"), as in the design examples.
 const localeOf = (language: string) => (language === "en" ? "en-GB" : language);
 
+// Spelled out rather than from Intl.RelativeTimeFormat, which Hermes on Android doesn't have. CLDR's words.
+const relativeDays: Record<string, [today: string, yesterday: string]> = {
+  sv: ["i dag", "i går"],
+  en: ["today", "yesterday"],
+};
+
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
 /**
@@ -25,7 +31,7 @@ export function formatFileDate(
   const days = Math.round((startOfDay(now).getTime() - startOfDay(date).getTime()) / day);
 
   if (days === 0 || days === 1) {
-    const relative = new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(-days, "day");
+    const relative = (relativeDays[language] ?? relativeDays.en!)[days]!;
     const word = inSentence
       ? relative
       : relative.charAt(0).toLocaleUpperCase(locale) + relative.slice(1);

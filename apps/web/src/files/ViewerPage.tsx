@@ -1,4 +1,4 @@
-import { captionsUrl, contentUrl, previewUrl, thumbnailUrl, type NodeDto } from "@dokument/api";
+import { captionsUrl, contentUrl, previewUrl, seekPreviewsUrl, thumbnailUrl, waveformUrl, type NodeDto } from "@dokument/api";
 import {
   Banner,
   Button,
@@ -31,6 +31,7 @@ import {
   starredQuery,
   toItem,
   transcriptQuery,
+  wordsQuery,
 } from "./drive";
 import { FileDetailsPanel } from "./FileDetailsPanel";
 import { ShareNodeDialog } from "./ShareNodeDialog";
@@ -62,14 +63,20 @@ function previewOf(node: NodeDto, versionId: string | null | undefined, refused:
   const src = previewUrl(node.id, versionId);
   // What the worker found applies to the current version; an older one just gets what the server has for it.
   if (type !== "video" && type !== "audio") return { type, src };
-  const poster = type === "video" && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
   const media = versionId === node.currentVersionId ? node.media : null;
+  // An audio file without cover art has its waveform as its thumbnail, which isn't a cover for the player.
+  const pictured = type === "video" || !!media?.hasCover;
+  const poster = pictured && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
+  const waveform = type === "audio" && media?.hasWaveform ? waveformUrl(node.id, versionId) : undefined;
   if (!media && node.thumbnail === "pending" && !webMedia.test(node.mimeType ?? "")) return { type: "preparing" };
-  if (!media || media.copy === "notNeeded") return { type, src, poster };
+  // The frames over the timeline while seeking, once the worker has made them (§14).
+  const seekPreviews = media?.seekPreviews ? { src: seekPreviewsUrl(node.id), ...media.seekPreviews } : undefined;
+  if (!media || media.copy === "notNeeded") return { type, src, poster, seekPreviews, waveform };
 
   const original = playsOriginal(node) ? previewUrl(node.id, versionId, { original: true }) : null;
-  if (media.copy === "ready") return original ? { type, src: original, fallbacks: [src], poster } : { type, src, poster };
-  if (original) return { type, src: original, poster };
+  if (media.copy === "ready")
+    return original ? { type, src: original, fallbacks: [src], poster, seekPreviews, waveform } : { type, src, poster, seekPreviews, waveform };
+  if (original) return { type, src: original, poster, seekPreviews, waveform };
   if (media.copy === "failed" || refused) return { type: "unplayable" };
   return { type: "converting", waiting: media.copy !== "making", progress: media.progress ?? undefined };
 }
@@ -128,6 +135,8 @@ export function ViewerPage({
   const [sharing, setSharing] = useState(false);
   const format = useFormat();
   const current = details.data?.node.currentVersionId ?? null;
+  // On while stepping between files, off the next time the viewer opens (§14).
+  const [textShown, setTextShown] = useState(false);
 
   // A newer version uploaded elsewhere doesn't replace what the person is reading: the open version stays until they
   // ask for the newest (§15.4). Their own uploads and restores show at once, since no notice comes for them.
@@ -152,6 +161,9 @@ export function ViewerPage({
   const shownVersion = pin?.versionId ?? current;
   const newer = !!pin && !!current && pin.versionId !== current;
   const gone = details.isError && details.error instanceof ApiError && details.error.status === 404;
+  // Which pages have recognized words, with page 1's; served for the current version only.
+  const showsWords = !!details.data && shownVersion === current && ["image", "pdf"].includes(previewOf(details.data.node, current, false).type);
+  const words = useQuery({ ...wordsQuery(fileId, current, 1), enabled: showsWords });
 
   // For the person's Recent page only; opening a preview is never audited (§18).
   useEffect(() => {
@@ -304,6 +316,16 @@ export function ViewerPage({
         ]}
         onAction={(id) => void setStar(id === "star")}
         marks={marks}
+        recognized={
+          showsWords && words.data
+            ? {
+                pages: words.data.pages,
+                wordsOn: async (page) => (await queryClient.fetchQuery(wordsQuery(fileId, current, page))).words,
+              }
+            : undefined
+        }
+        textShown={textShown}
+        onTextShownChange={setTextShown}
         transcript={spoken}
         onTranscriptRedo={canEdit(item.node.access) ? () => void redoTranscript() : undefined}
         captions={

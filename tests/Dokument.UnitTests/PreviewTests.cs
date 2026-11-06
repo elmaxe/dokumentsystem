@@ -24,6 +24,37 @@ public sealed class ThumbnailerTests : IDisposable
     private static Image Decode(RenderedImage image) => Image.NewFromBuffer(image.Bytes);
 
     [Fact]
+    public void Draws_an_audio_files_waveform_as_its_tile_on_a_clear_ground()
+    {
+        var waveform = new Dokument.Worker.Media.Waveform();
+        var samples = new short[Dokument.Worker.Media.Waveform.SampleRate * 4];
+        for (var i = 0; i < samples.Length / 2; i++)
+        {
+            samples[i] = (short)(20000 * Math.Sin(i * 0.3) * Math.Abs(Math.Sin(i * 0.001)));
+        }
+
+        waveform.Add(samples);
+
+        var result = thumbnailer.RenderWaveform(waveform, TestContext.Current.CancellationToken);
+
+        Assert.Equal(PreviewStatus.Ready, result.Status);
+        Assert.Equal((640, 480), (result.Images[1].Width, result.Images[1].Height));
+        using var tile = Decode(result.Images[1]);
+        Assert.Equal(4, tile.Bands);
+        // The corner is see-through, the middle of a loud stretch isn't.
+        Assert.Equal(0, tile.Getpoint(2, 2)[3]);
+        Assert.Equal(255, tile.Getpoint(100, 240)[3]);
+        Assert.Empty(
+            thumbnailer
+                .RenderWaveform(
+                    new Dokument.Worker.Media.Waveform(),
+                    TestContext.Current.CancellationToken
+                )
+                .Images
+        );
+    }
+
+    [Fact]
     public void Makes_both_thumbnail_sizes_from_an_image_without_upscaling_or_a_preview()
     {
         var result = Render(TestFiles.Png(1600, 1200));

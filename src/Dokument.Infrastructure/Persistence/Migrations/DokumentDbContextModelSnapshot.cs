@@ -724,9 +724,17 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("has_audio");
 
+                    b.Property<bool>("HasCover")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_cover");
+
                     b.Property<bool>("HasVideo")
                         .HasColumnType("boolean")
                         .HasColumnName("has_video");
+
+                    b.Property<bool>("HasWaveform")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_waveform");
 
                     b.Property<int?>("Height")
                         .HasColumnType("integer")
