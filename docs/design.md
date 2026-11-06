@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.42** · Last updated: 2026-11-04
+> Status: **Draft v0.44** · Last updated: 2026-11-04
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -365,6 +365,8 @@ Notes:
   previews/ab/{sha256}/document.pdf  # a PDF of an Office or OpenDocument file, made by Gotenberg (§10.3)
   previews/ab/{sha256}/waveform.bin  # an audio file's loudness over time, for the player's timeline (§14)
   previews/ab/{sha256}/seek.webp     # a video's seek previews: frames for the timeline, as one sheet (§14)
+  previews/ab/{sha256}/pages-{n}.webp  # a PDF's pages as small images for choosing pages, 100 to a sheet (§8.4)
+  tmp/pdf/{operation_id}/{n}.pdf     # a merge or split's new PDFs, until the server saves them (§8.4)
 /data/backups/              # DB dumps and name manifests (§7.1, §19)
 /data/exports/              # optional: readable copies written by export jobs (§7.1)
 ```
@@ -458,6 +460,33 @@ On disk, identical bytes are always stored once per person (§6, §7). On top of
 - **Folder uploads** are checked file by file, and the summary covers the whole folder.
 - An optional **"Duplicates" view** under Storage lists groups of identical files across the user's library, for cleanup.
 
+### 8.4 Merging and splitting PDFs
+
+Decided 2026-11-04 (decision 43). People merge several PDFs into one, or split one into several, on the web and in the app. It replaces the roadmap's "split and merge through Gotenberg".
+
+- **Inputs are PDFs only**, ones the worker could read (`NodeDto.pdf.readable`, with the page count). Office files and photos may come later, through their PDF rendition.
+- **The results are new files, never new versions.** They go next to the originals, which stay as they are, unless the person turns on **Move the originals to the trash** (off by default), which trashes them once the new files are saved. A merge goes into the first file's folder; a split goes next to the PDF, or into a **new folder** named by the person.
+  - Each source's current version is pinned by its blob when the operation starts, so a new version uploaded meanwhile doesn't change what's made.
+  - Names that are taken get a number, as uploads do (Keep both). Defaults: "{name} (merged).pdf" for a merge and "{name}, pages 1–3.pdf" for each part of a split.
+- **The worker makes them with PDFium** (`FPDF_ImportPagesByIndex` into a new document, `FPDF_SaveAsCopy`), which it already bundles for thumbnails and text. No Gotenberg, and no PDF library in the clients. Pages are copied as they are, so text stays text and nothing is re-compressed. Bookmarks, links between pages and form fields aren't kept, and the dialogs say so.
+- **Two steps, because the worker can't write originals (§10.4):**
+  1. `POST /pdf/merge` or `POST /pdf/split` checks the request, reserves quota for the sources' total size (§17), stores a `pdf_operations` row and queues a `pdf` job; it answers `202` at once.
+  2. The worker's `pdf` job (concurrency 1) writes the new PDFs to `derived/tmp/pdf/{operation_id}/`, reporting pages done as it goes, then queues `pdf-save`.
+  3. The server claims `pdf-save` jobs itself, hashes each new file again (the worker reads untrusted files, so its hash isn't trusted), imports the bytes into the owner's blobs, settles the quota with the real size and adds the files. A retry skips files already saved.
+- **What the new files keep:**
+  - **Text, recognized words and the person's text corrections** are copied page by page from the sources' content pages, so nothing is read or recognized again; the text stage isn't queued for the new blob.
+  - **Tags people added** to any source are added to the result. Automatic tags come from tag rules running on the new text, as for an upload.
+  - **Details** (title, description, date taken) come from the first source.
+  - **Filing rules don't move the results**: the person chose where they go.
+  - **"Made from"** (`file_origins`, per version) lists each run of pages with the source's name and pages, and the Info tab shows it, linking to sources that still exist (`GET /nodes/{id}/origin`).
+- **Duplicates:** if a new file's bytes are already in the person's files, it's still made (dedup on disk keeps it free) and the tray says so, with **Remove this copy** (§8.3).
+- **Limits:** 2 to 100 files and at most 2,000 pages per merge; 1 to 500 parts per split. A split's parts are page ranges ("1-3, 5"), may leave pages out, and may use a page more than once. Password-protected or damaged PDFs fail with a sentence that names the file, without retries.
+- **Following it:** `GET /pdf/operations` (the person's last week, newest first) and `GET /pdf/operations/{id}` give the state (waiting, working, saving, done, failed, cancelled), pages done and the new files. The web tray polls every second while one is going and shows a row per operation beside the uploads, with Cancel until saving starts, then Open (a merge) or Show in folder (a split). `DELETE /pdf/operations/{id}` cancels. Operations are deleted after 7 days.
+- **Choosing pages:** the split screen shows every page as a small image. `POST /nodes/{id}/page-sheets` says where each page is and asks the worker to make them if they aren't there (`page-sheets` stage, on demand only, never in the backfill): 200 × 283 px cells, 10 to a row, 100 to a WebP sheet, served unaudited by `GET /nodes/{id}/page-sheets/{n}`.
+- **Web:** **Merge into one PDF** in the action bar when two or more readable PDFs are selected, opening a dialog to put them in order (drag, or each row's menu), name the file and choose the trash option. **Split PDF** in a PDF's menu, the More menu and the viewer opens a full-screen page: pages in a grid, a cut between any two pages (the gap on wider screens, a page's menu on phones), presets Every page and Every 2 pages, pages left out, and a **Ranges** mode for typing each part's pages. Each part is named on the side (below on phones).
+- **App:** a long-press selection mode in file lists, then the same merge list and split screen (second pull request).
+- **Audit:** `file.pdf_merge` and `file.pdf_split` on each new file, naming the sources (§18).
+
 ---
 
 ## 9. Permissions and sharing
@@ -509,6 +538,10 @@ upload complete (or the backfill)
    ├─► seek previews (video ≥ 10 s: frames for the timeline)  built (§14)
    ├─► embed     (optional, ML)
    └─► transcribe (optional, ML; audio/video → timed pages)  built (§11.1)
+
+on request
+   ├─► page sheets (a PDF's pages as small images)           built (§8.4)
+   └─► pdf (merge or split) ─► pdf-save, run by the server    built (§8.4)
 ```
 
 The stages are independent jobs per blob, queued together when an upload finishes; each detects the format from the bytes itself. Transcode and seek previews are the exception: the thumbnail stage probes video and audio anyway, so it queues the copy when one is needed and seek previews for videos long enough to have them.
@@ -553,7 +586,7 @@ The stages are independent jobs per blob, queued together when an upload finishe
 - **Gotenberg is optional** and set up by an admin: its address under Admin › Settings › Office documents (empty means off), with a Test button that checks `/health` reports LibreOffice. `docker-compose.yml` runs it under the `office` profile with a 3-minute API timeout. `GOTENBERG_URL` in a process's environment wins over the setting, and the admin page then shows the address read-only. Each process reads its own, because the server on the host and a worker in a container reach Gotenberg at different addresses; the worker's start queues documents recorded as unsupported before it was set. The Aspire AppHost starts Gotenberg and sets it for every role, so Office previews work in development with no setup.
 - **The thumbnail stage converts** Word, Excel, PowerPoint and OpenDocument files (by MIME type, with the bytes checked: a zip, an OLE file for `.doc`/`.xls`/`.ppt`, or `{\rtf`) through `POST /forms/libreoffice/convert`, with one page per spreadsheet sheet so wide sheets aren't cut into strips. Macros never run (LibreOffice's default). The PDF is kept at `previews/ab/{sha}/document.pdf`, and its page 1 is rendered by PDFium into the usual thumbnails.
 - **Failures:** a file Gotenberg refuses (damaged, password-protected) is recorded as failed and not retried; Gotenberg being down or busy fails the job, which retries with the usual backoff. While Office previews are off, documents are recorded as unsupported, and saving an address queues those at background priority.
-- **Later: split and merge PDFs.** Gotenberg's PDF engines (`/forms/pdfengines/split` and `/forms/pdfengines/merge`) can split a PDF into pages or ranges, and merge several PDFs (or the PDFs made of Office files) into one. Each result is a new file in the drive, next to the originals, which stay as they are. This needs the same Gotenberg setup as the previews, so the actions only show when an address is set.
+- **Merging and splitting PDFs** uses PDFium in the worker, not Gotenberg, so it works without Office previews set up (§8.4).
 - **Text:** `.docx`, `.xlsx`, `.pptx` and ODF are still read from their XML. Formats the text stage can't read (`.doc`, `.xls`, `.ppt`) are read from the PDF instead: making the PDF queues the text stage for them again.
 
 **Video and audio, as built (M2, decision 32):**
@@ -1008,7 +1041,7 @@ People who are managed in an IdP can get their storage from it instead of from t
 - **Append-only `audit_events`**, written **in the same transaction** as the change itself.
 - **Events:**
   - auth: login, logout, session revoked, API key created
-  - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`), tags added or removed (`file.tags_change`, naming the tags), filing rules added, changed, reordered or deleted (`filing_rule.change`)
+  - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`), tags added or removed (`file.tags_change`, naming the tags), filing rules added, changed, reordered or deleted (`filing_rule.change`), PDFs merged or split (`file.pdf_merge`, `file.pdf_split`, on each new file, naming the sources)
   - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), and filing rules moving files (`node.move`, `folder.create`, naming the rule, §13.6), with the actor kind `system`
   - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged. (Each person's Recent page remembers their own opens in `recent_files`, which nobody else sees and which isn't part of the audit log, §15.2.)
   - sharing: share granted/changed/revoked, link created/accessed/revoked
@@ -1140,7 +1173,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching. **Built so far:** the app's foundation (§15.3): sign-in through the token endpoint and callback page, main and local addresses with the session proof, My files, Starred, Recent, Settings, active devices, the offline cache and live updates (decision 37). |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback. Transcription of audio and video into searchable, timed text is pulled ahead as the ML image's first piece, right after the M2 video work (§11.1, decision 34) |
-| **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders), PDF split and merge through Gotenberg (§10.3) |
+| **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders), merging Office files and photos into PDFs (§8.4) |
 
 ---
 
@@ -1187,6 +1220,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 38 | Text toggle in the viewer | 2026-10-29: a Text toggle shows every recognized word on photos and scans, and a PDF's own words on its text pages, as soft `primary` boxes under the search marks; the words are a selectable, invisible text layer, so they can be selected and copied (Axel chose select and copy over highlighting only), with Copy all on wider screens; a round button on phones; on while stepping files, off on the next open; words from the new `GET /nodes/{id}/words`, which serves what was read, not corrections (§14) |
 | 40 | Seek previews in the video player | 2026-11-02: one frame for every 1 % of a video, at least 2 s apart, none under 10 s; frames 256 px on the long edge, at most 10 to a row in one WebP per blob (`previews/ab/{sha}/seek.webp`) made by its own `seek-previews` stage with one ffmpeg seek per frame from the original and joined by NetVips; layout derived from the length, served unaudited by `GET /nodes/{id}/seek-previews` and described by `NodeDto.media.seekPreviews`; the web player shows the frame above the timeline on hover and while dragging, loading the sheet on first hover; no admin setting. The app's timeline comes after its first pull request merges (Axel chose web first) (§10.2, §10.3, §14) |
 | 41 | Audio waveform | 2026-11-02: an audio file's timeline is its Audacity-style waveform: one mixed lane, peaks outline plus RMS core, scaled to the file's loudest moment, no zoom for now. The thumbnail stage decodes once with ffmpeg (8 kHz mono) into ≤ 32,768 slices of min/max/RMS, stored as a `waveform` rendition in a small binary format; `GET /nodes/{id}/waveform`, unaudited. Audio without cover art gets its waveform as its tile. Videos get seek previews instead (§14) |
+| 43 | Merging and splitting PDFs | 2026-11-04: PDFs only for now (Axel chose this over Office files and photos too); PDFium in the worker, not Gotenberg or the clients; results are new files next to the originals, never versions, with Move the originals to the trash off by default; sources pinned by blob; the worker writes to the derived volume and the server saves, hashing again; text, words and text corrections copied per page, people's tags carried over, details from the first source, filing rules skipped, "Made from" per version; duplicates made anyway with Remove this copy; quota reserved from the sources and settled; 100 files or 2,000 pages per merge, 500 parts per split; page sheets on demand; the tray follows operations by polling; the app's selection mode and screens come in a second pull request (§8.4) |
 
 ## 26. Open questions
 

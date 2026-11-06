@@ -588,7 +588,9 @@ public sealed class DriveService(
         long reservedBytes,
         string auditAction,
         Action<Guid>? storeBytes,
-        CancellationToken ct
+        CancellationToken ct,
+        bool byFilingRules = true,
+        JsonObject? auditDetails = null
     )
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -678,7 +680,8 @@ public sealed class DriveService(
             existing?.CurrentVersionId is { } previous
                 ? new CarriedEdits(previous, WithText: false)
                 : null,
-            ct
+            ct,
+            byFilingRules
         );
         await SettleQuotaAsync(ownerId, reservedBytes, alreadyOwned ? 0 : file.Size, ct);
         audit.Add(
@@ -686,7 +689,7 @@ public sealed class DriveService(
             existing is null ? auditAction : AuditActions.VersionUpload,
             node.Id,
             version.Id,
-            new JsonObject { ["size"] = file.Size, ["sha256"] = file.Hash.Hex }
+            new JsonObject { ["size"] = file.Size, ["sha256"] = file.Hash.Hex }.Also(auditDetails)
         );
         await db.SaveChangesAsync(ct);
         await recent.RecordAsync(actor.UserId, node.Id, RecentAction.Uploaded, ct);
@@ -746,7 +749,8 @@ public sealed class DriveService(
         DateTimeOffset? clientModifiedAt,
         int? restoredFrom,
         CarriedEdits? carried,
-        CancellationToken ct
+        CancellationToken ct,
+        bool byFilingRules = true
     )
     {
         var now = time.GetUtcNow();
@@ -794,8 +798,12 @@ public sealed class DriveService(
         await previews.RequestAsync(hash, JobPriority.Interactive, ct);
         await content.RequestAsync(hash, JobPriority.Interactive, ct);
 
-        // Bytes that already have tags, such as a copy, may match a filing rule at once (§13.6).
-        await filing.RequestAsync([(node.OwnerId, node.Id)], JobPriority.Interactive, ct);
+        // Bytes that already have tags, such as a copy, may match a filing rule at once (§13.6). Merged and split PDFs
+        // stay where the person put them (§8.4).
+        if (byFilingRules)
+        {
+            await filing.RequestAsync([(node.OwnerId, node.Id)], JobPriority.Interactive, ct);
+        }
         return version;
     }
 
@@ -977,4 +985,18 @@ public sealed record FileContent(Node Node, FileVersion Version, string Physical
 public sealed record FolderContents(long Bytes, int Files, int Folders)
 {
     public static readonly FolderContents Empty = new(0, 0, 0);
+}
+
+internal static class JsonObjects
+{
+    /// <summary>Adds copies of <paramref name="more"/>'s properties, for audit details made of several parts.</summary>
+    public static JsonObject Also(this JsonObject json, JsonObject? more)
+    {
+        foreach (var (key, value) in more ?? [])
+        {
+            json[key] = value?.DeepClone();
+        }
+
+        return json;
+    }
 }

@@ -5,8 +5,8 @@ namespace Dokument.Server.Files;
 
 /// <summary>
 /// A kind of job, as the API names it: a file's processing steps (docs/design.md §10.2), playable copies and seek
-/// previews (§14), speech
-/// to text (§11.1), keyword-rule runs (§13.4), then filing a file and a filing rule's "file existing" run (§13.6).
+/// previews (§14), speech to text (§11.1), page sheets, merges and splits and saving their files (§8.4), keyword-rule
+/// runs (§13.4), then filing a file and a filing rule's "file existing" run (§13.6).
 /// </summary>
 public enum JobKind
 {
@@ -16,6 +16,9 @@ public enum JobKind
     Transcode,
     SeekPreviews,
     Transcribe,
+    PageSheets,
+    Pdf,
+    PdfSave,
     TagRule,
     File,
     FilingRule,
@@ -56,6 +59,9 @@ public static class JobKinds
             _ when type == JobType.Transcode => JobKind.Transcode,
             _ when type == JobType.SeekPreviews => JobKind.SeekPreviews,
             _ when type == JobType.Transcribe => JobKind.Transcribe,
+            _ when type == JobType.PageSheets => JobKind.PageSheets,
+            _ when type == JobType.Pdf => JobKind.Pdf,
+            _ when type == JobType.PdfSave => JobKind.PdfSave,
             _ when type == JobType.TagRule => JobKind.TagRule,
             _ when type == JobType.File => JobKind.File,
             _ when type == JobType.FilingRule => JobKind.FilingRule,
@@ -78,6 +84,9 @@ public static class JobKinds
             JobKind.Transcode => JobType.Transcode,
             JobKind.SeekPreviews => JobType.SeekPreviews,
             JobKind.Transcribe => JobType.Transcribe,
+            JobKind.PageSheets => JobType.PageSheets,
+            JobKind.Pdf => JobType.Pdf,
+            JobKind.PdfSave => JobType.PdfSave,
             JobKind.TagRule => JobType.TagRule,
             JobKind.File => JobType.File,
             JobKind.FilingRule => JobType.FilingRule,

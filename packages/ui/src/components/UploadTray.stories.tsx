@@ -42,3 +42,15 @@ export const FolderUploadFinished: Story = {
 export const FolderBeingPrepared: Story = {
   args: { items: [], groups: [{ id: "foton", name: "Foton", folder: "Mina filer", preparing: true }] },
 };
+
+/** Merging and splitting PDFs (§8.4) show beside the uploads while the server puts the pages together. */
+export const PdfTasks: Story = {
+  args: {
+    items: [],
+    tasks: [
+      { id: "m1", kind: "merge", name: "Hyresavtal (merged).pdf", state: "working", pagesDone: 12, pagesTotal: 40, files: 3 },
+      { id: "s1", kind: "split", name: "Kontoutdrag 2025.pdf", state: "done", pagesDone: 24, pagesTotal: 24, files: 12, duplicates: 1 },
+      { id: "s2", kind: "split", name: "Skannat.pdf", state: "failed", pagesDone: 0, pagesTotal: 8, files: 2, error: "“Skannat.pdf” is locked with a password." },
+    ],
+  },
+};

@@ -25,8 +25,16 @@ public sealed record DerivedKey
             RenditionKind.SeekPreviews => new DerivedKey(
                 $"previews/{hex[..2]}/{hex}/{kind.Key()}.webp"
             ),
+            RenditionKind.PageSheets => ForPageSheet(hash, 1),
             _ => new DerivedKey($"thumbs/{hex[..2]}/{hex}/{kind.Key()}.webp"),
         };
+    }
+
+    /// <summary>Sheet number <paramref name="sheet"/> (from 1) of a PDF's page sheets: <c>previews/ab/abcd…/pages-2.webp</c>.</summary>
+    public static DerivedKey ForPageSheet(ContentHash hash, int sheet)
+    {
+        var hex = hash.Hex;
+        return new DerivedKey($"previews/{hex[..2]}/{hex}/pages-{sheet}.webp");
     }
 
     /// <summary>For values read back from the database.</summary>

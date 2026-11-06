@@ -177,16 +177,13 @@ public sealed class JobMonitor(
             .Skip(Math.Max(0, offset))
             .Take(Math.Clamp(limit, 1, MaxPage))
             .ToListAsync(ct);
-        var files = await FilesAsync(
-            jobs.Where(j => j.Type != JobType.File).Select(j => j.Subject),
-            ct
-        );
-        var filed = await FilingFilesAsync(jobs, ct);
+        var files = await FilesAsync(jobs.Where(j => !ByNode(j.Type)).Select(j => j.Subject), ct);
+        var byNode = await NodeFilesAsync(await NodesOfAsync(jobs, ct), ct);
         var rules = await RulesAsync(jobs, ct);
         return jobs.Select(j => new JobEntry(
                 j,
-                j.Type == JobType.File
-                    ? filed.GetValueOrDefault(j.Subject, [])
+                ByNode(j.Type)
+                    ? byNode.GetValueOrDefault(j.Subject, [])
                     : files.GetValueOrDefault(j.Subject, []),
                 rules.GetValueOrDefault((j.Type, j.Subject))
             ))
@@ -591,17 +588,53 @@ public sealed class JobMonitor(
         return tags;
     }
 
-    /// <summary>The files that <see cref="JobType.File"/> jobs file, by subject (the node id), as their current version.</summary>
-    private async Task<Dictionary<string, List<JobFile>>> FilingFilesAsync(
+    /// <summary>Jobs whose files are named by node: filing one file, and merges and splits (by their sources).</summary>
+    private static bool ByNode(JobType type) =>
+        type == JobType.File || type == JobType.Pdf || type == JobType.PdfSave;
+
+    /// <summary>The nodes each by-node job is about: a filing job's file, or a merge's or split's sources.</summary>
+    private async Task<Dictionary<string, List<Guid>>> NodesOfAsync(
         List<Job> jobs,
         CancellationToken ct
     )
     {
-        var ids = jobs.Where(j => j.Type == JobType.File)
+        var nodes = new Dictionary<string, List<Guid>>();
+        foreach (var job in jobs.Where(j => j.Type == JobType.File))
+        {
+            if (Guid.TryParse(job.Subject, out var id))
+            {
+                nodes[job.Subject] = [id];
+            }
+        }
+
+        var operations = jobs.Where(j => j.Type == JobType.Pdf || j.Type == JobType.PdfSave)
             .Select(j => Guid.TryParse(j.Subject, out var id) ? id : (Guid?)null)
             .OfType<Guid>()
             .Distinct()
             .ToList();
+        if (operations.Count > 0)
+        {
+            foreach (
+                var op in await db
+                    .PdfOperations.AsNoTracking()
+                    .Where(o => operations.Contains(o.Id))
+                    .ToListAsync(ct)
+            )
+            {
+                nodes[op.Id.ToString()] = op.Sources.Select(s => s.NodeId).ToList();
+            }
+        }
+
+        return nodes;
+    }
+
+    /// <summary>The files of by-node jobs, by subject, as their current version.</summary>
+    private async Task<Dictionary<string, List<JobFile>>> NodeFilesAsync(
+        Dictionary<string, List<Guid>> subjects,
+        CancellationToken ct
+    )
+    {
+        var ids = subjects.Values.SelectMany(v => v).Distinct().ToList();
         if (ids.Count == 0)
         {
             return [];
@@ -620,18 +653,19 @@ public sealed class JobMonitor(
             }
         ).ToListAsync(ct);
         var folders = await drive.AncestorsAsync(rows.Select(r => r.Node).ToList(), ct);
-        return rows.ToDictionary(
-            r => r.Node.Id.ToString(),
-            r => new List<JobFile>
-            {
-                new(
-                    r.Node,
-                    r.Version,
-                    r.Node.IsTrashed ? JobFileUse.Trashed : JobFileUse.Current,
-                    r.Owner,
-                    folders[r.Node.Id]
-                ),
-            }
+        var byId = rows.ToDictionary(
+            r => r.Node.Id,
+            r => new JobFile(
+                r.Node,
+                r.Version,
+                r.Node.IsTrashed ? JobFileUse.Trashed : JobFileUse.Current,
+                r.Owner,
+                folders[r.Node.Id]
+            )
+        );
+        return subjects.ToDictionary(
+            s => s.Key,
+            s => s.Value.Where(byId.ContainsKey).Select(id => byId[id]).ToList()
         );
     }
 

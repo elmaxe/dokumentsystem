@@ -81,6 +81,15 @@ export type TranscriptLine = components["schemas"]["TranscriptLineDto"];
 export type TranscriptState = components["schemas"]["TranscriptState"];
 export type TranscriptionSettings = components["schemas"]["TranscriptionSettingsDto"];
 export type TranscriptionProgress = components["schemas"]["TranscriptionProgress"];
+export type PdfInfo = components["schemas"]["PdfDto"];
+export type PdfOperation = components["schemas"]["PdfOperationDto"];
+export type PdfOperationKind = components["schemas"]["PdfOperationKind"];
+export type PdfOperationState = components["schemas"]["PdfOperationState"];
+export type PdfResult = components["schemas"]["PdfResultDto"];
+export type PageSheets = components["schemas"]["PageSheetsDto"];
+export type FileOrigin = components["schemas"]["FileOriginDto"];
+export type OriginLine = components["schemas"]["OriginLineDto"];
+export type OriginSourceState = components["schemas"]["OriginSourceState"];
 
 /** The tus endpoint for resumable uploads (docs/design.md §8.1). */
 export const uploadsPath = "/api/v1/uploads";
@@ -127,6 +136,14 @@ export function previewUrl(
  */
 export function seekPreviewsUrl(nodeId: string, baseUrl = ""): string {
   return `${baseUrl}/api/v1/nodes/${nodeId}/seek-previews`;
+}
+
+/**
+ * One sheet of a PDF's page images for choosing pages (§8.4), numbered from 1, laid out as `PageSheets` says. Only there
+ * once the page sheets are ready. Not audited.
+ */
+export function pageSheetUrl(nodeId: string, sheet: number, baseUrl = ""): string {
+  return `${baseUrl}/api/v1/nodes/${nodeId}/page-sheets/${sheet}`;
 }
 
 export function captionsUrl(nodeId: string, baseUrl = ""): string {
