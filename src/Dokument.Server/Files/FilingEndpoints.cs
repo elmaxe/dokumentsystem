@@ -9,6 +9,7 @@ namespace Dokument.Server.Files;
 
 /// <param name="Folder">The folder template, from the top of My files, such as "Kvitton/{year}".</param>
 /// <param name="Filed">Files the rule moved that weren't moved back with Undo.</param>
+/// <param name="Skipped">Files the rule left where they were, because the folder would hide them from people they are shared with (§13.6).</param>
 /// <param name="Running">The rule is filing the files that already had its tag.</param>
 public sealed record FilingRuleDto(
     Guid Id,
@@ -16,11 +17,12 @@ public sealed record FilingRuleDto(
     string Folder,
     bool Enabled,
     int Filed,
+    int Skipped,
     bool Running
 )
 {
-    public static FilingRuleDto From(FilingRule rule, int filed, bool running) =>
-        new(rule.Id, rule.Tag.Value, rule.Folder.Value, rule.Enabled, filed, running);
+    public static FilingRuleDto From(FilingRule rule, int filed, int skipped, bool running) =>
+        new(rule.Id, rule.Tag.Value, rule.Folder.Value, rule.Enabled, filed, skipped, running);
 }
 
 public sealed record FilingRuleListing(List<FilingRuleDto> Rules);
@@ -110,7 +112,7 @@ public static class FilingEndpoints
         TypedResults.Ok(
             new FilingRuleListing(
                 (await filing.ListAsync(context.Actor(), ct))
-                    .Select(r => FilingRuleDto.From(r.Rule, r.Filed, r.Running))
+                    .Select(r => FilingRuleDto.From(r.Rule, r.Filed, r.Skipped, r.Running))
                     .ToList()
             )
         );
@@ -130,7 +132,9 @@ public static class FilingEndpoints
             request.FileExisting,
             ct
         );
-        return TypedResults.Ok(FilingRuleDto.From(rule, 0, rule.Enabled && request.FileExisting));
+        return TypedResults.Ok(
+            FilingRuleDto.From(rule, 0, 0, rule.Enabled && request.FileExisting)
+        );
     }
 
     private static async Task<Ok<FilingRuleDto>> Update(
@@ -151,7 +155,9 @@ public static class FilingEndpoints
             ct
         );
         var summary = (await filing.ListAsync(context.Actor(), ct)).Single(r => r.Rule.Id == id);
-        return TypedResults.Ok(FilingRuleDto.From(summary.Rule, summary.Filed, summary.Running));
+        return TypedResults.Ok(
+            FilingRuleDto.From(summary.Rule, summary.Filed, summary.Skipped, summary.Running)
+        );
     }
 
     private static async Task<NoContent> Delete(

@@ -1,11 +1,12 @@
 import { contentUrl, type PathEntry, type TextPage } from "@dokument/api";
 import { DetailsPanel, TextDialog, useSnackbar, type DetailsTab, type FileVersion } from "@dokument/ui";
-import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { sessionQuery } from "../api";
 import { jobs } from "../admin/jobsApi";
 import {
+  accessQuery,
   ApiError,
   download,
   drive,
@@ -19,6 +20,8 @@ import {
   versionsQuery,
   type Item,
 } from "./drive";
+import { activityEntry, activityQuery } from "./activity";
+import { accessPeople, canEdit } from "./sharing";
 import { MadeFrom } from "./MadeFrom";
 import { FileTagsSection } from "./tags";
 
@@ -31,6 +34,10 @@ type Props = {
   onClose: () => void;
   onUploadVersion?: () => void;
   onStarChange?: (starred: boolean) => void;
+  /** Opens the share dialog; offered to the owner. */
+  onShare?: () => void;
+  /** Asks to stop seeing it; offered to people it's shared with directly. */
+  onLeave?: () => void;
   className?: string;
 };
 
@@ -43,12 +50,19 @@ export function FileDetailsPanel({
   onClose,
   onUploadVersion,
   onStarChange,
+  onShare,
+  onLeave,
   className,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const toast = useSnackbar();
   const queryClient = useQueryClient();
   const isFile = item.node.kind === "file";
+  const me = useQuery(sessionQuery).data?.user.id;
+  const editable = canEdit(item.node.access);
+  const access = useQuery({ ...accessQuery(item.id), enabled: tab === "sharing" });
+  const activity = useInfiniteQuery({ ...activityQuery(item.id), enabled: tab === "activity" });
+  const sharedDirectly = access.data?.people.some((p) => p.person.id === me && !!p.shareId) ?? false;
   const versions = useQuery({
     ...versionsQuery(item.id),
     enabled: isFile && tab === "versions",
@@ -184,36 +198,45 @@ export function FileDetailsPanel({
     <DetailsPanel
       item={item}
       details={{
-        location: pathLabel(t("nav.myFiles"), folderPath),
+        location: pathLabel(item.node.ownerId === me ? t("nav.myFiles") : t("nav.sharedWithMe"), folderPath),
         created: item.node.createdAt,
         checksum: item.node.sha256 ?? undefined,
-        people: [{ name: item.owner, email: item.node.ownerId, role: "owner", you: true }],
-        activity: [],
+        people: access.data
+          ? accessPeople(access.data, me)
+          : [{ id: item.node.ownerId, name: item.owner, email: "", role: "owner", you: item.node.ownerId === me }],
+        activity: (activity.data?.pages ?? []).flatMap((page) =>
+          page.entries.map((entry) => activityEntry(t, entry, me, i18n.language)),
+        ),
+        onMoreActivity: activity.hasNextPage ? () => void activity.fetchNextPage() : undefined,
+        activityLoading: activity.isPending,
       }}
       tab={tab}
       onTabChange={onTabChange}
       onClose={onClose}
-      onManageAccess={() => toast(t("common.notYet"))}
+      onManageAccess={item.node.access === "owner" ? onShare : undefined}
+      onLeave={sharedDirectly ? onLeave : undefined}
       onStarChange={onStarChange}
       tags={
         isFile ? (
           <>
-            <FileTagsSection item={item} />
+            <FileTagsSection item={item} canEdit={editable} />
             {item.node.pdf && tab === "info" && <MadeFrom id={item.id} versionId={versionId} />}
           </>
         ) : undefined
       }
-      fileDetails={fileDetails.data && { details: fileDetails.data, onSave: saveDetails }}
+      fileDetails={fileDetails.data && { details: fileDetails.data, onSave: editable ? saveDetails : undefined }}
       fileText={
         fileText.data && {
           text: fileText.data,
-          canEdit: true,
+          canEdit: editable,
           onShowAll: (editPage) => setTextDialog({ open: true, page: editPage ?? 1, editPage }),
         }
       }
       processing={processing.data && { steps: processing.data.steps, onRetry: admin ? (id) => void retry(id) : undefined }}
       versions={{
         canDelete: false,
+        canRestore: editable,
+        canKeep: item.node.access === "owner",
         versions: versions.data ?? [],
         onUploadVersion,
         onAction: (action, version) => void onVersion(action, version as FileVersion & { id: string }),

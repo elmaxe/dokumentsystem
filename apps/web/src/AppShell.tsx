@@ -29,6 +29,7 @@ import { useFiledMessages } from "./settings/filing";
 import { NameDialog } from "./files/dialogs";
 import { drive, errorMessage, folderQuery, invalidateFolders, nameKey, nodeQuery, storageQuery } from "./files/drive";
 import { canPickFolders, fromDrop, fromFolderInput } from "./files/folderPicking";
+import { canEdit, useSharedWithYou } from "./files/sharing";
 import { usePdfTasks } from "./files/pdf";
 import { PdfTasksProvider } from "./files/PdfTasksProvider";
 import { UploadProvider } from "./files/uploads";
@@ -65,12 +66,13 @@ function Shell() {
   const session = useQuery(sessionQuery);
   useLiveUpdates();
   useFiledMessages();
+  const newlyShared = useSharedWithYou();
   const offline = useLiveOffline();
   const storage = useQuery(storageQuery);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const locationSearch = useRouterState({ select: (state) => state.location.search });
   const { folderId = null } = useParams({ strict: false }) as { folderId?: string };
-  const place = (Object.entries(placePaths).find(([, path]) => path !== "/" && pathname.startsWith(path))?.[0] ??
+  const routePlace = (Object.entries(placePaths).find(([, path]) => path !== "/" && pathname.startsWith(path))?.[0] ??
     "files") as Place;
   const inAdmin = pathname.startsWith("/admin");
   const adminPlace = adminPlaces.find((item) => pathname.startsWith(`/admin/${item.id}`))?.id;
@@ -78,9 +80,15 @@ function Shell() {
   const exitAdmin = () => void navigate({ to: "/" });
   const inSettings = pathname.startsWith("/settings");
   const inSearch = pathname === "/search";
-  const inFiles = place === "files" && !inAdmin && !inSettings && !inSearch;
+  const inFiles = routePlace === "files" && !inAdmin && !inSettings && !inSearch;
   const listing = useQuery({ ...folderQuery(inFiles ? folderId : null) });
   const folderName = listing.data?.folder?.name ?? t("nav.myFiles");
+  const openFolder = listing.data?.folder;
+  // Someone else's folder is reached from Shared with me, so that's where the nav says the person is (§9).
+  const place: Place =
+    inFiles && openFolder && session.data && openFolder.ownerId !== session.data.user.id ? "shared" : routePlace;
+  const viewOnly = inFiles && !!openFolder && !canEdit(openFolder.access);
+  const refuseViewOnly = () => toast(t("files.viewOnlyHere", { name: openFolder?.ownerName }));
   const [trayCollapsed, setTrayCollapsed] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -94,7 +102,9 @@ function Shell() {
     ...(canPickFolders() ? [{ id: "uploadFolder", icon: "drive_folder_upload", label: t("files.uploadFolder") }] : []),
   ];
   const onNew = (id: string) =>
-    id === "upload"
+    viewOnly
+      ? refuseViewOnly()
+      : id === "upload"
       ? fileInput.current?.click()
       : id === "uploadFolder"
         ? folderInput.current?.click()
@@ -131,6 +141,7 @@ function Shell() {
         onDrop: (event: DragEvent) => {
           event.preventDefault();
           setDropping(false);
+          if (viewOnly) return refuseViewOnly();
           // Folders are read through the drop's entries, which only exist during the event.
           void fromDrop(event.dataTransfer).then(({ folders, files }) => {
             pick(files);
@@ -177,6 +188,7 @@ function Shell() {
           used={storage.data?.usedBytes ?? 0}
           quota={storage.data ? (storage.data.quotaBytes ?? null) : null}
           trash={storage.data?.trashBytes}
+          badges={{ shared: newlyShared }}
           className="max-md:hidden"
         />
       )}
@@ -241,6 +253,7 @@ function Shell() {
               if (id !== "search") return void navigate({ to: placePaths[id] });
               void navigate({ to: "/search" }).then(() => document.querySelector<HTMLInputElement>("header input[type=search]")?.focus());
             }}
+            badges={{ shared: newlyShared }}
             className="shrink-0 md:hidden"
           />
         )}

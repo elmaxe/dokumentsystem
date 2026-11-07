@@ -1,8 +1,9 @@
-import { contentUrl, type PathEntry, type RecentAction } from "@dokument/api";
+import { contentUrl, type PathEntry, type Person, type RecentAction, type ShareRole } from "@dokument/api";
 import {
   ActionBar,
   Breadcrumbs,
   Button,
+  Dialog,
   EmptyState,
   FileGrid,
   FileList,
@@ -23,6 +24,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { sessionQuery } from "../api";
 import { useRemoteFileChanges } from "../live";
 import { MoveDialog, NameDialog } from "./dialogs";
 import { FileDetailsPanel } from "./FileDetailsPanel";
@@ -36,21 +38,35 @@ import {
   invalidateStars,
   invalidateTrash,
   recentQuery,
+  sharedQuery,
   starredQuery,
   toItem,
   type Item,
 } from "./drive";
+import { ShareNodeDialog } from "./ShareNodeDialog";
+import { canEdit, invalidateSharing } from "./sharing";
 import { MergeDialog } from "./MergeDialog";
 import { BulkTagsDialog } from "./tags";
 import { useUploads } from "./uploadsContext";
 
 type View = "grid" | "list";
 
-/** What the page lists: one folder of My files, or everything starred or recent wherever it is (§15.2). */
-export type FilesSource = { place: "folder"; folderId: string | null } | { place: "starred" } | { place: "recent" };
+/**
+ * What the page lists: one folder, yours or one shared with you, or everything starred, recent or shared with you
+ * wherever it is (§9, §15.2).
+ */
+export type FilesSource =
+  | { place: "folder"; folderId: string | null }
+  | { place: "starred" }
+  | { place: "recent" }
+  | { place: "shared" };
 
 /** An item with where it lives, which Starred and Recent show because their items come from many folders. */
-type Row = Item & { path?: PathEntry[]; recent?: { at: string; action: RecentAction } };
+type Row = Item & {
+  path?: PathEntry[];
+  recent?: { at: string; action: RecentAction };
+  share?: { at: string; role: ShareRole };
+};
 
 function stored<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
   try {
@@ -110,8 +126,9 @@ const activityIcons: Record<RecentAction, string> = {
 };
 
 /**
- * My files, Starred and Recent: a folder's contents, or the person's starred or recent items, with selection, the
- * action bar, menus and the details panel (§15.2).
+ * My files, Shared with me, Starred and Recent: a folder's contents, or the person's shared, starred or recent items,
+ * with selection, the action bar, menus and the details panel (§15.2). What each item offers follows the person's
+ * access to it (§9).
  */
 export function FilesPage({ source }: { source: FilesSource }) {
   const { t, i18n } = useTranslation();
@@ -124,7 +141,10 @@ export function FilesPage({ source }: { source: FilesSource }) {
   const listing = useQuery({ ...folderQuery(folderId), enabled: source.place === "folder" });
   const starred = useQuery({ ...starredQuery, enabled: source.place === "starred" });
   const recent = useQuery({ ...recentQuery, enabled: source.place === "recent" });
-  const query = source.place === "folder" ? listing : source.place === "starred" ? starred : recent;
+  const shared = useQuery({ ...sharedQuery, enabled: source.place === "shared" });
+  const query =
+    source.place === "folder" ? listing : source.place === "starred" ? starred : source.place === "shared" ? shared : recent;
+  const me = useQuery(sessionQuery).data?.user.id;
   const [selected, setSelected] = useState<string[]>([]);
   const [view, setView] = useState<View>(() => stored("dokument.view", "grid", ["grid", "list"] as const));
   const [sort, setSort] = useState<Sort>({ key: "name", dir: "asc" });
@@ -132,6 +152,9 @@ export function FilesPage({ source }: { source: FilesSource }) {
   const [renaming, setRenaming] = useState<Item | null>(null);
   const [moving, setMoving] = useState<Item[]>([]);
   const [tagging, setTagging] = useState<Item[]>([]);
+  const [sharing, setSharing] = useState<Item | null>(null);
+  const [leaving, setLeaving] = useState<Item | null>(null);
+  const [losing, setLosing] = useState<{ items: Item[]; target: string | null; people: Person[] } | null>(null);
   const [merging, setMerging] = useState<Item[]>([]);
   const versionInput = useRef<HTMLInputElement>(null);
 
@@ -140,7 +163,14 @@ export function FilesPage({ source }: { source: FilesSource }) {
       ? (listing.data?.items ?? []).map(toItem)
       : source.place === "starred"
         ? (starred.data?.items ?? []).map((s) => ({ ...toItem(s.node), path: s.path }))
-        : (recent.data?.items ?? []).map((r) => ({
+        : source.place === "shared"
+          ? (shared.data ?? []).map((s) => ({
+              ...toItem(s.node),
+              path: [],
+              isNew: s.new,
+              share: { at: s.sharedAt, role: s.role },
+            }))
+          : (recent.data?.items ?? []).map((r) => ({
             ...toItem(r.node),
             path: r.path,
             recent: { at: r.at, action: r.action },
@@ -158,12 +188,29 @@ export function FilesPage({ source }: { source: FilesSource }) {
   const single = chosen.length === 1 ? chosen[0] : undefined;
 
   const folderPath = listing.data?.path ?? [];
-  const path = [{ id: "root", name: t("nav.myFiles") }, ...folderPath];
+  const folder = listing.data?.folder ?? undefined;
+  /** In a folder someone shared: its path starts at the top folder the person can see, under Shared with me. */
+  const othersFolder = !!folder && !!me && folder.ownerId !== me;
+  const rootName = (ownerId: string | undefined) =>
+    ownerId && me && ownerId !== me ? t("nav.sharedWithMe") : t("nav.myFiles");
+  const path = [{ id: "root", name: rootName(folder?.ownerId) }, ...folderPath];
   const open = (id: string | null) =>
     void (id ? navigate({ to: "/folders/$folderId", params: { folderId: id } }) : navigate({ to: "/" }));
   /** The folders above an item: the folder's path in My files, or the item's own in Starred and Recent. */
   const pathOf = (item: Row) => item.path ?? folderPath;
-  const where = (item: Row) => pathOf(item).at(-1)?.name ?? t("nav.myFiles");
+  const where = (item: Row) => pathOf(item).at(-1)?.name ?? rootName(item.node.ownerId);
+  /** The folder above an item, or for one at the top of what the person can see, where it's listed. */
+  const openParent = (item: Row) =>
+    item.node.ownerId !== me && pathOf(item).length === 0
+      ? void navigate({ to: "/shared" })
+      : open(item.node.parentId ?? null);
+  const editable = (targets: Item[]) => targets.length > 0 && targets.every((item) => canEdit(item.node.access));
+  /** Within someone else's files, moves stay inside the top folder the person can see (§9). */
+  const moveRoot = (item: Row) => (item.node.ownerId === me ? null : pathOf(item)[0]);
+  const movable = (targets: Row[]) =>
+    editable(targets) &&
+    targets.every((item) => item.node.ownerId === me || !!moveRoot(item)) &&
+    new Set(targets.map((item) => moveRoot(item)?.id ?? "mine")).size === 1;
 
   const downloadFiles = (targets: Item[]) => {
     const files = targets.filter((item) => !isFolder(item));
@@ -210,17 +257,45 @@ export function FilesPage({ source }: { source: FilesSource }) {
     await invalidateStars(queryClient);
   };
 
+  const move = async (targets: Item[], target: string | null) => {
+    try {
+      for (const item of targets) await drive.move(item.id, target);
+      toast(t("toasts.moved", { count: targets.length }));
+      setSelected([]);
+    } catch (error) {
+      toast(errorMessage(t, error));
+    }
+    await invalidateFolders(queryClient, [...targets.map((item) => item.node.parentId ?? null), target]);
+  };
+
+  const leave = async (item: Item) => {
+    try {
+      await drive.leave(item.id);
+      setSelected([]);
+      toast(t("toasts.left", { name: item.name }));
+    } catch (error) {
+      toast(errorMessage(t, error));
+    }
+    await invalidateSharing(queryClient);
+  };
+
   const act = (action: string, targets: Row[]) => {
     const first = targets[0];
     if (!first) return;
     switch (action) {
       case "open":
+        // Opening something shared with the person takes the New off it.
+        if (first.isNew)
+          void drive
+            .seen(first.id)
+            .then(() => queryClient.invalidateQueries({ queryKey: ["shared"] }))
+            .catch(() => {});
         if (isFolder(first)) open(first.id);
         else
           void navigate({
             to: "/files/$fileId",
             params: { fileId: first.id },
-            search: source.place === "folder" ? {} : { from: source.place },
+            search: source.place === "folder" || source.place === "shared" ? {} : { from: source.place },
           });
         break;
       case "download":
@@ -240,7 +315,13 @@ export function FilesPage({ source }: { source: FilesSource }) {
         void star(targets, action === "star");
         break;
       case "showInFolder":
-        open(first.node.parentId ?? null);
+        openParent(first);
+        break;
+      case "share":
+        setSharing(first);
+        break;
+      case "leave":
+        setLeaving(first);
         break;
       case "details":
         setSelected([first.id]);
@@ -269,18 +350,33 @@ export function FilesPage({ source }: { source: FilesSource }) {
   const readablePdf = (item: Item) => !!item.node.pdf?.readable;
   const splitAction: MenuAction = { id: "split", icon: "call_split", label: t("pdf.split.action") };
 
-  const menu = (item: Row): MenuAction[] => [
-    { id: "open", icon: isFolder(item) ? "folder_open" : "open_in_new", label: t("actions.open") },
-    ...(isFolder(item) ? [] : [{ id: "download", icon: "download", label: t("actions.download"), separatorBefore: true }]),
-    { id: "rename", icon: "edit", label: t("actions.rename"), separatorBefore: isFolder(item) },
-    { id: "move", icon: "drive_file_move", label: t("actions.move") },
-    ...(isFolder(item) ? [] : [{ id: "tags", icon: "sell", label: t("tags.action") }]),
-    ...(readablePdf(item) ? [splitAction] : []),
-    starAction([item]),
-    ...(source.place === "folder" ? [] : [{ id: "showInFolder", icon: "folder_open", label: t("actions.showInFolder") }]),
-    { id: "details", icon: "info", label: t("actions.details") },
-    { id: "trash", icon: "delete", label: t("actions.trash"), separatorBefore: true },
-  ];
+  const menu = (item: Row): MenuAction[] => {
+    const edit = editable([item]);
+    return [
+      { id: "open", icon: isFolder(item) ? "folder_open" : "open_in_new", label: t("actions.open") },
+      ...(item.node.access === "owner"
+        ? [{ id: "share", icon: "person_add", label: t("actions.share"), separatorBefore: true }]
+        : []),
+      ...(isFolder(item)
+        ? []
+        : [{ id: "download", icon: "download", label: t("actions.download"), separatorBefore: item.node.access !== "owner" }]),
+      ...(edit ? [{ id: "rename", icon: "edit", label: t("actions.rename"), separatorBefore: isFolder(item) }] : []),
+      ...(movable([item]) ? [{ id: "move", icon: "drive_file_move", label: t("actions.move") }] : []),
+      ...(edit && !isFolder(item) ? [{ id: "tags", icon: "sell", label: t("tags.action") }] : []),
+      // Split adds the parts next to the file, so it takes being able to change that folder (§9).
+      ...(edit && readablePdf(item) ? [splitAction] : []),
+      starAction([item]),
+      ...(source.place === "folder" || source.place === "shared"
+        ? []
+        : [{ id: "showInFolder", icon: "folder_open", label: t("actions.showInFolder") }]),
+      { id: "details", icon: "info", label: t("actions.details") },
+      ...(source.place === "shared"
+        ? [{ id: "leave", icon: "person_remove", label: t("share.leave"), separatorBefore: true }]
+        : edit
+          ? [{ id: "trash", icon: "delete", label: t("actions.trash"), separatorBefore: true }]
+          : []),
+    ];
+  };
 
   const activity = (item: Row) =>
     item.recent &&
@@ -288,21 +384,23 @@ export function FilesPage({ source }: { source: FilesSource }) {
   const meta = (item: Row) =>
     source.place === "recent"
       ? activity(item)
-      : t("files.modifiedOn", { date: format.date(item.modified, { inSentence: true }) });
+      : source.place === "shared"
+        ? item.owner
+        : t("files.modifiedOn", { date: format.date(item.modified, { inSentence: true }) });
 
   const locationColumn: FileColumn<Row> = {
     id: "location",
     label: t("files.columns.location"),
     className: "w-[20%] truncate @max-[600px]:hidden",
     cell: (item) => {
-      const crumbs = [t("nav.myFiles"), ...pathOf(item).map((p) => p.name)];
+      const crumbs = [rootName(item.node.ownerId), ...pathOf(item).map((p) => p.name)];
       return (
         <button
           type="button"
           title={crumbs.join(" › ")}
           onClick={(event) => {
             event.stopPropagation();
-            open(item.node.parentId ?? null);
+            openParent(item);
           }}
           onDoubleClick={(event) => event.stopPropagation()}
           className="inline-flex max-w-full cursor-pointer items-center gap-2 rounded-xs text-inherit hover:underline"
@@ -325,7 +423,29 @@ export function FilesPage({ source }: { source: FilesSource }) {
     sortKey: "size",
   };
   const columns: FileColumn<Row>[] | undefined =
-    source.place === "starred"
+    source.place === "shared"
+      ? [
+          {
+            id: "sharedBy",
+            label: t("files.columns.sharedBy"),
+            className: "w-[20%] truncate @max-[600px]:hidden",
+            cell: (item) => item.owner,
+            sortKey: "owner",
+          },
+          {
+            id: "sharedAt",
+            label: t("files.columns.sharedAt"),
+            className: "w-[16%] tabular truncate @max-[600px]:hidden",
+            cell: (item) => item.share && <span title={format.fullDate(item.share.at)}>{format.date(item.share.at)}</span>,
+          },
+          {
+            id: "access",
+            label: t("files.columns.access"),
+            className: "w-[14%] truncate @max-[600px]:hidden",
+            cell: (item) => t(`share.roles.${item.node.access}`),
+          },
+        ]
+      : source.place === "starred"
       ? [
           locationColumn,
           {
@@ -356,7 +476,8 @@ export function FilesPage({ source }: { source: FilesSource }) {
           ]
         : undefined;
 
-  const sortKeys: SortKey[] = source.place === "starred" ? ["name", "modified", "size"] : ["name", "modified", "size", "owner"];
+  const sortKeys: SortKey[] =
+    source.place === "starred" ? ["name", "modified", "size"] : ["name", "modified", "size", "owner"];
   const viewProps = {
     items,
     selected,
@@ -372,13 +493,20 @@ export function FilesPage({ source }: { source: FilesSource }) {
   // Gone while open, perhaps trashed on another device, or a link to a folder that no longer exists.
   const folderGone =
     source.place === "folder" && listing.isError && listing.error instanceof ApiError && listing.error.status === 404;
-  const title = source.place === "starred" ? t("nav.starred") : t("nav.recent");
+  const title =
+    source.place === "starred" ? t("nav.starred") : source.place === "shared" ? t("nav.sharedWithMe") : t("nav.recent");
   const empty =
     source.place === "folder"
-      ? { icon: "folder_open", title: t("files.empty.folderTitle"), text: t("files.empty.folderText") }
+      ? {
+          icon: "folder_open",
+          title: t("files.empty.folderTitle"),
+          text: t(folder && !canEdit(folder.access) ? "files.empty.folderViewOnlyText" : "files.empty.folderText"),
+        }
       : source.place === "starred"
         ? { icon: "star", title: t("files.empty.starredTitle"), text: t("files.empty.starredText") }
-        : { icon: "schedule", title: t("files.empty.recentTitle"), text: t("files.empty.recentText") };
+        : source.place === "shared"
+          ? { icon: "folder_shared", title: t("files.empty.sharedTitle"), text: t("files.empty.sharedText") }
+          : { icon: "schedule", title: t("files.empty.recentTitle"), text: t("files.empty.recentText") };
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
@@ -390,18 +518,28 @@ export function FilesPage({ source }: { source: FilesSource }) {
                 count={chosen.length}
                 actions={[
                   { id: "download", icon: "download", label: t("actions.download") },
-                  { id: "move", icon: "drive_file_move", label: t("actions.move") },
-                  ...(chosen.some((item) => !isFolder(item)) ? [{ id: "tags", icon: "sell", label: t("tags.action") }] : []),
-                  ...(chosen.length > 1 && chosen.every(readablePdf)
+                  ...(movable(chosen) ? [{ id: "move", icon: "drive_file_move", label: t("actions.move") }] : []),
+                  ...(editable(chosen) && chosen.some((item) => !isFolder(item))
+                    ? [{ id: "tags", icon: "sell", label: t("tags.action") }]
+                    : []),
+                  ...(editable(chosen) && chosen.length > 1 && chosen.every(readablePdf)
                     ? [{ id: "merge", icon: "call_merge", label: t("pdf.merge.action") }]
                     : []),
-                  { id: "trash", icon: "delete", label: t("actions.trash") },
+                  ...(editable(chosen) && source.place !== "shared"
+                    ? [{ id: "trash", icon: "delete", label: t("actions.trash") }]
+                    : []),
                 ]}
                 moreActions={[
-                  ...(single && readablePdf(single) ? [splitAction] : []),
+                  ...(single && editable([single]) && readablePdf(single) ? [splitAction] : []),
+                  ...(single?.node.access === "owner"
+                    ? [{ id: "share", icon: "person_add", label: t("actions.share") }]
+                    : []),
                   starAction(chosen),
-                  ...(single ? [{ id: "rename", icon: "edit", label: t("actions.rename") }] : []),
+                  ...(single && editable([single]) ? [{ id: "rename", icon: "edit", label: t("actions.rename") }] : []),
                   { id: "details", icon: "info", label: t("actions.details") },
+                  ...(single && source.place === "shared"
+                    ? [{ id: "leave", icon: "person_remove", label: t("share.leave") }]
+                    : []),
                 ]}
                 onAction={(id) => act(id, chosen)}
                 onClear={() => setSelected([])}
@@ -409,11 +547,18 @@ export function FilesPage({ source }: { source: FilesSource }) {
               />
             )}
             {source.place === "folder" ? (
-              <Breadcrumbs
-                path={path}
-                onNavigate={(id) => open(id === "root" ? null : id)}
-                className={chosen.length > 0 ? "flex-1 max-sm:flex-1 sm:hidden" : "flex-1"}
-              />
+              <div className={chosen.length > 0 ? "flex min-w-0 flex-1 flex-col max-sm:flex sm:hidden" : "flex min-w-0 flex-1 flex-col"}>
+                <Breadcrumbs
+                  path={path}
+                  onNavigate={(id) => (id === "root" && othersFolder ? void navigate({ to: "/shared" }) : open(id === "root" ? null : id))}
+                />
+                {othersFolder && folder && (
+                  <span className="inline-flex items-center gap-1 text-body-sm text-on-surface-variant">
+                    <Icon name={canEdit(folder.access) ? "edit" : "visibility"} size={16} />
+                    {t(`share.ownerFolder.${canEdit(folder.access) ? "editor" : "viewer"}`, { name: folder.ownerName })}
+                  </span>
+                )}
+              </div>
             ) : (
               <h1 className={chosen.length > 0 ? "m-0 flex-1 text-headline-sm max-sm:block sm:hidden" : "m-0 flex-1 text-headline-sm"}>
                 {title}
@@ -489,8 +634,10 @@ export function FilesPage({ source }: { source: FilesSource }) {
           tab={details.tab}
           onTabChange={(tab) => setDetails({ open: true, tab })}
           onClose={() => setDetails({ ...details, open: false })}
-          onUploadVersion={() => versionInput.current?.click()}
+          onUploadVersion={editable([single]) ? () => versionInput.current?.click() : undefined}
           onStarChange={(on) => void star([single], on)}
+          onShare={() => setSharing(single)}
+          onLeave={() => setLeaving(single)}
           className="lg:mr-4 lg:mb-4 lg:rounded-lg max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-elevation-3 max-sm:w-full"
         />
       )}
@@ -531,18 +678,71 @@ export function FilesPage({ source }: { source: FilesSource }) {
         onOpenChange={(isOpen) => !isOpen && setMoving([])}
         items={moving}
         startIn={moving[0]?.node.parentId ?? folderId}
+        root={moving[0] && moveRoot(moving[0])}
         onMove={async (target) => {
-          try {
-            for (const item of moving) await drive.move(item.id, target);
-            toast(t("toasts.moved", { count: moving.length }));
-            setSelected([]);
-          } catch (error) {
-            toast(errorMessage(t, error));
-          }
+          const targets = moving;
+          // Ask first when the move would hide something from people who see it now (§9).
+          const people = await drive.losingAccess(targets.map((item) => item.id), target).catch(() => []);
           setMoving([]);
-          await invalidateFolders(queryClient, [...moving.map((item) => item.node.parentId ?? null), target]);
+          if (people.length > 0) setLosing({ items: targets, target, people });
+          else await move(targets, target);
         }}
       />
+
+      <Dialog
+        open={!!losing}
+        onOpenChange={(isOpen) => !isOpen && setLosing(null)}
+        title={t("dialogs.accessLost.title")}
+        description={
+          losing &&
+          t("dialogs.accessLost.text", {
+            count: losing.items.length,
+            names: new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(losing.people.map((p) => p.name)),
+          })
+        }
+        width="sm"
+        footer={
+          <>
+            <Button variant="text" onClick={() => setLosing(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                if (losing) void move(losing.items, losing.target);
+                setLosing(null);
+              }}
+            >
+              {t("dialogs.accessLost.move")}
+            </Button>
+          </>
+        }
+      />
+
+      <Dialog
+        open={!!leaving}
+        onOpenChange={(isOpen) => !isOpen && setLeaving(null)}
+        title={leaving ? t("share.leaveTitle", { name: leaving.name }) : undefined}
+        description={leaving ? t("share.leaveConfirm", { name: leaving.name, owner: leaving.owner }) : undefined}
+        width="sm"
+        footer={
+          <>
+            <Button variant="text" onClick={() => setLeaving(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (leaving) void leave(leaving);
+                setLeaving(null);
+              }}
+            >
+              {t("share.leave")}
+            </Button>
+          </>
+        }
+      />
+
+      <ShareNodeDialog node={sharing} onClose={() => setSharing(null)} />
 
       <input
         ref={versionInput}

@@ -14,7 +14,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Dokument.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(DokumentDbContext))]
-    [Migration("20261107165113_AddSessionIdToken")]
+    [Migration("20261107170127_AddSessionIdToken")]
     partial class AddSessionIdToken
     {
         /// <inheritdoc />
@@ -273,6 +273,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("TrashedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("trashed_at");
+
+                    b.Property<Guid?>("TrashedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("trashed_by");
 
                     b.Property<Guid?>("TrashedRootId")
                         .HasColumnType("uuid")
@@ -585,6 +589,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("RuleId")
                         .HasColumnType("uuid")
                         .HasColumnName("rule_id");
+
+                    b.Property<bool>("Skipped")
+                        .HasColumnType("boolean")
+                        .HasColumnName("skipped");
 
                     b.Property<string>("Tag")
                         .IsRequired()
@@ -1199,6 +1207,50 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("version_details", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Sharing.Share", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("GranteeUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grantee_user_id");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("role");
+
+                    b.Property<DateTimeOffset?>("SeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("seen_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("GranteeUserId");
+
+                    b.HasIndex("NodeId", "GranteeUserId")
+                        .IsUnique();
+
+                    b.ToTable("shares", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Domain.Tags.BlobTag", b =>
                 {
                     b.Property<byte[]>("BlobHash")
@@ -1549,6 +1601,27 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.HasOne("Dokument.Domain.Files.FileVersion", null)
                         .WithOne()
                         .HasForeignKey("Dokument.Domain.Search.VersionDetails", "VersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dokument.Domain.Sharing.Share", b =>
+                {
+                    b.HasOne("Dokument.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Dokument.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("GranteeUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dokument.Domain.Files.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

@@ -119,6 +119,13 @@ public sealed class TagService(
             throw DriveException.NotFound();
         }
 
+        // Tags are shared, so changing them takes an editor (§13.4).
+        var editable = await db.Nodes.EditableBy(actor).CountAsync(n => wanted.Contains(n.Id), ct);
+        if (editable != wanted.Count)
+        {
+            throw DriveException.Forbidden(Access.Edit);
+        }
+
         if (nodes.Any(n => n.IsFolder))
         {
             throw new DriveException(DriveError.InvalidRequest, "Only files can have tags.");

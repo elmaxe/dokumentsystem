@@ -1,3 +1,4 @@
+using Dokument.Application.Files;
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
 using Dokument.Domain.Filing;
@@ -5,6 +6,7 @@ using Dokument.Domain.Identity;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Previews;
 using Dokument.Domain.Search;
+using Dokument.Domain.Sharing;
 using Dokument.Domain.Tags;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -41,11 +43,47 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<EffectiveTag> EffectiveTags => Set<EffectiveTag>();
     public DbSet<FilingRule> FilingRules => Set<FilingRule>();
     public DbSet<NodeFiling> NodeFilings => Set<NodeFiling>();
+    public DbSet<Share> Shares => Set<Share>();
     public DbSet<BlobTranscript> BlobTranscripts => Set<BlobTranscript>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresExtension("ltree");
+
+        // NodeAccess's predicate, created in the AddSharing migration (docs/design.md §9).
+        modelBuilder
+            .HasDbFunction(typeof(NodeAccess).GetMethod(nameof(NodeAccess.SharedRole))!)
+            .HasName("shared_role")
+            .HasSchema("public")
+            .HasParameter("path")
+            .HasStoreType("ltree");
+
+        modelBuilder.Entity<Share>(e =>
+        {
+            e.ToTable("shares");
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Id).HasColumnName("id");
+            e.Property(s => s.NodeId).HasColumnName("node_id");
+            e.Property(s => s.GranteeUserId).HasColumnName("grantee_user_id");
+            e.Property(s => s.Role).HasColumnName("role").HasConversion(LowercaseEnum<ShareRole>());
+            e.Property(s => s.CreatedBy).HasColumnName("created_by");
+            e.Property(s => s.CreatedAt).HasColumnName("created_at");
+            e.Property(s => s.SeenAt).HasColumnName("seen_at");
+            e.HasOne<Node>()
+                .WithMany()
+                .HasForeignKey(s => s.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(s => s.GranteeUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(s => s.CreatedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(s => new { s.NodeId, s.GranteeUserId }).IsUnique();
+            e.HasIndex(s => s.GranteeUserId);
+        });
 
         modelBuilder.Entity<Setting>(e =>
         {
@@ -473,6 +511,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(f => f.ToFolderId).HasColumnName("to_folder_id");
             e.Property(f => f.FiledAt).HasColumnName("filed_at");
             e.Property(f => f.UndoneAt).HasColumnName("undone_at");
+            e.Property(f => f.Skipped).HasColumnName("skipped");
             e.HasOne<Node>()
                 .WithMany()
                 .HasForeignKey(f => f.NodeId)
@@ -507,6 +546,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(n => n.ModifiedAt).HasColumnName("modified_at");
             e.Property(n => n.TrashedAt).HasColumnName("trashed_at");
             e.Property(n => n.TrashedRootId).HasColumnName("trashed_root_id");
+            e.Property(n => n.TrashedBy).HasColumnName("trashed_by");
             e.HasOne<User>()
                 .WithMany()
                 .HasForeignKey(n => n.OwnerId)

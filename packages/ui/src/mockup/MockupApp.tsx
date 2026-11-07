@@ -270,6 +270,10 @@ export function MockupApp({
     act,
   };
 
+  const mockCandidates = [
+    { id: "maja", name: "Maja Lindqvist", email: "maja@example.com" },
+    { id: "olle", name: "Olle Eriksson", email: "olle@example.com" },
+  ];
   const shareItem = useMemo(() => nodes.find((n) => n.id === share.itemId), [nodes, share.itemId]);
 
   return (
@@ -280,7 +284,22 @@ export function MockupApp({
         onOpenChange={(open) => !open && setShare({ ...share, itemId: null })}
         name={shareItem?.name ?? ""}
         people={share.people}
-        onPeopleChange={(list) => setShare({ ...share, people: list })}
+        candidates={mockCandidates}
+        onAdd={(candidate, role) =>
+          setShare({
+            ...share,
+            people: [...share.people, { id: candidate.id, name: candidate.name, email: candidate.email ?? "", role, removable: true }],
+          })
+        }
+        onRoleChange={(person, role) =>
+          setShare({
+            ...share,
+            people:
+              role === "remove"
+                ? share.people.filter((p) => p !== person)
+                : share.people.map((p) => (p === person ? { ...p, role, removable: true } : p)),
+          })
+        }
         link={share.link}
         onLinkChange={(link: ShareLink) => setShare({ ...share, link })}
         onCopyLink={() => toast(t("toasts.linkCopied"))}

@@ -79,6 +79,14 @@ export type MediaDto = components["schemas"]["MediaDto"];
 export type Transcript = components["schemas"]["TranscriptDto"];
 export type TranscriptLine = components["schemas"]["TranscriptLineDto"];
 export type TranscriptState = components["schemas"]["TranscriptState"];
+export type NodeRole = components["schemas"]["NodeRole"];
+export type ShareRole = components["schemas"]["ShareRole"];
+export type Person = components["schemas"]["PersonDto"];
+export type Activity = components["schemas"]["ActivityDto"];
+export type ActivityListing = components["schemas"]["ActivityListing"];
+export type NodeAccess = components["schemas"]["AccessDto"];
+export type AccessPerson = components["schemas"]["AccessPersonDto"];
+export type SharedItem = components["schemas"]["SharedItemDto"];
 export type TranscriptionSettings = components["schemas"]["TranscriptionSettingsDto"];
 export type TranscriptionProgress = components["schemas"]["TranscriptionProgress"];
 export type PdfInfo = components["schemas"]["PdfDto"];
@@ -155,7 +163,7 @@ export type Problem = {
   title?: string;
   detail?: string;
   status?: number;
-  code?: "notFound" | "invalidRequest" | "nameTaken" | "quotaExceeded" | "uploadMismatch" | "uploadBusy";
+  code?: "notFound" | "invalidRequest" | "nameTaken" | "quotaExceeded" | "uploadMismatch" | "uploadBusy" | "forbidden";
   conflictingNodeId?: string;
 };
 

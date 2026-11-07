@@ -112,8 +112,8 @@ export const initialNodes: Node[] = [
 
 export const people: SharePerson[] = [
   { name: "Axel", email: "axel@hemma.se", role: "owner", you: true, tone: 1 },
-  { name: "Karin Lindqvist", email: "karin@hemma.se", role: "editor", tone: 2, inheritedFrom: "Familjen – delat" },
-  { name: "Lennart Eriksson", email: "lennart@hemma.se", role: "viewer", tone: 3 },
+  { name: "Karin Lindqvist", email: "karin@hemma.se", role: "editor", tone: 2, inheritedFrom: "Familjen – delat", inheritedRole: "editor" },
+  { name: "Lennart Eriksson", email: "lennart@hemma.se", role: "viewer", tone: 3, removable: true },
 ];
 
 const iso = (ms: number) => ago(ms);

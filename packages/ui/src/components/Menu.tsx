@@ -6,6 +6,7 @@ import { Icon } from "./Icon";
 export type MenuAction<Id extends string = string> = {
   id: Id;
   label: string;
+  /** Empty leaves the icon's space blank, as for the unchecked choices of a menu that checks one. */
   icon: string;
   /** Destructive actions are red and confirm before they run (§16.1). */
   danger?: boolean;
@@ -22,10 +23,11 @@ const separator = "my-2 h-px bg-outline-variant";
 function Item({ action }: { action: MenuAction }) {
   return (
     <>
-      <Icon
-        name={action.icon}
-        className={action.danger ? "text-error" : "text-on-surface-variant"}
-      />
+      {action.icon ? (
+        <Icon name={action.icon} className={action.danger ? "text-error" : "text-on-surface-variant"} />
+      ) : (
+        <span aria-hidden="true" className="size-6 shrink-0" />
+      )}
       <span className={cn("flex-1", action.danger && "text-error")}>{action.label}</span>
     </>
   );

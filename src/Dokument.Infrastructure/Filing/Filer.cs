@@ -79,6 +79,38 @@ public sealed partial class Filer(
             return false;
         }
 
+        // A rule never hides a file from people it is shared with through the folders it is in (§13.6).
+        if (await HidesFromSomeoneAsync(node, folder, ct))
+        {
+            // Drop the folders it would have made, and their audit events.
+            foreach (
+                var made in db
+                    .ChangeTracker.Entries()
+                    .Where(e => e.State == EntityState.Added)
+                    .ToList()
+            )
+            {
+                made.State = EntityState.Detached;
+            }
+
+            db.NodeFilings.Add(
+                new NodeFiling
+                {
+                    NodeId = node.Id,
+                    RuleId = rule.Id,
+                    Tag = rule.Tag.Value,
+                    FromFolderId = node.ParentId,
+                    FiledAt = time.GetUtcNow(),
+                    Skipped = true,
+                }
+            );
+            await db.SaveChangesAsync(ct);
+            await live.NotifyAsync(node.OwnerId, LiveTopics.Account, ct);
+            await tx.CommitAsync(ct);
+            LogSkipped(logger, node.Id, rule.Folder.Value);
+            return false;
+        }
+
         var fromId = node.ParentId;
         if (fromId != folder.Id)
         {
@@ -143,6 +175,41 @@ public sealed partial class Filer(
         return TimeZoneInfo.ConvertTime(at, time.LocalTimeZone);
     }
 
+    /// <summary>
+    /// Whether someone who sees the file through a folder above it couldn't see it in <paramref name="folder"/>. Shares
+    /// on the file itself go with it; new folders have none yet, so their path's shares are those of the folders above.
+    /// </summary>
+    private async Task<bool> HidesFromSomeoneAsync(Node node, Node folder, CancellationToken ct)
+    {
+        if (node.ParentId is null)
+        {
+            return false;
+        }
+
+        var parentPath = node.Path[..node.Path.LastIndexOf('.')];
+        var seeing = await GranteesAsync(parentPath, ct);
+        if (seeing.Count == 0)
+        {
+            return false;
+        }
+
+        var after = await GranteesAsync(folder.Path, ct);
+        return !seeing.IsSubsetOf(after);
+    }
+
+    private async Task<HashSet<Guid>> GranteesAsync(string path, CancellationToken ct) =>
+        [
+            .. await db
+                .Database.SqlQuery<Guid>(
+                    $"""
+                    SELECT DISTINCT s.grantee_user_id AS "Value" FROM shares s
+                    JOIN nodes sn ON sn.id = s.node_id
+                    WHERE sn.path @> {path}::ltree
+                    """
+                )
+                .ToListAsync(ct),
+        ];
+
     /// <summary>The folder at these names from the top of My files, making the ones missing. Null when a file has one of the names.</summary>
     private async Task<Node?> EnsureFoldersAsync(
         Guid ownerId,
@@ -194,4 +261,10 @@ public sealed partial class Filer(
         Message = "Not filing {NodeId}: a file has the name of a folder in \"{Folder}\""
     )]
     private static partial void LogBlocked(ILogger logger, Guid nodeId, string folder);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Not filing {NodeId} in \"{Folder}\": people it is shared with couldn't see it there"
+    )]
+    private static partial void LogSkipped(ILogger logger, Guid nodeId, string folder);
 }

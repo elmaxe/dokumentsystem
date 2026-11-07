@@ -17,6 +17,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { sessionQuery } from "../api";
 import { onRemoteFileChange } from "../live";
 import {
   ApiError,
@@ -33,6 +34,8 @@ import {
   wordsQuery,
 } from "./drive";
 import { FileDetailsPanel } from "./FileDetailsPanel";
+import { ShareNodeDialog } from "./ShareNodeDialog";
+import { canEdit } from "./sharing";
 import { lastSearchResults, matchesQuery } from "../search/search";
 
 /** Images every browser shows from the original. Others (HEIC, TIFF, SVG) wait for the worker's WebP preview. */
@@ -117,8 +120,11 @@ export function ViewerPage({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const details = useQuery(nodeQuery(fileId));
+  const me = useQuery(sessionQuery).data?.user.id;
   const parentId = details.data?.node.parentId ?? null;
-  const listing = useQuery({ ...folderQuery(parentId), enabled: details.isSuccess && !from });
+  // A file shared on its own, outside any folder shared with the person, is opened from Shared with me (§9).
+  const sharedAlone = !!details.data && !!me && details.data.node.ownerId !== me && details.data.path.length === 0;
+  const listing = useQuery({ ...folderQuery(parentId), enabled: details.isSuccess && !from && !sharedAlone });
   const starred = useQuery({ ...starredQuery, enabled: from === "starred" });
   const recent = useQuery({ ...recentQuery, enabled: from === "recent" });
   const results = from === "search" ? lastSearchResults() : null;
@@ -126,6 +132,7 @@ export function ViewerPage({
   const recording = !!details.data && ["video", "audio"].includes(viewTypeOf(details.data.node));
   const transcript = useQuery({ ...transcriptQuery(fileId), enabled: recording });
   const [panel, setPanel] = useState<{ open: boolean; tab: DetailsTab }>({ open: false, tab: "info" });
+  const [sharing, setSharing] = useState(false);
   const format = useFormat();
   const current = details.data?.node.currentVersionId ?? null;
   // On while stepping between files, off the next time the viewer opens (§14).
@@ -163,6 +170,16 @@ export function ViewerPage({
     drive.opened(fileId).catch(() => {});
   }, [fileId]);
 
+  // Opening something shared with the person takes the New off it in Shared with me.
+  const othersFile = !!details.data && !!me && details.data.node.ownerId !== me;
+  useEffect(() => {
+    if (!othersFile) return;
+    drive
+      .seen(fileId)
+      .then(() => queryClient.invalidateQueries({ queryKey: ["shared"] }))
+      .catch(() => {});
+  }, [othersFile, fileId, queryClient]);
+
   // A video browsers can't play: ask for its copy now, which starts it or moves it ahead of background work. Refused
   // when copies are off (§14).
   const [refused, setRefused] = useState<string | null>(null);
@@ -190,6 +207,8 @@ export function ViewerPage({
       ? navigate({ to: "/search", search: results?.params ?? { q } })
       : from
         ? navigate({ to: `/${from}` })
+      : sharedAlone
+        ? navigate({ to: "/shared" })
       : parentId
         ? navigate({ to: "/folders/$folderId", params: { folderId: parentId } })
           : navigate({ to: "/" }));
@@ -315,7 +334,7 @@ export function ViewerPage({
         textShown={textShown}
         onTextShownChange={setTextShown}
         transcript={spoken}
-        onTranscriptRedo={() => void redoTranscript()}
+        onTranscriptRedo={canEdit(item.node.access) ? () => void redoTranscript() : undefined}
         captions={
           item.kind === "video" && transcript.data?.lines.length && shownVersion === current ? captionsUrl(item.id) : undefined
         }
@@ -337,10 +356,12 @@ export function ViewerPage({
             onTabChange={(tab) => setPanel({ open: true, tab })}
             onClose={() => setPanel({ ...panel, open: false })}
             onStarChange={(on) => void setStar(on)}
+            onShare={() => setSharing(true)}
             className="max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-elevation-3 max-sm:w-full"
           />
         }
       />
+      <ShareNodeDialog node={sharing ? item : null} onClose={() => setSharing(false)} />
     </div>
   );
 }

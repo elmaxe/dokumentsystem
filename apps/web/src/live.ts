@@ -12,6 +12,7 @@ const topicQueries: Record<LiveTopic, string[][]> = {
   storage: [["storage"]],
   account: [["auth", "session"], ["storage"], ["filing-rules"]],
   filings: [["filing-rules"]],
+  shares: [["shared"], ["access"], ["folder"], ["node"], ["search"]],
 };
 
 /** How long the server can be out of reach before the page says so. Short drops pass unnoticed. */
@@ -29,6 +30,7 @@ let state: LiveState = { connected: false, offlineSince: null, remoteFileChanges
 const listeners = new Set<() => void>();
 const fileChangeListeners = new Set<() => void>();
 const filingListeners = new Set<() => void>();
+const shareListeners = new Set<() => void>();
 
 function update(next: Partial<LiveState>) {
   state = { ...state, ...next };
@@ -56,6 +58,12 @@ export function onRemoteFileChange(listener: () => void) {
 export function onFilings(listener: () => void) {
   filingListeners.add(listener);
   return () => void filingListeners.delete(listener);
+}
+
+/** Calls back when something was shared with the person or stopped being shared, or their access changed (§9). */
+export function onShares(listener: () => void) {
+  shareListeners.add(listener);
+  return () => void shareListeners.delete(listener);
 }
 
 /** True once the server has been out of reach for a while (§15.4). */
@@ -110,6 +118,7 @@ export function useLiveUpdates() {
         fileChangeListeners.forEach((listener) => listener());
       }
       if (message.topics.includes("filings")) filingListeners.forEach((listener) => listener());
+      if (message.topics.includes("shares")) shareListeners.forEach((listener) => listener());
       const keys = new Set(message.topics.flatMap((topic) => topicQueries[topic] ?? []).map((key) => JSON.stringify(key)));
       keys.forEach((key) => void queryClient.invalidateQueries({ queryKey: JSON.parse(key) as string[] }));
     });

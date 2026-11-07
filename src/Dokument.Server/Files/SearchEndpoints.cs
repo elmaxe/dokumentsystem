@@ -1,3 +1,4 @@
+using Dokument.Application.Files;
 using Dokument.Domain.Files;
 using Dokument.Domain.Search;
 using Dokument.Infrastructure.Files;
@@ -74,7 +75,8 @@ public static class SearchEndpoints
             .WithName("Search")
             .WithDescription(
                 "Files and folders whose name, text or metadata match. `q` takes words, \"exact phrases\", -excluded "
-                    + "words and the operators type:, in:, after:, before:, camera:, taken:, tag: and is:starred; the "
+                    + "words and the operators type:, in:, after:, before:, camera:, taken:, tag:, is:starred, "
+                    + "owner:me and is:shared; the "
                     + "other parameters are the filter chips and override the operators. A word also finds files "
                     + "with a tag that has it."
             );
@@ -104,6 +106,7 @@ public static class SearchEndpoints
         Guid? folderId = null,
         bool starred = false,
         string[]? tag = null,
+        SearchOwner? owner = null,
         SearchSort sort = SearchSort.Relevance,
         int offset = 0,
         int limit = 50
@@ -133,6 +136,7 @@ public static class SearchEndpoints
                 folderId,
                 starred,
                 tag,
+                owner,
                 sort,
                 Math.Max(0, offset),
                 limit
@@ -141,7 +145,7 @@ public static class SearchEndpoints
         );
         var nodes = results.Hits.Select(h => h.Node).ToList();
         var dtos = await mapper.MapAsync(nodes, ct);
-        var paths = await PathsAsync(drive, nodes, ct);
+        var paths = await PathsAsync(drive, nodes, context.Actor(), ct);
         return TypedResults.Ok(
             new SearchResponse(
                 results
@@ -189,7 +193,7 @@ public static class SearchEndpoints
             ? []
             : await tags.SuggestAsync(context.Actor(), q, limit: 2, ct);
         var dtos = await mapper.MapAsync(nodes, ct);
-        var paths = await PathsAsync(drive, nodes, ct);
+        var paths = await PathsAsync(drive, nodes, context.Actor(), ct);
         return TypedResults.Ok(
             new SuggestResponse(
                 nodes.Select((n, i) => new SuggestionDto(dtos[i], paths[n.Id])).ToList(),
@@ -223,9 +227,10 @@ public static class SearchEndpoints
     private static async Task<Dictionary<Guid, List<PathEntry>>> PathsAsync(
         DriveService drive,
         List<Node> nodes,
+        Actor viewer,
         CancellationToken ct
     ) =>
-        (await drive.AncestorsAsync(nodes, ct)).ToDictionary(
+        (await drive.AncestorsAsync(nodes, ct, viewer)).ToDictionary(
             a => a.Key,
             a => a.Value.Select(f => new PathEntry(f.Id, f.Name.Value)).ToList()
         );

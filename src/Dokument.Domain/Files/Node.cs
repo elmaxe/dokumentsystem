@@ -32,6 +32,9 @@ public sealed class Node
     public DateTimeOffset? TrashedAt { get; set; }
     public Guid? TrashedRootId { get; set; }
 
+    /// <summary>Who moved the trash group this node is in to the trash: the owner, or an editor of a shared folder.</summary>
+    public Guid? TrashedBy { get; set; }
+
     public bool IsFolder => Kind == NodeKind.Folder;
     public bool IsTrashed => TrashedAt is not null;
 

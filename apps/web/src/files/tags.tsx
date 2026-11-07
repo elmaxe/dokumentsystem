@@ -29,7 +29,7 @@ function useChangeTags() {
 }
 
 /** The Tags section of a file's Info tab (docs/design.md §13.4). Tapping a tag searches for it. */
-export function FileTagsSection({ item }: { item: Item }) {
+export function FileTagsSection({ item, canEdit }: { item: Item; canEdit: boolean }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const change = useChangeTags();
@@ -41,8 +41,7 @@ export function FileTagsSection({ item }: { item: Item }) {
     <TagEditor
       tags={shown}
       removed={tags.data?.removed}
-      // Owner only until sharing; editors will get it then (§9).
-      canEdit
+      canEdit={canEdit}
       suggestions={suggestions.data ?? []}
       onQueryChange={setTyped}
       onAdd={(names) =>
