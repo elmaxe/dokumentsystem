@@ -75,7 +75,7 @@ export function Dialog({
               sheet ? "px-4 py-3" : dialog ? "px-6 pt-6 pb-4" : "px-4 py-3 sm:px-6 sm:pt-6 sm:pb-4",
             )}
           >
-            <DialogPrimitive.Title className="m-0 min-w-0 flex-1 text-title-lg">
+            <DialogPrimitive.Title className="m-0 min-w-0 flex-1 text-title-lg [overflow-wrap:anywhere]">
               {title}
             </DialogPrimitive.Title>
             {headAction}
@@ -93,7 +93,7 @@ export function Dialog({
           {description ? (
             <DialogPrimitive.Description
               className={cn(
-                "m-0 -mt-2 pb-4 text-body-md text-on-surface-variant",
+                "m-0 -mt-2 pb-4 text-body-md text-on-surface-variant [overflow-wrap:anywhere]",
                 sheet ? "px-4" : dialog ? "px-6" : "px-4 sm:px-6",
               )}
             >
