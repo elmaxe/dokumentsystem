@@ -21,6 +21,8 @@ namespace Dokument.Server.Files;
 /// <param name="Tags">The file's tags, by name: the ones people added and the automatic ones nobody removed (§13.4).</param>
 /// <param name="Media">For video and audio files, once the worker has looked at them. Null for everything else.</param>
 /// <param name="ShownAsPdf">Whether <c>/nodes/{id}/preview</c> serves a PDF made of the file, for Office documents.</param>
+/// <param name="Access">What the person asking may do: own it, edit it or only view it (§9).</param>
+/// <param name="Shared">For the owner: whether this node itself is shared with someone. Always false for others.</param>
 /// <param name="Pdf">For PDFs the worker has looked at: pages, for merging and splitting (§8.4). Null for everything else.</param>
 public sealed record NodeDto(
     Guid Id,
@@ -43,6 +45,8 @@ public sealed record NodeDto(
     List<TagDto> Tags,
     MediaDto? Media,
     bool ShownAsPdf,
+    NodeRole Access,
+    bool Shared,
     PdfDto? Pdf
 )
 {
@@ -56,6 +60,8 @@ public sealed record NodeDto(
         IReadOnlyDictionary<Guid, List<TagView>> tags,
         IReadOnlyDictionary<ContentHash, MediaState> media,
         IReadOnlySet<ContentHash> documents,
+        IReadOnlyDictionary<Guid, NodeRole> roles,
+        IReadOnlySet<Guid> shared,
         IReadOnlyDictionary<ContentHash, PdfState> pdfs
     ) =>
         new(
@@ -108,6 +114,8 @@ public sealed record NodeDto(
                 )
                 : null,
             node.CurrentVersion is { } converted && documents.Contains(converted.BlobHash),
+            roles.GetValueOrDefault(node.Id, NodeRole.Viewer),
+            shared.Contains(node.Id),
             node.CurrentVersion is { } read && pdfs.TryGetValue(read.BlobHash, out var pdf)
                 ? new PdfDto(pdf.PageCount, Readable: pdf.PageCount is not null)
                 : null
@@ -117,6 +125,14 @@ public sealed record NodeDto(
 /// <param name="PageCount">Null when it can't be read.</param>
 /// <param name="Readable">False for a PDF that is damaged or locked with a password: it can't be merged or split.</param>
 public sealed record PdfDto(int? PageCount, bool Readable);
+
+/// <summary>What the signed-in person may do with a node (§9).</summary>
+public enum NodeRole
+{
+    Viewer,
+    Editor,
+    Owner,
+}
 
 /// <summary>A processing step that hasn't finished yet.</summary>
 /// <param name="Running">False while it waits its turn.</param>
@@ -285,13 +301,15 @@ public sealed record NodeIdsRequest(List<Guid> Ids);
 /// <param name="DeleteAt">When the purge job deletes it forever (§12).</param>
 /// <param name="ItemCount">For a folder, how many things went to the trash with it.</param>
 /// <param name="Size">Bytes of the current versions, a folder's contents included.</param>
+/// <param name="TrashedBy">Who trashed it, when that was someone the folder is shared with rather than the owner.</param>
 public sealed record TrashItem(
     NodeDto Node,
     List<PathEntry> Path,
     DateTimeOffset TrashedAt,
     DateTimeOffset DeleteAt,
     int ItemCount,
-    long Size
+    long Size,
+    string? TrashedBy
 );
 
 /// <param name="FreeableBytes">The storage that emptying the trash would free.</param>

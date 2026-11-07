@@ -1457,12 +1457,337 @@
         }
       }
     },
+    "/api/v1/people": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "description": "The people the signed-in person can share with: everyone who has signed in and isn't disabled, by name or email, at most 50.",
+        "operationId": "ListPeople",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PersonDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/access": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "description": "Who can see a file or folder and why: its owner and everyone it or a folder above it is shared with.",
+        "operationId": "GetAccess",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/shares": {
+      "post": {
+        "tags": [
+          "Sharing"
+        ],
+        "description": "Owner only. Shares with a person, or changes the role they have on this node directly. The role must be more than a folder above already gives them.",
+        "operationId": "ShareNode",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shares/{id}": {
+      "put": {
+        "tags": [
+          "Sharing"
+        ],
+        "operationId": "ChangeShare",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeShareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Sharing"
+        ],
+        "description": "The owner stops sharing with someone, or the person leaves.",
+        "operationId": "RemoveShare",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/leave": {
+      "post": {
+        "tags": [
+          "Sharing"
+        ],
+        "description": "Ends the signed-in person's own share on this node.",
+        "operationId": "LeaveShare",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/seen": {
+      "post": {
+        "tags": [
+          "Sharing"
+        ],
+        "description": "Something shared with the person was opened, so it is no longer New.",
+        "operationId": "MarkShareSeen",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/shared-with-me": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "description": "The top-most things shared with the person, newest share first. Folders inside a listed one are reached from it.",
+        "operationId": "ListSharedWithMe",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SharedItemDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/move-check": {
+      "post": {
+        "tags": [
+          "Sharing"
+        ],
+        "description": "Who would no longer see these items if they moved to the folder, so the client can ask first.",
+        "operationId": "CheckMove",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveCheckResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/activity": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "What happened to a file, or to a folder and everything in it, newest first. Everyone who can see it sees its changes; downloads only show for the owner, and for each person their own. Pass the last entry's `at` as `before` for more.",
+        "operationId": "ListActivity",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityListing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/search": {
       "get": {
         "tags": [
           "Search"
         ],
-        "description": "Files and folders whose name, text or metadata match. `q` takes words, \"exact phrases\", -excluded words and the operators type:, in:, after:, before:, camera:, taken:, tag: and is:starred; the other parameters are the filter chips and override the operators. A word also finds files with a tag that has it.",
+        "description": "Files and folders whose name, text or metadata match. `q` takes words, \"exact phrases\", -excluded words and the operators type:, in:, after:, before:, camera:, taken:, tag:, is:starred, owner:me and is:shared; the other parameters are the filter chips and override the operators. A word also finds files with a tag that has it.",
         "operationId": "Search",
         "parameters": [
           {
@@ -1519,6 +1844,13 @@
               "items": {
                 "type": "string"
               }
+            }
+          },
+          {
+            "name": "owner",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/SearchOwner"
             }
           },
           {
@@ -3443,6 +3775,73 @@
   },
   "components": {
     "schemas": {
+      "AccessDto": {
+        "required": [
+          "owner",
+          "yourAccess",
+          "people"
+        ],
+        "type": "object",
+        "properties": {
+          "owner": {
+            "$ref": "#/components/schemas/PersonDto"
+          },
+          "yourAccess": {
+            "$ref": "#/components/schemas/NodeRole"
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessPersonDto"
+            }
+          }
+        }
+      },
+      "AccessPersonDto": {
+        "required": [
+          "person",
+          "role",
+          "shareId",
+          "inheritedRole",
+          "inheritedFrom"
+        ],
+        "type": "object",
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/PersonDto"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ShareRole"
+          },
+          "shareId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "inheritedRole": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ShareRole"
+              }
+            ]
+          },
+          "inheritedFrom": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PathEntry"
+              }
+            ]
+          }
+        }
+      },
       "ActiveStepDto": {
         "required": [
           "step",
@@ -3454,6 +3853,187 @@
             "$ref": "#/components/schemas/FileStep"
           },
           "running": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ActivityDto": {
+        "required": [
+          "id",
+          "at",
+          "action",
+          "actor",
+          "nodeId",
+          "nodeName",
+          "isFolder",
+          "fromName",
+          "toName",
+          "from",
+          "to",
+          "tag",
+          "added",
+          "removed",
+          "person",
+          "role",
+          "versionNumber"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PersonDto"
+              }
+            ]
+          },
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nodeName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isFolder": {
+            "type": "boolean"
+          },
+          "fromName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "toName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "from": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityPlaceDto"
+              }
+            ]
+          },
+          "to": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityPlaceDto"
+              }
+            ]
+          },
+          "tag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "added": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "removed": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "person": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PersonDto"
+              }
+            ]
+          },
+          "role": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ShareRole"
+              }
+            ]
+          },
+          "versionNumber": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ActivityListing": {
+        "required": [
+          "entries",
+          "more"
+        ],
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityDto"
+            }
+          },
+          "more": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ActivityPlaceDto": {
+        "required": [
+          "folder",
+          "top"
+        ],
+        "type": "object",
+        "properties": {
+          "folder": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PathEntry"
+              }
+            ]
+          },
+          "top": {
             "type": "boolean"
           }
         }
@@ -3608,6 +4188,17 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "ChangeShareRequest": {
+        "required": [
+          "role"
+        ],
+        "type": "object",
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/ShareRole"
           }
         }
       },
@@ -4347,6 +4938,7 @@
           "folder",
           "enabled",
           "filed",
+          "skipped",
           "running"
         ],
         "type": "object",
@@ -4365,6 +4957,10 @@
             "type": "boolean"
           },
           "filed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "skipped": {
             "type": "integer",
             "format": "int32"
           },
@@ -5028,6 +5624,43 @@
           }
         }
       },
+      "MoveCheckRequest": {
+        "required": [
+          "ids",
+          "folderId"
+        ],
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "MoveCheckResponse": {
+        "required": [
+          "losingAccess"
+        ],
+        "type": "object",
+        "properties": {
+          "losingAccess": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonDto"
+            }
+          }
+        }
+      },
       "MoveRequest": {
         "required": [
           "folderId"
@@ -5091,6 +5724,8 @@
           "tags",
           "media",
           "shownAsPdf",
+          "access",
+          "shared",
           "pdf"
         ],
         "type": "object",
@@ -5201,6 +5836,12 @@
           "shownAsPdf": {
             "type": "boolean"
           },
+          "access": {
+            "$ref": "#/components/schemas/NodeRole"
+          },
+          "shared": {
+            "type": "boolean"
+          },
           "pdf": {
             "oneOf": [
               {
@@ -5232,6 +5873,13 @@
         "enum": [
           "folder",
           "file"
+        ]
+      },
+      "NodeRole": {
+        "enum": [
+          "viewer",
+          "editor",
+          "owner"
         ]
       },
       "OfficeSettingsDto": {
@@ -5577,6 +6225,29 @@
           }
         }
       },
+      "PersonDto": {
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "PlaceDto": {
         "required": [
           "latitude",
@@ -5878,6 +6549,13 @@
           }
         }
       },
+      "SearchOwner": {
+        "enum": [
+          "me",
+          "others",
+          null
+        ]
+      },
       "SearchResponse": {
         "required": [
           "results",
@@ -6110,6 +6788,52 @@
             "type": "boolean"
           }
         }
+      },
+      "SharedItemDto": {
+        "required": [
+          "node",
+          "sharedAt",
+          "role",
+          "new"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeDto"
+          },
+          "sharedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ShareRole"
+          },
+          "new": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ShareRequest": {
+        "required": [
+          "userId",
+          "role"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ShareRole"
+          }
+        }
+      },
+      "ShareRole": {
+        "enum": [
+          "viewer",
+          "editor"
+        ]
       },
       "SignInInfo": {
         "required": [
@@ -6897,7 +7621,8 @@
           "trashedAt",
           "deleteAt",
           "itemCount",
-          "size"
+          "size",
+          "trashedBy"
         ],
         "type": "object",
         "properties": {
@@ -6925,6 +7650,12 @@
           "size": {
             "type": "integer",
             "format": "int64"
+          },
+          "trashedBy": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -7261,6 +7992,9 @@
     },
     {
       "name": "Starred and recent"
+    },
+    {
+      "name": "Sharing"
     },
     {
       "name": "Search"

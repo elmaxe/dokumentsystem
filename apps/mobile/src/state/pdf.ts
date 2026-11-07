@@ -17,8 +17,12 @@ export const pdf = {
   cancel: (id: string) => unwrap(api().DELETE("/api/v1/pdf/operations/{id}", { params: { path: { id } } })),
 };
 
-/** A PDF the server could read: only those can be merged or split. */
-export const readablePdf = (node: NodeDto) => !!node.pdf?.readable;
+/**
+ * A PDF the server could read, where the person can edit: only those can be merged or split, since the new files go
+ * next to it (§9).
+ */
+export const readablePdf = (node: NodeDto) =>
+  !!node.pdf?.readable && (node.access === "owner" || node.access === "editor");
 
 export const isActive = (op: PdfOperation) => op.state === "waiting" || op.state === "working" || op.state === "saving";
 
@@ -101,6 +105,8 @@ export function pdfProblem(t: (key: string) => string, error: unknown): string {
         return t("errors.quotaExceeded");
       case "notFound":
         return t("errors.notFound");
+      case "forbidden":
+        return t("errors.forbidden");
     }
   }
   return t("errors.generic");

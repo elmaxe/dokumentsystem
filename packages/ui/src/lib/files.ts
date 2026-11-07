@@ -22,6 +22,8 @@ export type FileItem = {
   duration?: string;
   shared?: boolean;
   starred?: boolean;
+  /** Shared with the person and not opened yet: marked New in Shared with me. */
+  isNew?: boolean;
   /** The file's tags (§13.4). */
   tags?: TagInfo[];
   /** Just appeared because of a change made elsewhere: briefly outlined so it's noticed (§15.4). */

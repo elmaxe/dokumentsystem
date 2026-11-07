@@ -24,6 +24,10 @@ export type FileDetails = {
   people: SharePerson[];
   publicLink?: boolean;
   activity: ActivityEntry[];
+  /** Loads older activity; left out when there is none. */
+  onMoreActivity?: () => void;
+  /** Still fetching activity: the empty text waits. */
+  activityLoading?: boolean;
 };
 
 export type DetailsPanelProps = {
@@ -32,7 +36,10 @@ export type DetailsPanelProps = {
   tab: DetailsTab;
   onTabChange: (tab: DetailsTab) => void;
   onClose: () => void;
+  /** The owner's way to the share dialog; without it the Sharing tab names the owner instead. */
   onManageAccess?: () => void;
+  /** For people it's shared with directly: stop seeing it. */
+  onLeave?: () => void;
   /** Shows a star toggle in the header, filled when the item is starred. */
   onStarChange?: (starred: boolean) => void;
   versions?: VersionHistoryProps;
@@ -50,7 +57,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 py-2">
       <dt className="text-body-sm text-on-surface-variant">{label}</dt>
-      <dd className="m-0 text-body-md break-words text-on-surface">{children}</dd>
+      <dd className="m-0 text-body-md text-on-surface [overflow-wrap:anywhere]">{children}</dd>
     </div>
   );
 }
@@ -63,6 +70,7 @@ export function DetailsPanel({
   onTabChange,
   onClose,
   onManageAccess,
+  onLeave,
   onStarChange,
   versions,
   tags,
@@ -166,7 +174,7 @@ export function DetailsPanel({
             </p>
             <ul className="m-0 flex list-none flex-col p-0">
               {details.people.map((person) => (
-                <li key={person.email} className="flex min-w-0 items-center gap-3 py-2">
+                <li key={person.id ?? person.email} className="flex min-w-0 items-center gap-3 py-2">
                   <Avatar name={person.name} tone={person.tone} />
                   <span className="min-w-0 flex-1 truncate">
                     {person.you ? t("share.you", { name: person.name }) : person.name}
@@ -177,9 +185,20 @@ export function DetailsPanel({
                 </li>
               ))}
             </ul>
-            <Button variant="outlined" icon="person_add" onClick={onManageAccess} className="self-start">
-              {t("details.manageAccess")}
-            </Button>
+            {onManageAccess ? (
+              <Button variant="outlined" icon="person_add" onClick={onManageAccess} className="self-start">
+                {t("details.manageAccess")}
+              </Button>
+            ) : (
+              <p className="m-0 text-body-sm text-on-surface-variant">
+                {t("share.onlyOwner", { name: details.people.find((p) => p.role === "owner")?.name ?? item.owner })}
+              </p>
+            )}
+            {onLeave && (
+              <Button variant="text" icon="person_remove" onClick={onLeave} className="self-start">
+                {t("share.leave")}
+              </Button>
+            )}
           </Tabs.Content>
           {!folder && (
             <Tabs.Content value="versions" className="outline-none">
@@ -187,17 +206,25 @@ export function DetailsPanel({
             </Tabs.Content>
           )}
           <Tabs.Content value="activity" className="outline-none">
+            {details.activity.length === 0 && !details.activityLoading && (
+              <p className="m-0 pt-4 text-body-md text-on-surface-variant">{t("activity.empty")}</p>
+            )}
             <ol className="m-0 flex list-none flex-col p-0 pt-2">
               {details.activity.map((entry) => (
                 <li key={entry.id} className="flex gap-3 py-2">
                   <Avatar name={entry.who} tone={entry.tone} size="sm" className="mt-0.5" />
                   <div className="flex min-w-0 flex-col">
-                    <span className="text-body-md text-on-surface">{entry.what}</span>
+                    <span className="text-body-md text-on-surface [overflow-wrap:anywhere]">{entry.what}</span>
                     <span className="tabular text-body-sm text-on-surface-variant">{date(entry.at)}</span>
                   </div>
                 </li>
               ))}
             </ol>
+            {details.onMoreActivity && (
+              <Button variant="text" onClick={details.onMoreActivity} className="mt-1 self-start">
+                {t("activity.more")}
+              </Button>
+            )}
           </Tabs.Content>
         </div>
       </Tabs.Root>

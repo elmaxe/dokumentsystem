@@ -58,4 +58,10 @@ public sealed class NodeFiling
     public Guid? ToFolderId { get; init; }
     public DateTimeOffset FiledAt { get; init; }
     public DateTimeOffset? UndoneAt { get; set; }
+
+    /// <summary>
+    /// The rule matched but didn't move the file, because the folder would hide it from people it is shared with. It
+    /// isn't tried again.
+    /// </summary>
+    public bool Skipped { get; init; }
 }

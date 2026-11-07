@@ -37,11 +37,11 @@ public sealed class UploadService(
         Guid ownerId;
         if (request.TargetNodeId is { } targetId)
         {
-            ownerId = (await drive.GetFileAsync(actor, targetId, ct)).OwnerId;
+            ownerId = (await drive.GetFileAsync(actor, targetId, ct, Access.Edit)).OwnerId;
         }
         else
         {
-            var parent = await drive.GetFolderAsync(actor, request.FolderId, ct);
+            var parent = await drive.GetFolderAsync(actor, request.FolderId, ct, Access.Edit);
             ownerId = parent?.OwnerId ?? actor.UserId;
             if (request.OnConflict == NameConflictPolicy.Fail)
             {
@@ -69,7 +69,7 @@ public sealed class UploadService(
 
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
-            await drive.ReserveQuotaAsync(ownerId, upload.Size, ct);
+            await drive.ReserveQuotaAsync(ownerId, upload.Size, ct, actor);
             db.Uploads.Add(upload);
             await db.SaveChangesAsync(ct);
             blobs.CreateTemp(upload.Id);

@@ -7,7 +7,7 @@ export const livePath = "/api/v1/live";
 export const liveClientHeader = "X-Dokument-Client";
 
 /** What changed, broadly. Each says which data to fetch again; notices never carry ids or names. */
-export type LiveTopic = "files" | "recent" | "trash" | "storage" | "account" | "filings";
+export type LiveTopic = "files" | "recent" | "trash" | "storage" | "account" | "filings" | "shares";
 
 export type LiveChanged = { topics: LiveTopic[]; origin?: string | null };
 

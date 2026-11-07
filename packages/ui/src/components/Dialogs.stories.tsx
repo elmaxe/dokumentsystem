@@ -49,7 +49,17 @@ function Share() {
       onOpenChange={noop}
       name="Familjen – delat"
       people={list}
-      onPeopleChange={setList}
+      candidates={[{ id: "maja", name: "Maja Lindqvist", email: "maja@example.com" }]}
+      onAdd={(candidate, role) =>
+        setList([...list, { id: candidate.id, name: candidate.name, email: candidate.email ?? "", role, removable: true }])
+      }
+      onRoleChange={(person, role) =>
+        setList(
+          role === "remove"
+            ? list.filter((p) => p !== person)
+            : list.map((p) => (p === person ? { ...p, role, removable: true } : p)),
+        )
+      }
       link={link}
       onLinkChange={setLink}
       onCopyLink={noop}

@@ -24,9 +24,12 @@ public sealed class TrashService(
     TimeProvider time
 )
 {
-    /// <summary>The items people trashed, as opposed to the things that went with them.</summary>
+    /// <summary>
+    /// The items trashed from the person's own files, as opposed to the things that went with them. What an editor
+    /// trashes from someone's shared folder goes to the owner's trash (§9).
+    /// </summary>
     private IQueryable<Node> Roots(Actor actor) =>
-        db.Nodes.VisibleTo(actor).Where(n => n.TrashedAt != null && n.TrashedRootId == n.Id);
+        db.Nodes.OwnedBy(actor).Where(n => n.TrashedAt != null && n.TrashedRootId == n.Id);
 
     public async Task TrashAsync(
         Actor actor,
@@ -45,6 +48,14 @@ public sealed class TrashService(
             throw DriveException.NotFound();
         }
 
+        if (
+            await db.Nodes.EditableBy(actor).CountAsync(n => wanted.Contains(n.Id), ct)
+            != wanted.Count
+        )
+        {
+            throw DriveException.Forbidden(Access.Edit);
+        }
+
         var now = time.GetUtcNow();
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var trashed = new List<Node>();
@@ -58,7 +69,7 @@ public sealed class TrashService(
             }
 
             await db.Database.ExecuteSqlAsync(
-                $"UPDATE nodes SET trashed_at = {now}, trashed_root_id = {node.Id} WHERE path <@ {node.Path}::ltree AND trashed_at IS NULL",
+                $"UPDATE nodes SET trashed_at = {now}, trashed_root_id = {node.Id}, trashed_by = {actor.UserId} WHERE path <@ {node.Path}::ltree AND trashed_at IS NULL",
                 ct
             );
             audit.Add(actor, AuditActions.NodeTrash, node.Id);
@@ -67,7 +78,7 @@ public sealed class TrashService(
 
         await db.SaveChangesAsync(ct);
         await live.NotifyAsync(
-            trashed.Select(n => n.OwnerId),
+            trashed.Select(n => n.OwnerId).Append(actor.UserId),
             LiveTopics.Files | LiveTopics.Trash | LiveTopics.Storage,
             ct
         );
@@ -84,7 +95,7 @@ public sealed class TrashService(
             .OrderByDescending(n => n.TrashedAt)
             .ToListAsync(ct);
         var contents = await db
-            .Nodes.VisibleTo(actor)
+            .Nodes.OwnedBy(actor)
             .Where(n => n.TrashedRootId != null && n.TrashedRootId != n.Id)
             .GroupBy(n => n.TrashedRootId!.Value)
             .Select(g => new
@@ -136,8 +147,16 @@ public sealed class TrashService(
         CancellationToken ct = default
     )
     {
+        // The owner, or the editor who trashed it from a shared folder, for Undo.
         var wanted = ids.Distinct().ToList();
-        var roots = await Roots(actor).Where(n => wanted.Contains(n.Id)).ToListAsync(ct);
+        var roots = await db
+            .Nodes.Where(n =>
+                wanted.Contains(n.Id)
+                && n.TrashedAt != null
+                && n.TrashedRootId == n.Id
+                && (n.OwnerId == actor.UserId || n.TrashedBy == actor.UserId)
+            )
+            .ToListAsync(ct);
         if (roots.Count != wanted.Count)
         {
             throw DriveException.NotFound();
@@ -176,12 +195,13 @@ public sealed class TrashService(
             }
 
             await db.Database.ExecuteSqlAsync(
-                $"UPDATE nodes SET trashed_at = NULL, trashed_root_id = NULL WHERE trashed_root_id = {root.Id}",
+                $"UPDATE nodes SET trashed_at = NULL, trashed_root_id = NULL, trashed_by = NULL WHERE trashed_root_id = {root.Id}",
                 ct
             );
             db.Entry(root).State = EntityState.Detached;
             root.TrashedAt = null;
             root.TrashedRootId = null;
+            root.TrashedBy = null;
 
             var details = new JsonObject { ["to"] = target?.Id.ToString() };
             if (root.Name != oldName)
@@ -195,7 +215,7 @@ public sealed class TrashService(
         }
 
         await live.NotifyAsync(
-            roots.Select(n => n.OwnerId),
+            roots.Select(n => n.OwnerId).Append(actor.UserId),
             LiveTopics.Files | LiveTopics.Trash | LiveTopics.Storage,
             ct
         );

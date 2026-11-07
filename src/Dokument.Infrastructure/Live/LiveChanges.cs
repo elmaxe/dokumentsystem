@@ -31,7 +31,10 @@ public enum LiveTopics
     /// <summary>A filing rule moved some of the person's files, so clients can offer to undo it (§13.6).</summary>
     Filings = 32,
 
-    All = Files | Recent | Trash | Storage | Account | Filings,
+    /// <summary>Something was shared with the person or stopped being, or they changed who has access (§9).</summary>
+    Shares = 64,
+
+    All = Files | Recent | Trash | Storage | Account | Filings | Shares,
 }
 
 /// <summary>Why a session's clients should go to the sign-in page.</summary>
@@ -60,24 +63,56 @@ public sealed class LiveChanges(DokumentDbContext db)
     public Task NotifyAsync(Guid userId, LiveTopics topics, CancellationToken ct = default) =>
         NotifyAsync([userId], topics, ct);
 
-    public Task NotifyAsync(
+    /// <summary>
+    /// Notifies the people named. A <see cref="LiveTopics.Files"/> change to someone's files also reaches everyone they
+    /// share anything with (§15.4): notices carry no ids, so a client refetches what it shows and sees only what it may.
+    /// </summary>
+    public async Task NotifyAsync(
         IEnumerable<Guid> userIds,
         LiveTopics topics,
         CancellationToken ct = default
     )
     {
         var users = userIds.Distinct().ToArray();
-        return users.Length == 0 || topics == LiveTopics.None
-            ? Task.CompletedTask
-            : SendAsync(
-                new LiveNotice
-                {
-                    Users = users,
-                    Topics = topics,
-                    Origin = Origin,
-                },
-                ct
-            );
+        if (users.Length == 0 || topics == LiveTopics.None)
+        {
+            return;
+        }
+
+        await SendAsync(
+            new LiveNotice
+            {
+                Users = users,
+                Topics = topics,
+                Origin = Origin,
+            },
+            ct
+        );
+        if (topics.HasFlag(LiveTopics.Files))
+        {
+            var sharedWith = await db
+                .Database.SqlQuery<Guid>(
+                    $"""
+                    SELECT DISTINCT s.grantee_user_id AS "Value" FROM shares s
+                    JOIN nodes n ON n.id = s.node_id
+                    WHERE n.owner_id = ANY({users})
+                    """
+                )
+                .ToListAsync(ct);
+            var others = sharedWith.Except(users).ToArray();
+            if (others.Length > 0)
+            {
+                await SendAsync(
+                    new LiveNotice
+                    {
+                        Users = others,
+                        Topics = LiveTopics.Files,
+                        Origin = Origin,
+                    },
+                    ct
+                );
+            }
+        }
     }
 
     /// <summary>For changes that touch everyone, such as the default quota.</summary>

@@ -9,11 +9,15 @@ import type {
   FolderListing,
   FolderTreeEntry,
   NameConflictPolicy,
+  NodeAccess,
   NodeDetails,
   NodeDto,
+  Person,
   Problem,
   RecentListing,
   RestoredItem,
+  SharedItem,
+  ShareRole,
   StarredListing,
   StorageUsage,
   TagSuggestion,
@@ -63,6 +67,8 @@ export function errorMessage(t: TFunction, error: unknown): string {
       return t("errors.notFound");
     case "quotaExceeded":
       return t("errors.quotaExceeded");
+    case "forbidden":
+      return t("errors.forbidden");
     case "uploadMismatch":
       return t("errors.changedWhileUploading");
     case "invalidRequest":
@@ -86,6 +92,7 @@ export const toItem = (node: NodeDto): Item => ({
   thumbnail: node.thumbnail === "ready" ? thumbnailUrl(node.id, node.currentVersionId) : undefined,
   thumbnailPending: node.thumbnail === "pending",
   starred: node.starred,
+  shared: node.shared,
   tags: node.tags.map((tag) => ({ name: tag.name, source: tag.source })),
   processing: node.processing,
   duration: node.media?.durationSeconds != null ? formatDuration(node.media.durationSeconds) : undefined,
@@ -207,6 +214,28 @@ export const recentQuery = queryOptions({
   queryFn: (): Promise<RecentListing> => unwrap(api.GET("/api/v1/recent")),
 });
 
+/** The top-most things shared with the person, newest first (§9). */
+export const sharedQuery = queryOptions({
+  queryKey: ["shared"],
+  queryFn: (): Promise<SharedItem[]> => unwrap(api.GET("/api/v1/shared-with-me")),
+});
+
+/** Who can see a node and what the person asking may do with it (§9). */
+export const accessQuery = (id: string) =>
+  queryOptions({
+    queryKey: ["access", id],
+    queryFn: (): Promise<NodeAccess> => unwrap(api.GET("/api/v1/nodes/{id}/access", { params: { path: { id } } })),
+  });
+
+/** People to share with, by name or email. */
+export const peopleQuery = (q: string) =>
+  queryOptions({
+    queryKey: ["people", q],
+    queryFn: (): Promise<Person[]> => unwrap(api.GET("/api/v1/people", { params: { query: { q: q || undefined } } })),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+
 export const trashQuery = queryOptions({
   queryKey: ["trash"],
   queryFn: (): Promise<TrashListing> => unwrap(api.GET("/api/v1/trash")),
@@ -274,6 +303,18 @@ export const drive = {
     send(api.PUT("/api/v1/nodes/{id}/text/{pageNo}", { params: { path: { id, pageNo } }, body: { text } })),
   revertTextPage: (id: string, pageNo: number) =>
     send(api.DELETE("/api/v1/nodes/{id}/text/{pageNo}", { params: { path: { id, pageNo } } })),
+  share: (id: string, userId: string, role: ShareRole): Promise<NodeAccess> =>
+    unwrap(api.POST("/api/v1/nodes/{id}/shares", { params: { path: { id } }, body: { userId, role } })),
+  changeShare: (shareId: string, role: ShareRole): Promise<NodeAccess> =>
+    unwrap(api.PUT("/api/v1/shares/{id}", { params: { path: { id: shareId } }, body: { role } })),
+  removeShare: (shareId: string) => send(api.DELETE("/api/v1/shares/{id}", { params: { path: { id: shareId } } })),
+  /** Stops seeing something shared with the person directly. */
+  leave: (id: string) => send(api.POST("/api/v1/nodes/{id}/leave", { params: { path: { id } } })),
+  /** Opened from Shared with me: no longer New. */
+  seen: (id: string) => send(api.POST("/api/v1/nodes/{id}/seen", { params: { path: { id } } })),
+  /** Who would stop seeing these items if they moved to the folder (§9). */
+  losingAccess: async (ids: string[], folderId: string | null): Promise<Person[]> =>
+    (await unwrap(api.POST("/api/v1/nodes/move-check", { body: { ids, folderId } }))).losingAccess,
   trash: (ids: string[]) => send(api.POST("/api/v1/nodes/trash", { body: { ids } })),
   changeTags: (ids: string[], change: { add?: string[]; remove?: string[] }) =>
     send(api.POST("/api/v1/nodes/tags", { body: { ids, add: change.add ?? [], remove: change.remove ?? [] } })),

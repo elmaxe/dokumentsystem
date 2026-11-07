@@ -82,6 +82,9 @@ export function TrashPage() {
       cell: (row) => (
         <span className="tabular flex flex-col py-1 leading-tight">
           <span title={format.fullDate(row.trash.trashedAt)}>{format.date(row.trash.trashedAt)}</span>
+          {row.trash.trashedBy && (
+            <span className="truncate text-body-sm">{t("trash.trashedBy", { name: row.trash.trashedBy })}</span>
+          )}
           <span className="text-body-sm">{daysLeft(row) <= soonDays ? warning(row) : countdown(row)}</span>
         </span>
       ),

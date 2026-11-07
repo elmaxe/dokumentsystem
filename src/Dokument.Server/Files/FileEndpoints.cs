@@ -126,7 +126,9 @@ public static class FileEndpoints
         var actor = context.Actor();
         var folder = await drive.GetFolderAsync(actor, folderId, ct);
         var items = await drive.ListChildrenAsync(actor, folderId, ct);
-        var path = folder is null ? [] : await PathOfAsync(drive, folder, includeSelf: true, ct);
+        var path = folder is null
+            ? []
+            : await PathOfAsync(drive, folder, actor, includeSelf: true, ct);
         var dtos = await mapper.MapAsync(folder is null ? items : [.. items, folder], ct);
         return TypedResults.Ok(
             new FolderListing(folder is null ? null : dtos[^1], path, dtos[..items.Count])
@@ -141,11 +143,12 @@ public static class FileEndpoints
         CancellationToken ct
     )
     {
-        var node = await drive.GetAsync(context.Actor(), id, ct);
+        var actor = context.Actor();
+        var node = await drive.GetAsync(actor, id, ct);
         return TypedResults.Ok(
             new NodeDetails(
                 await mapper.MapAsync(node, ct),
-                await PathOfAsync(drive, node, includeSelf: false, ct)
+                await PathOfAsync(drive, node, actor, includeSelf: false, ct)
             )
         );
     }
@@ -572,7 +575,12 @@ public static class FileEndpoints
         }
 
         var found = await drive.FindByContentAsync(context.Actor(), hashes, ct);
-        var matches = await MatchesAsync(drive, found.Values.SelectMany(n => n).ToList(), ct);
+        var matches = await MatchesAsync(
+            drive,
+            found.Values.SelectMany(n => n).ToList(),
+            context.Actor(),
+            ct
+        );
         return TypedResults.Ok(
             new DuplicateCheckResponse(
                 hashes
@@ -638,10 +646,11 @@ public static class FileEndpoints
     internal static async Task<Dictionary<Guid, DuplicateMatch>> MatchesAsync(
         DriveService drive,
         IReadOnlyCollection<Node> nodes,
+        Actor viewer,
         CancellationToken ct
     )
     {
-        var ancestors = await drive.AncestorsAsync(nodes, ct);
+        var ancestors = await drive.AncestorsAsync(nodes, ct, viewer);
         return nodes
             .DistinctBy(n => n.Id)
             .ToDictionary(
@@ -658,11 +667,12 @@ public static class FileEndpoints
     private static async Task<List<PathEntry>> PathOfAsync(
         DriveService drive,
         Node node,
+        Actor viewer,
         bool includeSelf,
         CancellationToken ct
     )
     {
-        var path = (await drive.AncestorsAsync([node], ct))[node.Id]
+        var path = (await drive.AncestorsAsync([node], ct, viewer))[node.Id]
             .Select(a => new PathEntry(a.Id, a.Name.Value))
             .ToList();
         if (includeSelf)

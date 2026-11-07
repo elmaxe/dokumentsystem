@@ -93,14 +93,15 @@ public sealed class PdfService(
         var sources = new List<PdfSource>();
         foreach (var id in ids)
         {
-            sources.Add(await SourceAsync(actor, id, ct));
+            sources.Add(await SourceAsync(actor, id, trashSources, ct));
         }
 
         var part = new PdfPart(
             fileName.Value,
             sources.Select((s, i) => new PdfPageRange(i, 1, s.PageCount)).ToList()
         );
-        var folder = await drive.GetFolderAsync(actor, folderId, ct);
+        // The new file is added there, so it takes being able to change it (§9).
+        var folder = await drive.GetFolderAsync(actor, folderId, ct, Access.Edit);
         return await StartAsync(
             actor,
             PdfOperationKind.Merge,
@@ -130,7 +131,7 @@ public sealed class PdfService(
             );
         }
 
-        var source = await SourceAsync(actor, id, ct);
+        var source = await SourceAsync(actor, id, trashSource, ct);
         var made = new List<PdfPart>();
         foreach (var (name, pages) in parts)
         {
@@ -149,7 +150,7 @@ public sealed class PdfService(
         }
 
         var node = await drive.GetFileAsync(actor, id, ct);
-        var folder = await drive.GetFolderAsync(actor, node.ParentId, ct);
+        var folder = await drive.GetFolderAsync(actor, node.ParentId, ct, Access.Edit);
         return await StartAsync(
             actor,
             PdfOperationKind.Split,
@@ -459,9 +460,15 @@ public sealed class PdfService(
         return await db.PdfOperations.Where(o => old.Contains(o.Id)).ExecuteDeleteAsync(ct);
     }
 
-    private async Task<PdfSource> SourceAsync(Actor actor, Guid id, CancellationToken ct)
+    /// <param name="trash">The source goes to the trash afterwards, which takes being able to change it (§9).</param>
+    private async Task<PdfSource> SourceAsync(
+        Actor actor,
+        Guid id,
+        bool trash,
+        CancellationToken ct
+    )
     {
-        var node = await drive.GetFileAsync(actor, id, ct);
+        var node = await drive.GetFileAsync(actor, id, ct, trash ? Access.Edit : Access.View);
         var version = node.CurrentVersion!;
         if (!string.Equals(version.MimeType, PdfMimeType, StringComparison.OrdinalIgnoreCase))
         {

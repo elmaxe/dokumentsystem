@@ -26,23 +26,37 @@ export type VersionAction = "download" | "restore" | "keep" | "unkeep" | "delete
 export type VersionHistoryProps = {
   versions: FileVersion[];
   onAction?: (action: VersionAction, version: FileVersion) => void;
+  /** Left out for people who can only view it: no upload button. */
   onUploadVersion?: () => void;
   /** Offer "Delete this version" on old versions. */
   canDelete?: boolean;
+  /** Offer "Restore": editors and the owner (§9). */
+  canRestore?: boolean;
+  /** Offer "Keep forever": the owner only, as kept versions use their storage (§9). */
+  canKeep?: boolean;
 };
 
 /**
  * The Versions tab of the details panel (§16.4). Marks the current and kept versions and warns
  * "Removed in N days" per the retention policy: 30 days or 100 versions (§8.2).
  */
-export function VersionHistory({ versions, onAction, onUploadVersion, canDelete = true }: VersionHistoryProps) {
+export function VersionHistory({
+  versions,
+  onAction,
+  onUploadVersion,
+  canDelete = true,
+  canRestore = true,
+  canKeep = true,
+}: VersionHistoryProps) {
   const { t } = useTranslation();
   const format = useFormat();
   return (
     <div className="flex flex-col">
-      <Button variant="tonal" icon="upload" className="my-2 w-full" onClick={onUploadVersion}>
-        {t("versions.upload")}
-      </Button>
+      {onUploadVersion && (
+        <Button variant="tonal" icon="upload" className="my-2 w-full" onClick={onUploadVersion}>
+          {t("versions.upload")}
+        </Button>
+      )}
       <ol className="m-0 flex list-none flex-col p-0">
         {versions.map((version) => (
           <li
@@ -98,12 +112,14 @@ export function VersionHistory({ versions, onAction, onUploadVersion, canDelete 
                 onAction={(action) => onAction(action, version)}
                 actions={[
                   { id: "download", icon: "download", label: t("versions.download") },
-                  ...(version.current
+                  ...(version.current || !canRestore
                     ? []
                     : [{ id: "restore" as const, icon: "history", label: t("versions.restore") }]),
-                  version.keep
-                    ? { id: "unkeep" as const, icon: "keep_off", label: t("versions.unkeep") }
-                    : { id: "keep" as const, icon: "keep", label: t("versions.keep") },
+                  ...(!canKeep
+                    ? []
+                    : version.keep
+                      ? [{ id: "unkeep" as const, icon: "keep_off", label: t("versions.unkeep") }]
+                      : [{ id: "keep" as const, icon: "keep", label: t("versions.keep") }]),
                   ...(version.current || !canDelete
                     ? []
                     : [

@@ -13,6 +13,7 @@ import {
   searchTypes,
   type SearchParams,
 } from "./search";
+import { useRootName } from "../files/sharing";
 
 const pageSize = 50;
 
@@ -22,6 +23,7 @@ const pageSize = 50;
  */
 export function SearchPage({ params }: { params: SearchParams }) {
   const { t } = useTranslation();
+  const rootName = useRootName();
   const navigate = useNavigate();
   const router = useRouter();
   const [limit, setLimit] = useState(pageSize);
@@ -196,7 +198,7 @@ export function SearchPage({ params }: { params: SearchParams }) {
                 <li key={hit.node.id}>
                   <SearchResult
                     item={toItem(hit.node)}
-                    location={pathLabel(t("nav.myFiles"), hit.path)}
+                    location={pathLabel(rootName(hit.node.ownerId), hit.path)}
                     terms={data.terms}
                     snippet={hit.snippet}
                     source={hit.source}

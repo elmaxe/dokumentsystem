@@ -1,4 +1,6 @@
+using Dokument.Application.Files;
 using Dokument.Domain.Files;
+using Dokument.Domain.Sharing;
 using Dokument.Infrastructure.Files;
 using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Persistence;
@@ -53,6 +55,7 @@ public sealed class NodeDtoMapper(
                 )
                 : [];
         var tagged = await tags.ForNodesAsync(nodes.Select(n => n.Id).ToList(), ct);
+        var (roles, shared) = await AccessAsync(nodes, ct);
         return nodes
             .Select(n =>
                 NodeDto.From(
@@ -65,10 +68,53 @@ public sealed class NodeDtoMapper(
                     tagged,
                     media,
                     documents,
+                    roles,
+                    shared,
                     pdfs
                 )
             )
             .ToList();
+    }
+
+    /// <summary>
+    /// The signed-in person's role on each node, and which of their own nodes they shared with someone directly (§9).
+    /// </summary>
+    private async Task<(Dictionary<Guid, NodeRole> Roles, HashSet<Guid> Shared)> AccessAsync(
+        IReadOnlyCollection<Node> nodes,
+        CancellationToken ct
+    )
+    {
+        if (http.HttpContext?.User.Identity?.IsAuthenticated != true)
+        {
+            return ([], []);
+        }
+
+        var me = http.HttpContext.User.UserId();
+        var roles = nodes.Where(n => n.OwnerId == me).ToDictionary(n => n.Id, _ => NodeRole.Owner);
+        var others = nodes.Where(n => n.OwnerId != me).Select(n => n.Id).Distinct().ToList();
+        if (others.Count > 0)
+        {
+            var shared = await db
+                .Nodes.Where(n => others.Contains(n.Id))
+                .Select(n => new { n.Id, Role = NodeAccess.SharedRole(me, n.Path) })
+                .ToListAsync(ct);
+            foreach (var row in shared)
+            {
+                roles[row.Id] =
+                    row.Role >= (int)ShareRole.Editor ? NodeRole.Editor : NodeRole.Viewer;
+            }
+        }
+
+        var owned = roles.Where(r => r.Value == NodeRole.Owner).Select(r => r.Key).ToList();
+        var withShares =
+            owned.Count == 0
+                ? []
+                : await db
+                    .Shares.Where(s => owned.Contains(s.NodeId))
+                    .Select(s => s.NodeId)
+                    .Distinct()
+                    .ToListAsync(ct);
+        return (roles, [.. withShares]);
     }
 
     public async Task<NodeDto> MapAsync(Node node, CancellationToken ct) =>

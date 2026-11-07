@@ -13,6 +13,8 @@ const topicQueries: Record<LiveTopic, string[][]> = {
   storage: [["storage"]],
   account: [["auth", "session"], ["storage"]],
   filings: [],
+  // Shared with me isn't in the app yet; what's in a folder can still change.
+  shares: [["folder"], ["node"]],
 };
 
 let connected = false;
