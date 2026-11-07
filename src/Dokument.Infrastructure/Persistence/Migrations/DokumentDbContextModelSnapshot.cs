@@ -624,6 +624,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
+                    b.Property<string>("IdToken")
+                        .HasColumnType("text")
+                        .HasColumnName("id_token");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasColumnType("text")

@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.44** · Last updated: 2026-11-04
+> Status: **Draft v0.45** · Last updated: 2026-11-07
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -218,7 +218,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   | Variable | Default | Meaning |
   |---|---|---|
   | `OIDC_ISSUER` | — | Issuer URL, e.g. `https://auth.example.com/application/o/dokument/` |
-  | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | — | The confidential client registered at the IdP. Its redirect URIs are `${PUBLIC_URL}/api/v1/auth/callback` and, for the mobile app, `${PUBLIC_URL}/api/v1/auth/app-callback`. |
+  | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | — | The confidential client registered at the IdP. Its redirect URIs are `${PUBLIC_URL}/api/v1/auth/callback` and, for the mobile app, `${PUBLIC_URL}/api/v1/auth/app-callback`. Its post-logout redirect URIs are `${PUBLIC_URL}/api/v1/auth/signed-out` and `${PUBLIC_URL}/api/v1/auth/app-signed-out`. |
   | `OIDC_SCOPE` | `openid profile email` | Add `groups` for IdPs that need it (e.g. Authelia) |
   | `OIDC_GROUPS_CLAIM` | `groups` | Read from the ID token and the userinfo endpoint |
   | `OIDC_USER_GROUP` | unset (anyone at the IdP may log in) | Allow-list group |
@@ -227,7 +227,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   | `OIDC_QUOTA_CLAIM` | unset (quotas are set on the admin page) | A claim that sets each person's storage at login (§17.1) |
 
 - **`PUBLIC_URL`** sets the scheme, host and path base that the app sees itself at, behind the reverse proxy. It drives the redirect URI and the cookie's Secure flag.
-- **Sessions:** after a successful OIDC login, the server issues **its own session**. The IdP's tokens are discarded.
+- **Sessions:** after a successful OIDC login, the server issues **its own session**. The IdP's tokens are discarded, except the ID token, which the session keeps only as the hint for signing out at the IdP. It is never accepted as a credential.
   - The token is 256 random bits. Only its SHA-256 is stored in `sessions`, so a leaked database doesn't hand out live sessions.
   - **Lifetime:** a session expires after **30 days without use**. Each use slides the expiry forward, with at most one write every 5 minutes.
   - **Web:** an httpOnly, SameSite=Lax cookie (`dokument_session`). It is Secure whenever `PUBLIC_URL` is https.
@@ -235,7 +235,12 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   - **Mobile:** the same opaque token, sent as `Authorization: Bearer`. It is stored in the Keychain or Android Keystore (expo-secure-store) and needs no CSRF token. Only the live updates hub also reads it from the `access_token` query, because WebSockets can't send headers (§15.4).
   - **Session proof:** `POST /api/v1/auth/proof` with `{sessionId, nonce}` answers `{proof}`, the base64url HMAC-SHA256 of the nonce's text keyed by the stored SHA-256 of the session token. The app computes the same from its token, so a local address can prove it's this server without the token crossing the network (§15.3). The nonce is 16–64 random bytes as base64url; unknown, revoked and cookie sessions get 404. It shares login's rate limit.
   - **Revoking:** users list and revoke their own sessions ("active devices": `GET/DELETE /api/v1/sessions`). Admins do the same for anyone (`/api/v1/admin/users/{id}/sessions`, `/api/v1/admin/sessions/{id}`). A revoked session stops working on its next request.
-  - **Sign out** revokes the current session only. It does not end the user's session at the IdP.
+  - **Sign out** ends the current session, and the person's session at the IdP too (OIDC RP-initiated logout, decision 44), so signing in again asks for the password instead of going straight back in.
+    - `POST /api/v1/auth/logout` revokes the session and answers `{endSessionUrl}`: the IdP's `end_session_endpoint` with `id_token_hint` (the session's ID token), `client_id` and `post_logout_redirect_uri`. With the hint, the IdP signs out without asking.
+    - **Web:** the page sends the browser to `endSessionUrl`. The IdP returns to `/api/v1/auth/signed-out`, which goes on to `/signin?reason=signedOut` ("You're signed out."). The tab that signed out ignores its own live "signed out" notice, so it doesn't stop at the sign-in page on the way.
+    - **App:** it signs out locally first, then opens `endSessionUrl` in the same auth browser it signs in with (the IdP's cookie lives there). The IdP returns to `/api/v1/auth/app-signed-out`, which hands back to `dokumentsystem://signed-out`. If the server can't be reached or the browser is closed early, the app is still signed out.
+    - **Fallback:** when the IdP's discovery has no `end_session_endpoint`, or it can't be read, `endSessionUrl` is null and signing out stays local.
+    - Ending a session under Active devices, or by an admin, stays local. Signing out of other apps at the IdP doesn't reach us yet (back-channel logout is later).
 - **API keys:** personal, scoped (read-only / read-write), for scripts, rclone and WebDAV later.
 - **User provisioning:** users are created on first login (JIT), with a stable identity from `iss` + `sub`.
   - Email, display name and role are refreshed on every login. Disabled users are refused, and their sessions stop working.
@@ -247,7 +252,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 - **Local development:** Aspire runs Keycloak with a `dokument` realm. Its test users are alice (admin), bob (user) and carol (no groups); each password is the username.
   - Keycloak and Vite listen on all addresses, so a phone on the same network can use the dev server. The AppHost finds this machine's network address (`--LanHost` overrides it) and lists `http://<address>:5173` on the web resource; that is the server address to type in the app.
   - Everything signs in at Keycloak on that address, because Keycloak names its issuer after the address it's asked at. Aspire sets no `PUBLIC_URL`: Vite's proxy keeps the Host header, so redirect URIs follow the address each device used. The browser stays on `http://localhost:5173`, since plain http elsewhere isn't a secure context.
-  - The realm's `dokument` client allows the web callback, Scalar's page and the app's callback at `http://localhost:5173`, and the app's callback at the network address.
+  - The realm's `dokument` client allows the web callback, Scalar's page and the app's callback at `http://localhost:5173`, and the app's callback at the network address. Its post-logout redirect URIs are the two sign-out pages at `http://localhost:5173`, and the app's at the network address.
   - The API reference (Scalar, `http://localhost:5173/scalar/`, proxied by Vite) has an Authorize button. It signs in at Keycloak through the token endpoint, and its requests then carry a bearer session, which is listed under active devices.
 - **Built in M0:** login, sessions, CSRF and active devices. **Still to come:**
   - API keys and the break-glass CLI
@@ -1192,7 +1197,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 9 | WebDAV | Later |
 | 10 | Design system | **Approved** 2026-10-21: Material 3 roles, fjord-blue accent, Albert Sans, Material Symbols Rounded, 4 px grid (§16) |
 | 11 | Monorepo scaffold | 2026-10-21: .NET 10 LTS, Aspire 13, Postgres 17, Node 22 + pnpm + Turborepo, Tailwind v4 on web, AGPL-3.0 `LICENSE` (§3.2, §4.1, §15.1) |
-| 12 | Sessions | 2026-10-22: opaque tokens, stored hashed, expire after 30 days idle (sliding). Cookie + `X-CSRF-Token` on web, bearer on mobile. Sign-out is local, not at the IdP (§5). |
+| 12 | Sessions | 2026-10-22: opaque tokens, stored hashed, expire after 30 days idle (sliding). Cookie + `X-CSRF-Token` on web, bearer on mobile. Sign-out is local, not at the IdP (§5). 2026-11-07: replaced by decision 44. |
 | 13 | UI components | 2026-10-22: web components live in `packages/ui` (Radix + Tailwind v4, Storybook 10). The mobile app gets its own components on the same tokens (§15.1, §16.5) |
 | 14 | File storage (M1) | 2026-10-22: our own tus 1.0 endpoint; the server hashes the finished temp file once; names are `NodeName` (NFC, case-insensitive, 255 bytes); owner-only access until sharing (M4) behind one `NodeAccess` predicate; no quota until an admin sets one; audit table unpartitioned until M6 (§6–8, §18) |
 | 15 | Thumbnails and previews (M2) | 2026-10-23: our own Postgres job table; renditions keyed by blob hash; WebP thumbs at 256 and 640 px plus a 2048 px preview only when the browser can't show the original; HEIC via the image's system libvips; the grid polls until SignalR; the viewer reads an unaudited `/preview` endpoint (§6, §7, §10, §14) |
@@ -1221,6 +1226,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 40 | Seek previews in the video player | 2026-11-02: one frame for every 1 % of a video, at least 2 s apart, none under 10 s; frames 256 px on the long edge, at most 10 to a row in one WebP per blob (`previews/ab/{sha}/seek.webp`) made by its own `seek-previews` stage with one ffmpeg seek per frame from the original and joined by NetVips; layout derived from the length, served unaudited by `GET /nodes/{id}/seek-previews` and described by `NodeDto.media.seekPreviews`; the web player shows the frame above the timeline on hover and while dragging, loading the sheet on first hover; no admin setting. The app's timeline comes after its first pull request merges (Axel chose web first) (§10.2, §10.3, §14) |
 | 41 | Audio waveform | 2026-11-02: an audio file's timeline is its Audacity-style waveform: one mixed lane, peaks outline plus RMS core, scaled to the file's loudest moment, no zoom for now. The thumbnail stage decodes once with ffmpeg (8 kHz mono) into ≤ 32,768 slices of min/max/RMS, stored as a `waveform` rendition in a small binary format; `GET /nodes/{id}/waveform`, unaudited. Audio without cover art gets its waveform as its tile. Videos get seek previews instead (§14) |
 | 43 | Merging and splitting PDFs | 2026-11-04: PDFs only for now (Axel chose this over Office files and photos too); PDFium in the worker, not Gotenberg or the clients; results are new files next to the originals, never versions, with Move the originals to the trash off by default; sources pinned by blob; the worker writes to the derived volume and the server saves, hashing again; text, words and text corrections copied per page, people's tags carried over, details from the first source, filing rules skipped, "Made from" per version; duplicates made anyway with Remove this copy; quota reserved from the sources and settled; 100 files or 2,000 pages per merge, 500 parts per split; page sheets on demand; the tray follows operations by polling; the app's selection mode and screens come in a second pull request (§8.4) |
+| 44 | Signing out at the IdP | 2026-11-07: signing out on the web and in the app also ends the person's session at the IdP (RP-initiated logout) when its discovery lists an `end_session_endpoint`, so signing in again isn't silent (Axel chose web and app together over web only or staying local). The session keeps the IdP's ID token as `id_token_hint`; the IdP returns to `/api/v1/auth/signed-out` (web) or `/api/v1/auth/app-signed-out` (app), which must be registered as post-logout redirect URIs; without the endpoint, sign-out stays local. Ending sessions under Active devices stays local; back-channel logout is later (§5) |
 
 ## 26. Open questions
 

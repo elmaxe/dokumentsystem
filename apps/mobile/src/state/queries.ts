@@ -83,7 +83,8 @@ export const drive = {
   requestPlayable: (id: string) => unwrap(api().POST("/api/v1/nodes/{id}/playable", { params: { path: { id } } })),
   trash: (ids: string[]) => send(api().POST("/api/v1/nodes/trash", { body: { ids } })),
   endSession: (id: string) => send(api().DELETE("/api/v1/sessions/{id}", { params: { path: { id } } })),
-  signOut: () => send(api().POST("/api/v1/auth/logout")),
+  /** Ends this session; answers the IdP's end-session URL, or null when the IdP has none (§5). */
+  signOut: () => unwrap(api().POST("/api/v1/auth/logout")).then((result) => result.endSessionUrl ?? null),
 };
 
 export const kindOfNode = (node: NodeDto): FileKind => (node.kind === "folder" ? "folder" : kindOf(node.name, node.mimeType));

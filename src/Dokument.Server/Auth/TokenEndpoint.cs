@@ -19,7 +19,8 @@ namespace Dokument.Server.Auth;
 /// <c>POST /api/v1/auth/token</c>, for clients that run the IdP's sign-in themselves: the API reference now, the mobile
 /// app in M5 (docs/design.md §5). They send the IdP's code with their PKCE verifier as an OAuth token request. The
 /// server redeems the code as the confidential client, provisions the person as at web login and answers with one of
-/// our own bearer sessions as the access token. The IdP's tokens are dropped. <c>device_name</c> names the session
+/// our own bearer sessions as the access token. The IdP's tokens are dropped, except the ID token, kept as the hint for
+/// signing out at the IdP. <c>device_name</c> names the session
 /// under active devices.
 /// </summary>
 public static class TokenEndpoint
@@ -145,6 +146,7 @@ public static class TokenEndpoint
             // The app names the phone ("Pixel 9"); other clients get a name from their User-Agent.
             DeviceName.From(form["device_name"])
                 ?? DeviceName.FromUserAgent(context.Request.Headers.UserAgent),
+            idToken,
             ct
         );
         logger.LogInformation("User {UserId} got a bearer session as {Role}", user.Id, user.Role);

@@ -40,6 +40,12 @@ public sealed class FakeOidcProvider : IAsyncDisposable
     public FakeUser NextUser { get; set; } =
         new("alice-sub", "Alice Andersson", "alice@example.com");
 
+    /// <summary>
+    /// Whether discovery lists an end-session endpoint (RP-initiated logout). Set it before the first sign-in, since the
+    /// server caches discovery.
+    /// </summary>
+    public bool SupportsEndSession { get; set; } = true;
+
     private FakeOidcProvider(WebApplication app) => this.app = app;
 
     public HttpMessageHandler Handler => app.GetTestServer().CreateHandler();
@@ -61,20 +67,26 @@ public sealed class FakeOidcProvider : IAsyncDisposable
         app.MapGet(
             "/.well-known/openid-configuration",
             () =>
-                Results.Json(
-                    new Dictionary<string, object>
-                    {
-                        ["issuer"] = Issuer,
-                        ["authorization_endpoint"] = $"{Issuer}/authorize",
-                        ["token_endpoint"] = $"{Issuer}/token",
-                        ["userinfo_endpoint"] = $"{Issuer}/userinfo",
-                        ["jwks_uri"] = $"{Issuer}/jwks",
-                        ["response_types_supported"] = new[] { "code" },
-                        ["subject_types_supported"] = new[] { "public" },
-                        ["id_token_signing_alg_values_supported"] = new[] { "RS256" },
-                        ["code_challenge_methods_supported"] = new[] { "S256" },
-                    }
-                )
+            {
+                var discovery = new Dictionary<string, object>
+                {
+                    ["issuer"] = Issuer,
+                    ["authorization_endpoint"] = $"{Issuer}/authorize",
+                    ["token_endpoint"] = $"{Issuer}/token",
+                    ["userinfo_endpoint"] = $"{Issuer}/userinfo",
+                    ["jwks_uri"] = $"{Issuer}/jwks",
+                    ["response_types_supported"] = new[] { "code" },
+                    ["subject_types_supported"] = new[] { "public" },
+                    ["id_token_signing_alg_values_supported"] = new[] { "RS256" },
+                    ["code_challenge_methods_supported"] = new[] { "S256" },
+                };
+                if (SupportsEndSession)
+                {
+                    discovery["end_session_endpoint"] = $"{Issuer}/logout";
+                }
+
+                return Results.Json(discovery);
+            }
         );
 
         app.MapGet(

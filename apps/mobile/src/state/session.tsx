@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as Crypto from "expo-crypto";
 import { Image } from "expo-image";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import * as WebBrowser from "expo-web-browser";
 import { AppState } from "react-native";
 import { probeLocalAddress, type ProbeResult } from "../lib/localAddress";
 import { connect, disconnect, setUnauthorizedHandler } from "./api";
@@ -35,12 +36,17 @@ type SessionContext = {
   changeServer: () => Promise<void>;
   signedIn: (session: SavedSession) => Promise<void>;
   signOut: () => Promise<void>;
+  /** The server ended this session (signed out or ended under Active devices elsewhere): back to signing in. */
+  sessionEnded: (revoked: boolean) => Promise<void>;
   setLocalUrl: (localUrl: string | null) => Promise<void>;
   /** Asks the local address to prove itself again now. */
   checkLocal: () => Promise<ProbeResult | null>;
 };
 
 const Context = createContext<SessionContext | null>(null);
+
+/** Where the server's sign-out page sends the browser back to the app. */
+const appSignedOutUrl = "dokumentsystem://signed-out";
 
 const mainRoute: Route = { using: "main", local: null, checkedAt: null };
 
@@ -165,9 +171,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
       signOut: async () => {
         // Ends the session on the server too; if it's out of reach, the session stays listed under Active devices.
-        await drive.signOut().catch(() => {});
+        const endSessionUrl = await drive.signOut().catch(() => null);
         await endSession(false);
+        // Then signs out at the IdP in the same browser the app signs in with, so the next sign-in asks for the
+        // password again (§5). Closing that browser early leaves the IdP session, but the app is signed out anyway.
+        if (endSessionUrl) await WebBrowser.openAuthSessionAsync(endSessionUrl, appSignedOutUrl).catch(() => {});
       },
+      sessionEnded: endSession,
       setLocalUrl: async (localUrl) => {
         const current = latest.current;
         if (current.status !== "signedIn") return;

@@ -74,6 +74,7 @@ function Navigation({ ready }: { ready: boolean }) {
           <Stack.Screen name="welcome" />
         </Stack.Protected>
         <Stack.Screen name="signed-in" />
+        <Stack.Screen name="signed-out" />
       </Stack>
     </>
   );

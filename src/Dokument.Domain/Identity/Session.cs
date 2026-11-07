@@ -29,6 +29,12 @@ public sealed class Session
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
 
+    /// <summary>
+    /// The ID token the IdP issued at this sign-in, kept only as the <c>id_token_hint</c> for ending the person's
+    /// session at the IdP when they sign out (§5). It is never accepted as a credential here. Null when the IdP sent none.
+    /// </summary>
+    public string? IdToken { get; init; }
+
     public bool IsActive(DateTimeOffset now) => RevokedAt is null && ExpiresAt > now;
 
     /// <summary>
