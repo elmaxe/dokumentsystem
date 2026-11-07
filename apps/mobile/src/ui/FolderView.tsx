@@ -13,6 +13,7 @@ import { ListActions } from "./ListActions";
 import { Notice } from "./Notice";
 import { ScanButton } from "./Scan";
 import { TopBar } from "./TopBar";
+import { SelectionBar, useSelection } from "./Selection";
 
 /** My files, or a folder in it (docs/design.md §16.3). */
 export function FolderView({ folderId }: { folderId: string | null }) {
@@ -20,12 +21,13 @@ export function FolderView({ folderId }: { folderId: string | null }) {
   const theme = useTheme();
   const listing = useQuery(folderQuery(folderId));
   const [selected, setSelected] = useState<NodeDto | null>(null);
+  const selection = useSelection();
   const title = folderId ? (listing.data?.folder?.name ?? "") : t("nav.myFiles");
   const openFolder = (node: NodeDto) => router.push({ pathname: "/folder/[id]", params: { id: node.id } });
 
   return (
     <View className="flex-1 bg-surface">
-      <TopBar title={title} back={!!folderId} actions={<ListActions account={!folderId} />} />
+      {selection.active ? <SelectionBar selection={selection} /> : <TopBar title={title} back={!!folderId} actions={<ListActions account={!folderId} />} />}
       {listing.isPending ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color={theme.color("primary")} />
@@ -40,6 +42,8 @@ export function FolderView({ folderId }: { folderId: string | null }) {
           onOpenFolder={openFolder}
           onOpenFile={openFile}
           onMore={setSelected}
+          selected={selection.ids}
+          onSelect={selection.toggle}
           refreshing={listing.isRefetching}
           onRefresh={() => void listing.refetch()}
           empty={<EmptyState icon="folder_open" title={t("files.empty.folderTitle")} />}
@@ -47,7 +51,7 @@ export function FolderView({ folderId }: { folderId: string | null }) {
       )}
       {/* Below My files the tab bar is gone, so the button keeps clear of the system's own bar. */}
       <ScanButton folderId={folderId} folderName={title} safeArea={!!folderId} />
-      <ItemSheet node={selected} onClose={() => setSelected(null)} onOpenFolder={openFolder} />
+      <ItemSheet node={selected} onClose={() => setSelected(null)} onOpenFolder={openFolder} onSelect={selection.toggle} />
     </View>
   );
 }

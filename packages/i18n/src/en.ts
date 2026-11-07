@@ -1201,6 +1201,20 @@ export const en = {
   },
   mobile: {
     tryAgain: "Try again",
+    select: "Select",
+    pdf: {
+      mergeIntro: "The pages go in this order. Use the arrows to move a file.",
+      moveUp: "Move {{name}} up",
+      moveDown: "Move {{name}} down",
+      leaveOut: "Leave {{name}} out of the merge",
+      mode: "How to split",
+      pagesHint: "Tap a page to cut after it or leave it out.",
+      leftOut: "Left out",
+      inFile: "In file {{number}}",
+      cutAfter: "a new file starts after it",
+      fileNumber: "File {{number}}",
+      cancel: "Stop {{name}}",
+    },
     welcome: {
       title: "Connect to your server",
       body: "Enter the address you use to open Dokumentsystem in a browser.",

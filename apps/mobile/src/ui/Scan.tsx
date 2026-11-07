@@ -10,6 +10,7 @@ import { dismissUpload, retryUpload, uploadScan, useUploads, type Upload } from 
 import { Button, IconButton } from "./Button";
 import { Icon } from "./Icon";
 import { Notice } from "./Notice";
+import { PdfTaskRows } from "./PdfTasks";
 import { Sheet } from "./Sheet";
 import { Text } from "./Text";
 import { TextField } from "./TextField";
@@ -39,8 +40,10 @@ export function ScanButton({
   const [error, setError] = useState<string | null>(null);
   const uploads = useUploads().filter((upload) => upload.folderId === folderId);
 
-  // The scanner is native only. Offline, the offline notice takes this place: uploads wait for a connection anyway.
-  if (Platform.OS === "web" || net.isConnected === false) return null;
+  // Offline, the offline notice takes this place: uploads and merges wait for a connection anyway. The scanner is native
+  // only, but the progress rows still show without it.
+  if (net.isConnected === false) return null;
+  const scanner = Platform.OS !== "web";
 
   const scan = async () => {
     setError(null);
@@ -76,17 +79,20 @@ export function ScanButton({
   return (
     <>
       <View pointerEvents="box-none" style={{ bottom: 16 + (safeArea ? insets.bottom : 0) }} className="absolute left-3 right-3 items-end gap-2">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("mobile.scan.buttonLabel")}
-          onPress={() => void scan()}
-          className="h-14 flex-row items-center gap-3 rounded-lg bg-primary-container px-4 shadow-elevation-3 active:opacity-80"
-        >
-          <Icon name="document_scanner" color="on-primary-container" />
-          <Text variant="label-lg" className="text-on-primary-container">
-            {t("mobile.scan.button")}
-          </Text>
-        </Pressable>
+        {scanner ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("mobile.scan.buttonLabel")}
+            onPress={() => void scan()}
+            className="h-14 flex-row items-center gap-3 rounded-lg bg-primary-container px-4 shadow-elevation-3 active:opacity-80"
+          >
+            <Icon name="document_scanner" color="on-primary-container" />
+            <Text variant="label-lg" className="text-on-primary-container">
+              {t("mobile.scan.button")}
+            </Text>
+          </Pressable>
+        ) : null}
+        <PdfTaskRows />
         {uploads.map((upload) => (
           <UploadRow key={upload.id} upload={upload} onRetry={() => retryUpload(upload.id, queryClient)} />
         ))}

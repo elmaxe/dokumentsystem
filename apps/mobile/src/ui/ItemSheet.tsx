@@ -3,8 +3,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, View } from "react-native";
+import { router } from "expo-router";
 import { useFormat } from "../state/format";
 import { openInAnotherApp } from "../state/openFile";
+import { readablePdf } from "../state/pdf";
 import { drive, invalidateStars, kindOfNode } from "../state/queries";
 import { useTheme } from "../state/theme";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -18,10 +20,13 @@ export function ItemSheet({
   node,
   onClose,
   onOpenFolder,
+  onSelect,
 }: {
   node: NodeDto | null;
   onClose: () => void;
   onOpenFolder: (node: NodeDto) => void;
+  /** Starts selecting files with this one, as a long press does. */
+  onSelect?: (node: NodeDto) => void;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -100,6 +105,26 @@ export function ItemSheet({
       ) : (
         <SheetAction icon={<Icon name="open_in_new" />} label={t("mobile.item.openIn")} onPress={() => void open()} />
       )}
+      {readablePdf(node) ? (
+        <SheetAction
+          icon={<Icon name="call_split" />}
+          label={t("pdf.split.action")}
+          onPress={() => {
+            close();
+            router.push({ pathname: "/split/[id]", params: { id: node.id } });
+          }}
+        />
+      ) : null}
+      {onSelect && !isFolder ? (
+        <SheetAction
+          icon={<Icon name="check_box_outline_blank" />}
+          label={t("mobile.select")}
+          onPress={() => {
+            close();
+            onSelect(node);
+          }}
+        />
+      ) : null}
       <SheetAction
         icon={<Icon name="star" filled={node.starred} />}
         label={node.starred ? t("actions.unstar") : t("actions.star")}
