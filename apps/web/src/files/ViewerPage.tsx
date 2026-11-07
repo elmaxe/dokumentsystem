@@ -10,7 +10,6 @@ import {
   sortItems,
   useFormat,
   useSnackbar,
-  type DetailsTab,
   type PreviewSource,
 } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,6 +32,7 @@ import {
   transcriptQuery,
   wordsQuery,
 } from "./drive";
+import { rememberViewed, useDetailsPanel } from "./detailsPanel";
 import { FileDetailsPanel } from "./FileDetailsPanel";
 import { ShareNodeDialog } from "./ShareNodeDialog";
 import { canEdit } from "./sharing";
@@ -131,7 +131,8 @@ export function ViewerPage({
   const matches = useQuery({ ...matchesQuery(fileId, q ?? ""), enabled: !!q });
   const recording = !!details.data && ["video", "audio"].includes(viewTypeOf(details.data.node));
   const transcript = useQuery({ ...transcriptQuery(fileId), enabled: recording });
-  const [panel, setPanel] = useState<{ open: boolean; tab: DetailsTab }>({ open: false, tab: "info" });
+  // Open here when it was open in the file list, and the other way round (§15.2).
+  const [panel, setPanel] = useDetailsPanel();
   const [sharing, setSharing] = useState(false);
   const format = useFormat();
   const current = details.data?.node.currentVersionId ?? null;
@@ -168,6 +169,7 @@ export function ViewerPage({
   // For the person's Recent page only; opening a preview is never audited (§18).
   useEffect(() => {
     drive.opened(fileId).catch(() => {});
+    rememberViewed(fileId);
   }, [fileId]);
 
   // Opening something shared with the person takes the New off it in Shared with me.
