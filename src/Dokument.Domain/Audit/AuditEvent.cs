@@ -76,6 +76,18 @@ public static class AuditActions
     /// <summary>Someone left a share from Shared with me.</summary>
     public const string ShareLeave = "share.leave";
 
+    /// <summary>The owner turned on a public link to a file or folder (§9), naming its settings.</summary>
+    public const string LinkCreate = "link.create";
+
+    /// <summary>The owner changed a public link's expiry, password or download setting.</summary>
+    public const string LinkChange = "link.change";
+
+    /// <summary>The owner turned a public link off.</summary>
+    public const string LinkRevoke = "link.revoke";
+
+    /// <summary>Someone opened a public link. Written with the link as the actor, never a person.</summary>
+    public const string LinkAccess = "link.access";
+
     /// <summary>A person added, changed, reordered or deleted one of their own filing rules (§13.6).</summary>
     public const string FilingRuleChange = "filing_rule.change";
 }

@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.47** · Last updated: 2026-11-07
+> Status: **Draft v0.48** · Last updated: 2026-11-07
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -333,8 +333,11 @@ recent_files(user_id, node_id, at, action {opened|downloaded|uploaded|restored},
 shares(id, node_id, grantee_user_id, role {viewer|editor}, created_by, created_at, seen_at NULL,
        UNIQUE (node_id, grantee_user_id))   -- seen_at: opened since it was shared, so no longer New (§9)
 shared_role(user, path) → 0|1|2              -- SQL function: the highest share on the path's nodes (§9)
-links(id, node_id, token_hash, role {viewer}, allow_download, password_hash NULL,
+links(id, node_id, token_hash UNIQUE, protected_token, allow_download, password_hash NULL,
       expires_at NULL, created_by, created_at, revoked_at NULL)
+                                             -- one working link per node (UNIQUE node_id WHERE revoked_at IS NULL);
+                                             -- token_hash: SHA-256 of the token; protected_token: the token encrypted
+                                             -- with Data Protection, so the owner can copy the link again (§9)
 
 jobs(id, type, subject, status {queued|running|done|failed}, priority, attempts, run_after,
      locked_by, locked_until, last_error, created_at, finished_at)   -- subject: e.g. a blob hash
@@ -500,7 +503,7 @@ Decided 2026-11-04 (decision 43). People merge several PDFs into one, or split o
 
 ## 9. Permissions and sharing
 
-Sharing with people is built (decision 39). Public links and notifications follow in their own PRs.
+Sharing with people (decision 39) and public links (decision 45) are built. Notifications follow in their own PR.
 
 - **Roles:** `owner` (implicit, one per node), `editor`, `viewer`.
   - **Viewer:** see, preview, search, download, and star for themselves.
@@ -521,7 +524,14 @@ Sharing with people is built (decision 39). Public links and notifications follo
 - **The people picker** lists everyone who has signed in and isn't disabled, matched by name or email (`GET /people?q=`, at most 50). Nobody is invited by email address yet.
 - **The share dialog** (owner) adds people as Viewer or Editor, lists the owner and everyone with access, labels roles from a folder above ("Editor of “Projects”, so here too", naming the folder only when the person can see it), and changes or removes this item's own shares. Everyone else sees the same list read-only. The Sharing tab of the details panel shows the same list with "Manage access" for the owner and "Leave" where it applies.
 - **Live updates:** a new topic `shares` goes to the owner and the person on grant, change, remove and leave; the person's open app refetches and says "Alice shared “Projects” with you" (§15.4).
-- **Public links (next PR):** viewer-only (upload-capable "file request" links come later), with optional password, expiry and allow-download flag; links never expire unless a date is set. Access goes through `/s/{token}` and is rate-limited. Every access is audited.
+- **Public links** (built, decision 45): the owner turns on one link per file or folder in the share dialog. Anyone with it can look without signing in; a folder's link covers what is in it now and what is added later, not what is in the trash. Upload-capable "file request" links come later.
+  - **Viewer-only, with what a link viewer doesn't see:** older versions, tags, edited details, places, transcripts, who else has access, and search. They browse folders (the breadcrumbs start at the link's folder), open files in the viewer with the same previews, playable copies, waveforms and seek previews, and download originals only when the link allows it. Previews are shown inline either way, so "Allow download" off still lets people take screenshots, and the settings say so.
+  - **Settings** (`GET`/`PUT`/`DELETE /nodes/{id}/link`, owner only): **expiry** (none unless a last day is set; it stops working at the start of the next day, in the owner's time zone), **password** (4 to 128 characters, Argon2id in PHC form, §21) and **Allow download** (on by default). The settings show the address with Copy, and how often it was opened and when last. Turning it off deletes it for good; turning it on again makes a new address.
+  - **The token** is 128 random bits as base64url (`/s/{22 characters}`), stored as its SHA-256 for lookup and encrypted with the Data Protection keys so the owner can copy it again. If the keys are lost the link keeps working for whoever has it, and the owner makes a new one to get an address again.
+  - **Opening one** (`/api/v1/links/{token}`, anonymous) checks that it isn't turned off or expired, that its node isn't in the trash and that its owner isn't disabled. Anything else answers 404 `linkGone` and the page says only "This link no longer works", not even the name. A link with a password answers 401 `passwordRequired` until `POST …/unlock` gets the right one (401 `wrongPassword` otherwise), which sets a cookie scoped to that link's API path for 12 hours, bound to the password, so changing it lets nobody in on the old one.
+  - **Rate-limited** per address: 1,200 requests a minute for browsing (a folder of thumbnails, a video seeking), 10 password tries a minute.
+  - **Audited:** each open (`link.access`, with the link as the actor) and each download (`file.download`, with the link as the actor); turning on, changing and deleting (`link.create`, `link.change`, `link.revoke`, naming what changed but never the password). The Activity tab shows the owner's link changes to everyone with access and downloads through the link to the owner, as "Someone with the link"; opens show only as the count in the settings.
+  - A node with a working link counts as **Shared** for its owner, like one shared with a person.
 - **Notifications (the PR after):** in-app and email when something is shared with you.
 - **Groups:** not in v1. User-to-user shares are enough for a small group. The model leaves room for `grantee_group_id` later.
 
@@ -1010,7 +1020,8 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **ActionBar:** the selection count plus Share, Download, Move, Trash and More.
 - **UploadTray:** one row per tus upload, in one of the states hashing, uploading, paused, done, duplicate ("Remove this copy") or failed (Retry), each with an icon and words.
 - **DuplicateDialog:** the §8.3 prompt. A batch offers Skip duplicates / Upload all / Review; a single file offers Skip / Upload anyway / Open existing.
-- **ShareDialog:** add people, then people with access (inherited grants are labelled and cannot be lowered), then the public link with expiry, password and download chips. A bottom sheet on phones.
+- **ShareDialog:** add people, then people with access (inherited grants are labelled and cannot be lowered), then the public link: a switch, a line summing up its expiry, download and password, and Copy link and Link settings. A bottom sheet on phones.
+- **LinkSettingsDialog:** the address with Copy and how often it was opened, then Expires (with the last day), Password and Allow download as switches, what a link viewer sees, and Delete link.
 - **VersionHistory:** the Versions tab of the details panel. It marks the current and "Keep forever" versions and warns "Removed in N days" per the retention policy.
 - **StorageMeter:** a warning at 80 % and a critical state at 95 %, in words as well as colour.
 - **FileViewer:** the §14 viewer: a header with the file's name, Share, Download, details and More; the preview; a floating toolbar for pages and zoom; previous/next arrows on wide screens and swipes on phones. States: loading, preparing (the worker is still making the preview), no preview, and failed, each with Download. Opened from search it takes the hits to mark (§14) and shows "Result 3 of 23".
@@ -1066,7 +1077,7 @@ People who are managed in an IdP can get their storage from it instead of from t
   - files: upload, new version, restore version, rename, move, download, trash (`node.trash`), restore (`node.restore`), delete forever (`node.delete_forever`), empty trash (`trash.empty`), tags added or removed (`file.tags_change`, naming the tags), filing rules added, changed, reordered or deleted (`filing_rule.change`), PDFs merged or split (`file.pdf_merge`, `file.pdf_split`, on each new file, naming the sources)
   - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), and filing rules moving files (`node.move`, `folder.create`, naming the rule, §13.6), with the actor kind `system`
   - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged. (Each person's Recent page remembers their own opens in `recent_files`, which nobody else sees and which isn't part of the audit log, §15.2.)
-  - sharing: share granted, changed, revoked or left (`share.grant`, `share.change`, `share.revoke`, `share.leave`, naming the person and role); later link created/accessed/revoked
+  - sharing: share granted, changed, revoked or left (`share.grant`, `share.change`, `share.revoke`, `share.leave`, naming the person and role); public links turned on, changed or deleted (`link.create`, `link.change`, `link.revoke`) and opened (`link.access`), and downloads through a link, with the actor kind `link`
   - admin: settings changed, quota changed, keyword rule added, changed or deleted (`admin.tag_rule`), user disabled
 - **Partitioned by month** (from M6; M1 ships a plain table with indexes on `at` and `(target_node_id, at)`). An admin setting controls retention (default 1 year).
 - **Views:**
@@ -1191,7 +1202,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M1: Drive core** | Folders, tus uploads, downloads, rename/move, versioning, trash, quotas, audit, web file browser. **Built so far:** folders, rename/move, tus uploads with the duplicate check, audited downloads, versions (restore, Keep forever), quota reservation, file audit events, the web file browser, the trash with the hourly purge that also enforces version retention, Starred and Recent, folder uploads and live updates. |
 | **M2: Previews** | Worker + job queue, metadata, thumbnails (images/PDF/video), viewers (image/PDF/video/audio/text), Gotenberg Office previews. **Built so far:** the job queue, image and PDF thumbnails with the backfill, the unaudited preview endpoint, the web viewer for images, PDFs, text and browser-playable media, the admin Jobs page with per-file processing status (decision 27), the CodeMirror 6 text viewer and formatted Markdown (decision 31), video posters, audio cover art and playable copies with the admin's Video and audio section (decision 32), and Office previews through Gotenberg (decision 33). M2 is complete; PDF page thumbnails and free search inside a document in the viewer come later. |
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Then details and text in the file info, with corrections search uses (§13.6, decision 28). Tags with keyword rules came next (§13.4, decision 29). Then filing rules that move tagged files (§13.6, decision 30). |
-| **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications. **Built so far:** sharing with people, Shared with me, role-aware menus, editors adding to the owner's storage and trash, the move warning, search operators and live updates (decision 39). Public links and notifications are next. |
+| **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications. **Built so far:** sharing with people, Shared with me, role-aware menus, editors adding to the owner's storage and trash, the move warning, search operators and live updates (decision 39). Public links are built too (decision 45). Notifications are next. |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching. **Built so far:** the app's foundation (§15.3): sign-in through the token endpoint and callback page, main and local addresses with the session proof, My files, Starred, Recent, Settings, active devices, the offline cache and live updates (decision 37). |
 | **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback. Transcription of audio and video into searchable, timed text is pulled ahead as the ML image's first piece, right after the M2 video work (§11.1, decision 34) |
@@ -1245,6 +1256,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 41 | Audio waveform | 2026-11-02: an audio file's timeline is its Audacity-style waveform: one mixed lane, peaks outline plus RMS core, scaled to the file's loudest moment, no zoom for now. The thumbnail stage decodes once with ffmpeg (8 kHz mono) into ≤ 32,768 slices of min/max/RMS, stored as a `waveform` rendition in a small binary format; `GET /nodes/{id}/waveform`, unaudited. Audio without cover art gets its waveform as its tile. Videos get seek previews instead (§14) |
 | 43 | Merging and splitting PDFs | 2026-11-04: PDFs only for now (Axel chose this over Office files and photos too); PDFium in the worker, not Gotenberg or the clients; results are new files next to the originals, never versions, with Move the originals to the trash off by default; sources pinned by blob; the worker writes to the derived volume and the server saves, hashing again; text, words and text corrections copied per page, people's tags carried over, details from the first source, filing rules skipped, "Made from" per version; duplicates made anyway with Remove this copy; quota reserved from the sources and settled; 100 files or 2,000 pages per merge, 500 parts per split; page sheets on demand; the tray follows operations by polling; the app's selection mode and screens come in a second pull request (§8.4) |
 | 44 | Signing out at the IdP | 2026-11-07: signing out on the web and in the app also ends the person's session at the IdP (RP-initiated logout) when its discovery lists an `end_session_endpoint`, so signing in again isn't silent (Axel chose web and app together over web only or staying local). The session keeps the IdP's ID token as `id_token_hint`; the IdP returns to `/api/v1/auth/signed-out` (web) or `/api/v1/auth/app-signed-out` (app), which must be registered as post-logout redirect URIs; without the endpoint, sign-out stays local. Ending sessions under Active devices stays local; back-channel logout is later (§5) |
+| 45 | Public links (M4) | 2026-11-07: one link per file or folder, owner only, viewer-only; expiry none unless a last day is set, optional password (Argon2id), Allow download on by default but previews always inline; a 128-bit token stored hashed and encrypted so the owner can copy it again; anonymous `/s/{token}` page with folders, the viewer and downloads when allowed, no versions, tags, details, places, transcripts or search; a password unlocks one browser for 12 hours; gone links say nothing about what they were; rate-limited per address; opens and downloads audited with the link as the actor, opens shown as a count in the link settings (§9) |
 
 ## 26. Open questions
 

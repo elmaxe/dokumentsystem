@@ -44,6 +44,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<FilingRule> FilingRules => Set<FilingRule>();
     public DbSet<NodeFiling> NodeFilings => Set<NodeFiling>();
     public DbSet<Share> Shares => Set<Share>();
+    public DbSet<Link> Links => Set<Link>();
     public DbSet<BlobTranscript> BlobTranscripts => Set<BlobTranscript>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -83,6 +84,34 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
                 .OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(s => new { s.NodeId, s.GranteeUserId }).IsUnique();
             e.HasIndex(s => s.GranteeUserId);
+        });
+
+        modelBuilder.Entity<Link>(e =>
+        {
+            e.ToTable("links");
+            e.HasKey(l => l.Id);
+            e.Property(l => l.Id).HasColumnName("id");
+            e.Property(l => l.NodeId).HasColumnName("node_id");
+            e.Property(l => l.TokenHash).HasColumnName("token_hash");
+            e.Property(l => l.ProtectedToken).HasColumnName("protected_token");
+            e.Property(l => l.AllowDownload).HasColumnName("allow_download");
+            e.Property(l => l.PasswordHash).HasColumnName("password_hash");
+            e.Property(l => l.ExpiresAt).HasColumnName("expires_at");
+            e.Property(l => l.CreatedBy).HasColumnName("created_by");
+            e.Property(l => l.CreatedAt).HasColumnName("created_at");
+            e.Property(l => l.RevokedAt).HasColumnName("revoked_at");
+            e.HasOne<Node>()
+                .WithMany()
+                .HasForeignKey(l => l.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(l => l.CreatedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(l => l.TokenHash).IsUnique();
+
+            // One working link per node; turned-off ones stay for the audit trail.
+            e.HasIndex(l => l.NodeId).IsUnique().HasFilter("revoked_at IS NULL");
         });
 
         modelBuilder.Entity<Setting>(e =>

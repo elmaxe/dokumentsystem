@@ -106,13 +106,17 @@ public sealed class NodeDtoMapper(
         }
 
         var owned = roles.Where(r => r.Value == NodeRole.Owner).Select(r => r.Key).ToList();
+        // A working public link counts as shared too (§9).
         var withShares =
             owned.Count == 0
                 ? []
                 : await db
                     .Shares.Where(s => owned.Contains(s.NodeId))
                     .Select(s => s.NodeId)
-                    .Distinct()
+                    .Union(
+                        db.Links.Where(l => owned.Contains(l.NodeId) && l.RevokedAt == null)
+                            .Select(l => l.NodeId)
+                    )
                     .ToListAsync(ct);
         return (roles, [.. withShares]);
     }

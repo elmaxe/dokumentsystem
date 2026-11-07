@@ -49,7 +49,8 @@ public sealed record ActivityListing(List<ActivityDto> Entries, bool More);
 public sealed record ActivityPlaceDto(PathEntry? Folder, bool Top);
 
 /// <param name="Action">The audit action, such as <c>node.rename</c> or <c>share.grant</c>.</param>
-/// <param name="Actor">Who did it; null when the system did, such as a filing rule.</param>
+/// <param name="Actor">Who did it; null when the system did, such as a filing rule, or someone with a public link.</param>
+/// <param name="ViaLink">Done by someone with a public link, such as a download.</param>
 /// <param name="NodeName">The item's name now; null once it's deleted forever.</param>
 /// <param name="FromName">A rename's old name.</param>
 /// <param name="ToName">A rename's new name.</param>
@@ -61,6 +62,7 @@ public sealed record ActivityDto(
     DateTimeOffset At,
     string Action,
     PersonDto? Actor,
+    bool ViaLink,
     Guid NodeId,
     string? NodeName,
     bool IsFolder,
@@ -82,6 +84,7 @@ public sealed record ActivityDto(
             e.At,
             e.Action,
             e.Actor is { } actor ? PersonDto.From(actor) : null,
+            e.ViaLink,
             e.NodeId,
             e.Node?.Name.Value,
             e.Node?.Kind == Domain.Files.NodeKind.Folder,

@@ -40,11 +40,20 @@ const keys: Record<string, string> = {
   "share.change": "shareChange",
   "share.revoke": "shareRevoke",
   "share.leave": "shareLeave",
+  "link.create": "linkCreate",
+  "link.change": "linkChange",
+  "link.revoke": "linkRevoke",
 };
 
 /** One audit event as a line in the Activity tab: who, and what they did, in the person's language. */
 export function activityEntry(t: TFunction, entry: Activity, me: string | undefined, language: string): ActivityEntry {
-  const who = !entry.actor ? t("activity.system") : entry.actor.id === me ? t("activity.you") : entry.actor.name;
+  const who = entry.viaLink
+    ? t("activity.viaLink")
+    : !entry.actor
+      ? t("activity.system")
+      : entry.actor.id === me
+        ? t("activity.you")
+        : entry.actor.name;
   const name = entry.nodeName ?? t("activity.deleted");
   const place = (p: Activity["from"]) =>
     p?.folder ? `“${p.folder.name}”` : p?.top ? t("activity.top") : t("activity.hidden");

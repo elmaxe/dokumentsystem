@@ -30,6 +30,29 @@ public sealed class AuditLog(DokumentDbContext db, TimeProvider time)
             }
         );
 
+    /// <summary>Something done through a public link (§9): nobody signed in, so the link is the actor.</summary>
+    public void AddLink(
+        Guid linkId,
+        string action,
+        Guid nodeId,
+        string? ip,
+        string? userAgent,
+        Guid? versionId = null
+    ) =>
+        db.AuditEvents.Add(
+            new AuditEvent
+            {
+                At = time.GetUtcNow(),
+                ActorKind = AuditActorKind.Link,
+                Ip = ip,
+                UserAgent = userAgent is { Length: > 512 } ua ? ua[..512] : userAgent,
+                Action = action,
+                TargetNodeId = nodeId,
+                TargetVersionId = versionId,
+                Details = new JsonObject { ["link"] = linkId.ToString() },
+            }
+        );
+
     /// <summary>Something the system did on its own, such as the purge job (§12).</summary>
     public void AddSystem(
         string action,

@@ -1,16 +1,13 @@
-import { captionsUrl, contentUrl, previewUrl, seekPreviewsUrl, thumbnailUrl, waveformUrl, type NodeDto } from "@dokument/api";
+import { captionsUrl, contentUrl } from "@dokument/api";
 import {
   Banner,
   Button,
   EmptyState,
   FileViewer,
-  kindOf,
   leadInMs,
-  previewTypeOf,
   sortItems,
   useFormat,
   useSnackbar,
-  type PreviewSource,
 } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -37,61 +34,7 @@ import { FileDetailsPanel } from "./FileDetailsPanel";
 import { ShareNodeDialog } from "./ShareNodeDialog";
 import { canEdit } from "./sharing";
 import { lastSearchResults, matchesQuery } from "../search/search";
-
-/** Images every browser shows from the original. Others (HEIC, TIFF, SVG) wait for the worker's WebP preview. */
-const webImage = /^image\/(jpeg|png|webp|gif|avif)$/;
-
-/** Video and audio that usually play from the original, before the worker has looked at them. Others wait for it. */
-const webMedia = /^(video\/(mp4|webm|ogg)|audio\/(mpeg|mp4|aac|ogg|opus|wav|x-wav|webm|flac|x-flac))$/;
-
-/**
- * How the viewer shows a file: by its type, or, for a recording stored with a type nobody knew (an .amr uploaded
- * before the server knew the name), by what ffprobe found in it.
- */
-function viewTypeOf(node: NodeDto) {
-  const type = previewTypeOf(node.mimeType);
-  if (type !== "none" || !node.media) return type;
-  return node.media.hasVideo ? "video" : node.media.hasAudio ? "audio" : type;
-}
-
-function previewOf(node: NodeDto, versionId: string | null | undefined, refused: boolean): PreviewSource {
-  // Office documents are shown as the PDF the worker had Gotenberg make of them (§14).
-  if (node.shownAsPdf) return { type: "pdf", src: previewUrl(node.id, versionId) };
-  const type = viewTypeOf(node);
-  if (type === "none") return isOffice(node) && node.thumbnail === "pending" ? { type: "preparing" } : { type };
-  if (type === "image" && !webImage.test(node.mimeType ?? "") && node.thumbnail === "pending") return { type: "preparing" };
-  const src = previewUrl(node.id, versionId);
-  // What the worker found applies to the current version; an older one just gets what the server has for it.
-  if (type !== "video" && type !== "audio") return { type, src };
-  const media = versionId === node.currentVersionId ? node.media : null;
-  // An audio file without cover art has its waveform as its thumbnail, which isn't a cover for the player.
-  const pictured = type === "video" || !!media?.hasCover;
-  const poster = pictured && node.thumbnail === "ready" ? thumbnailUrl(node.id, versionId) : undefined;
-  const waveform = type === "audio" && media?.hasWaveform ? waveformUrl(node.id, versionId) : undefined;
-  if (!media && node.thumbnail === "pending" && !webMedia.test(node.mimeType ?? "")) return { type: "preparing" };
-  // The frames over the timeline while seeking, once the worker has made them (§14).
-  const seekPreviews = media?.seekPreviews ? { src: seekPreviewsUrl(node.id), ...media.seekPreviews } : undefined;
-  if (!media || media.copy === "notNeeded") return { type, src, poster, seekPreviews, waveform };
-
-  const original = playsOriginal(node) ? previewUrl(node.id, versionId, { original: true }) : null;
-  if (media.copy === "ready")
-    return original ? { type, src: original, fallbacks: [src], poster, seekPreviews, waveform } : { type, src, poster, seekPreviews, waveform };
-  if (original) return { type, src: original, poster, seekPreviews, waveform };
-  if (media.copy === "failed" || refused) return { type: "unplayable" };
-  return { type: "converting", waiting: media.copy !== "making", progress: media.progress ?? undefined };
-}
-
-const isOffice = (node: NodeDto) => ["doc", "sheet", "slides"].includes(kindOf(node.name, node.mimeType));
-
-/**
- * Whether this browser says it plays the original even though most don't, so it gets the full quality instead of the
- * copy (§14). Only HEVC, which Safari and Chromium on some systems decode; the copy is tried when it fails anyway.
- */
-function playsOriginal(node: NodeDto): boolean {
-  if (node.media?.videoCodec !== "hevc" || typeof document === "undefined") return false;
-  const container = node.mimeType === "video/quicktime" ? "video/quicktime" : "video/mp4";
-  return document.createElement("video").canPlayType(`${container}; codecs="hvc1"`) !== "";
-}
+import { previewOf, viewTypeOf } from "./preview";
 
 /** The version being looked at when a change arrived from elsewhere, and when the file was last fetched before it. */
 type Pin = { fileId: string; versionId: string; fetchedAt: number };

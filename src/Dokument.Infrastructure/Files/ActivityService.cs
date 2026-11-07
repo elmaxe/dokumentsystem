@@ -40,6 +40,9 @@ public sealed class ActivityService(DokumentDbContext db, DriveService drive)
         AuditActions.ShareChange,
         AuditActions.ShareRevoke,
         AuditActions.ShareLeave,
+        AuditActions.LinkCreate,
+        AuditActions.LinkChange,
+        AuditActions.LinkRevoke,
     ];
 
     /// <summary>Newest first, <paramref name="limit"/> at a time; pass the last entry's time as <paramref name="before"/> for more.</summary>
@@ -197,6 +200,7 @@ public sealed record ActivityEntry
         At = e.At;
         Action = e.Action;
         Actor = e.ActorUserId is { } id ? users.GetValueOrDefault(id) : null;
+        ViaLink = e.ActorKind == AuditActorKind.Link;
         NodeId = target;
         Node = nodes.GetValueOrDefault(target);
     }
@@ -205,8 +209,11 @@ public sealed record ActivityEntry
     public DateTimeOffset At { get; }
     public string Action { get; }
 
-    /// <summary>Null for the system, such as a filing rule moving a file.</summary>
+    /// <summary>Null for the system, such as a filing rule moving a file, and for someone with a public link.</summary>
     public User? Actor { get; }
+
+    /// <summary>Done by someone with a public link, such as a download (§9).</summary>
+    public bool ViaLink { get; }
     public Guid NodeId { get; }
 
     /// <summary>The node as it is now; null once it's deleted forever.</summary>

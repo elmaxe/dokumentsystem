@@ -368,6 +368,18 @@ public static class FileEndpoints
             audited: false,
             ct
         );
+        return await PreviewOf(context, content, original, previews, ct);
+    }
+
+    /// <summary>What the viewer shows for a version: its preview rendition, playable copy or PDF, else the original inline.</summary>
+    internal static async Task<PhysicalFileHttpResult> PreviewOf(
+        HttpContext context,
+        FileContent content,
+        bool? original,
+        PreviewService previews,
+        CancellationToken ct
+    )
+    {
         if (
             await previews.FindAsync(content.Version.BlobHash, RenditionKind.Preview, ct)
                 is { } preview
@@ -436,7 +448,7 @@ public static class FileEndpoints
             : TypedResults.NotFound();
     }
 
-    private static PhysicalFileHttpResult Rendition(HttpContext context, RenditionFile file)
+    internal static PhysicalFileHttpResult Rendition(HttpContext context, RenditionFile file)
     {
         // Renditions are keyed by content, so one only changes when the pipeline improves. A day's caching is plenty.
         context.Response.Headers.CacheControl = "private, max-age=86400";

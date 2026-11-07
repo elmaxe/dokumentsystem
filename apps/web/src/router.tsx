@@ -13,6 +13,7 @@ import { validateSearchParams } from "./search/search";
 import { SearchPage } from "./search/SearchPage";
 import { SettingsPage } from "./settings/SettingsPage";
 import { SignInPage } from "./SignInPage";
+import { LinkPage, type LinkSearch } from "./links/LinkPage";
 
 const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: Outlet });
 
@@ -147,9 +148,24 @@ const signInRoute = createRoute({
   },
 });
 
+/** A public link (§9): open to anyone with it, signed in or not, outside the app shell. */
+const linkRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/s/$token",
+  validateSearch: (search: Record<string, unknown>): LinkSearch => ({
+    folder: typeof search.folder === "string" && search.folder ? search.folder : undefined,
+    file: typeof search.file === "string" && search.file ? search.file : undefined,
+  }),
+  component: function LinkRoute() {
+    const { token } = linkRoute.useParams();
+    const { folder, file } = linkRoute.useSearch();
+    return <LinkPage key={token} token={token} folder={folder} file={file} />;
+  },
+});
+
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
-    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, splitRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminJobsRoute, adminTagsRoute, adminSettingsRoute]), trashRoute, settingsRoute, searchRoute, ...placeRoutes]), signInRoute]),
+    routeTree: rootRoute.addChildren([authenticatedRoute.addChildren([homeRoute, folderRoute, fileRoute, splitRoute, adminRoute.addChildren([adminIndexRoute, adminPeopleRoute, adminStorageRoute, adminJobsRoute, adminTagsRoute, adminSettingsRoute]), trashRoute, settingsRoute, searchRoute, ...placeRoutes]), signInRoute, linkRoute]),
     context: { queryClient },
   });
 }
