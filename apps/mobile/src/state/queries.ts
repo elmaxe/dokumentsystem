@@ -81,6 +81,7 @@ export const drive = {
   opened: (id: string) => send(api().POST("/api/v1/nodes/{id}/opened", { params: { path: { id } } })),
   /** Asks for a playable copy now, ahead of background work. Refused when copies are turned off (§14). */
   requestPlayable: (id: string) => unwrap(api().POST("/api/v1/nodes/{id}/playable", { params: { path: { id } } })),
+  trash: (ids: string[]) => send(api().POST("/api/v1/nodes/trash", { body: { ids } })),
   endSession: (id: string) => send(api().DELETE("/api/v1/sessions/{id}", { params: { path: { id } } })),
   signOut: () => send(api().POST("/api/v1/auth/logout")),
 };

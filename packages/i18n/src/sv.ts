@@ -1247,6 +1247,20 @@ export const sv: Strings = {
   },
   mobile: {
     tryAgain: "Försök igen",
+    select: "Välj",
+    pdf: {
+      mergeIntro: "Sidorna kommer i den här ordningen. Flytta en fil med pilarna.",
+      moveUp: "Flytta upp {{name}}",
+      moveDown: "Flytta ned {{name}}",
+      leaveOut: "Ta bort {{name}} från sammanslagningen",
+      mode: "Hur den delas upp",
+      pagesHint: "Tryck på en sida för att klippa efter den eller utelämna den.",
+      leftOut: "Utelämnad",
+      inFile: "I fil {{number}}",
+      cutAfter: "en ny fil börjar efter den",
+      fileNumber: "Fil {{number}}",
+      cancel: "Stoppa {{name}}",
+    },
     welcome: {
       title: "Anslut till din server",
       body: "Ange adressen du använder för att öppna Dokumentsystem i en webbläsare.",

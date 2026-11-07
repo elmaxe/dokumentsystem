@@ -10,23 +10,31 @@ import { FileList, openFile } from "../../src/ui/FileList";
 import { ItemSheet } from "../../src/ui/ItemSheet";
 import { ListActions } from "../../src/ui/ListActions";
 import { TopBar } from "../../src/ui/TopBar";
+import { SelectionBar, useSelection } from "../../src/ui/Selection";
 
 /** The person's starred files and folders, wherever they are (docs/design.md §13.3). */
 export default function Starred() {
   const { t } = useTranslation();
   const starred = useQuery(starredQuery);
   const [selected, setSelected] = useState<NodeDto | null>(null);
+  const selection = useSelection();
   const openFolder = (node: NodeDto) =>
     router.push({ pathname: "/folder/[id]", params: { id: node.id } });
 
   return (
     <View className="flex-1 bg-surface">
-      <TopBar title={t("nav.starred")} back actions={<ListActions />} />
+      {selection.active ? (
+        <SelectionBar selection={selection} />
+      ) : (
+        <TopBar title={t("nav.starred")} back actions={<ListActions />} />
+      )}
       <FileList
         nodes={starred.data?.items.map((item) => item.node) ?? []}
         onOpenFolder={openFolder}
         onOpenFile={openFile}
         onMore={setSelected}
+        selected={selection.ids}
+        onSelect={selection.toggle}
         refreshing={starred.isRefetching}
         onRefresh={() => void starred.refetch()}
         empty={
@@ -39,7 +47,12 @@ export default function Starred() {
           )
         }
       />
-      <ItemSheet node={selected} onClose={() => setSelected(null)} onOpenFolder={openFolder} />
+      <ItemSheet
+        node={selected}
+        onClose={() => setSelected(null)}
+        onOpenFolder={openFolder}
+        onSelect={selection.toggle}
+      />
     </View>
   );
 }
