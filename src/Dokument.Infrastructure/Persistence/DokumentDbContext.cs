@@ -43,6 +43,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<EffectiveTag> EffectiveTags => Set<EffectiveTag>();
     public DbSet<FilingRule> FilingRules => Set<FilingRule>();
     public DbSet<NodeFiling> NodeFilings => Set<NodeFiling>();
+    public DbSet<FilingRun> FilingRuns => Set<FilingRun>();
     public DbSet<Share> Shares => Set<Share>();
     public DbSet<BlobTranscript> BlobTranscripts => Set<BlobTranscript>();
 
@@ -512,6 +513,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(f => f.FiledAt).HasColumnName("filed_at");
             e.Property(f => f.UndoneAt).HasColumnName("undone_at");
             e.Property(f => f.Skipped).HasColumnName("skipped");
+            e.Property(f => f.RunId).HasColumnName("run_id");
             e.HasOne<Node>()
                 .WithMany()
                 .HasForeignKey(f => f.NodeId)
@@ -520,8 +522,45 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
                 .WithMany()
                 .HasForeignKey(f => f.RuleId)
                 .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<FilingRun>()
+                .WithMany()
+                .HasForeignKey(f => f.RunId)
+                .OnDelete(DeleteBehavior.SetNull);
             e.HasIndex(f => f.RuleId);
+            e.HasIndex(f => f.RunId);
             e.HasIndex(f => f.FiledAt);
+        });
+
+        // Runs of a person's rules over files they already have, so their moves can be announced and undone together.
+        modelBuilder.Entity<FilingRun>(e =>
+        {
+            e.ToTable("filing_runs");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Id).HasColumnName("id");
+            e.Property(r => r.OwnerId).HasColumnName("owner_id");
+            e.Property(r => r.RuleId).HasColumnName("rule_id");
+            e.Property(r => r.NodeIds).HasColumnName("node_ids");
+            e.Property(r => r.IncludePlaced).HasColumnName("include_placed");
+            e.Property(r => r.Status)
+                .HasColumnName("status")
+                .HasConversion(LowercaseEnum<FilingRunStatus>());
+            e.Property(r => r.Total).HasColumnName("total");
+            e.Property(r => r.Done).HasColumnName("done");
+            e.Property(r => r.Moved).HasColumnName("moved");
+            e.Property(r => r.StopRequested).HasColumnName("stop_requested");
+            e.Property(r => r.CreatedAt).HasColumnName("created_at");
+            e.Property(r => r.FinishedAt).HasColumnName("finished_at");
+            e.Property(r => r.UndoneAt).HasColumnName("undone_at");
+            e.Ignore(r => r.Active);
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(r => r.OwnerId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<FilingRule>()
+                .WithMany()
+                .HasForeignKey(r => r.RuleId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(r => new { r.OwnerId, r.CreatedAt });
         });
     }
 

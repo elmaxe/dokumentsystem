@@ -1094,6 +1094,107 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/filing-runs/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description What running your filing rules over files you already have would move, by folder. Changes nothing. */
+        post: operations["PreviewFilingRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Runs your filing rules over files you already have, in the background. One run at a time. */
+        post: operations["StartFilingRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-runs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Your latest run, or 204 when you have none. */
+        get: operations["GetLatestFilingRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetFilingRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-runs/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Stops a run after the file it is on. What it moved stays moved. */
+        post: operations["StopFilingRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/filing-runs/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Moves the files a run moved back where they were, unless you have moved them since. */
+        post: operations["UndoFilingRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/filings/recent": {
         parameters: {
             query?: never;
@@ -2116,6 +2217,42 @@ export interface components {
             /** @default false */
             fileExisting: boolean;
         };
+        FilingRunDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            ruleId: null | string;
+            ruleTag: null | string;
+            status: components["schemas"]["FilingRunStatus"];
+            stopRequested: boolean;
+            /** Format: int32 */
+            total: number;
+            /** Format: int32 */
+            done: number;
+            /** Format: int32 */
+            moved: number;
+            /** Format: int32 */
+            folders: number;
+            /** Format: uuid */
+            folderId: null | string;
+            folder: null | string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            finishedAt: null | string;
+            /** Format: date-time */
+            undoneAt: null | string;
+            canUndo: boolean;
+        };
+        FilingRunRequest: {
+            /** Format: uuid */
+            ruleId?: null | string;
+            nodeIds?: null | string[];
+            /** @default false */
+            includePlaced: boolean;
+        };
+        /** @enum {unknown} */
+        FilingRunStatus: "queued" | "running" | "done" | "stopped";
         /**
          * @default fail
          * @enum {unknown}
@@ -2203,7 +2340,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews" | "transcribe" | "pageSheets" | "pdf" | "pdfSave" | "tagRule" | "file" | "filingRule";
+        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews" | "transcribe" | "pageSheets" | "pdf" | "pdfSave" | "tagRule" | "file" | "filingRun";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;
@@ -2506,6 +2643,37 @@ export interface components {
         };
         RestoreResponse: {
             items: components["schemas"]["RestoredItem"][];
+        };
+        RunFileDto: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+            mimeType: null | string;
+            from: string;
+        };
+        RunGroupDto: {
+            folder: string;
+            newFolder: boolean;
+            /** Format: int32 */
+            count: number;
+            files: components["schemas"]["RunFileDto"][];
+        };
+        RunPreviewDto: {
+            /** Format: int32 */
+            move: number;
+            groups: components["schemas"]["RunGroupDto"][];
+            /** Format: int32 */
+            alreadyThere: number;
+            /** Format: int32 */
+            placed: number;
+            /** Format: int32 */
+            shared: number;
+            /** Format: int32 */
+            blocked: number;
+            /** Format: int32 */
+            noRule: number;
+            /** Format: int32 */
+            notYours: number;
         };
         ScannerSettingsDto: {
             address: null | string;
@@ -2821,6 +2989,10 @@ export interface components {
         TrashSettingsDto: {
             /** Format: int32 */
             keepDays: number;
+        };
+        UndoRunResult: {
+            /** Format: int32 */
+            files: number;
         };
         UpdateMlSettingsRequest: {
             endpoints: components["schemas"]["MlEndpointUpdate"][];
@@ -4530,6 +4702,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FilingPreviewDto"];
+                };
+            };
+        };
+    };
+    PreviewFilingRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingRunRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunPreviewDto"];
+                };
+            };
+        };
+    };
+    StartFilingRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingRunRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingRunDto"];
+                };
+            };
+        };
+    };
+    GetLatestFilingRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingRunDto"];
+                };
+            };
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetFilingRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilingRunDto"];
+                };
+            };
+        };
+    };
+    StopFilingRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UndoFilingRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UndoRunResult"];
                 };
             };
         };

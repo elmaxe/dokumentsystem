@@ -569,6 +569,71 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("filing_rules", (string)null);
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Filing.FilingRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Done")
+                        .HasColumnType("integer")
+                        .HasColumnName("done");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<bool>("IncludePlaced")
+                        .HasColumnType("boolean")
+                        .HasColumnName("include_placed");
+
+                    b.Property<int>("Moved")
+                        .HasColumnType("integer")
+                        .HasColumnName("moved");
+
+                    b.PrimitiveCollection<Guid[]>("NodeIds")
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("node_ids");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<Guid?>("RuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rule_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<bool>("StopRequested")
+                        .HasColumnType("boolean")
+                        .HasColumnName("stop_requested");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("integer")
+                        .HasColumnName("total");
+
+                    b.Property<DateTimeOffset?>("UndoneAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("undone_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RuleId");
+
+                    b.HasIndex("OwnerId", "CreatedAt");
+
+                    b.ToTable("filing_runs", (string)null);
+                });
+
             modelBuilder.Entity("Dokument.Domain.Filing.NodeFiling", b =>
                 {
                     b.Property<Guid>("NodeId")
@@ -586,6 +651,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("RuleId")
                         .HasColumnType("uuid")
                         .HasColumnName("rule_id");
+
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("run_id");
 
                     b.Property<bool>("Skipped")
                         .HasColumnType("boolean")
@@ -609,6 +678,8 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.HasIndex("FiledAt");
 
                     b.HasIndex("RuleId");
+
+                    b.HasIndex("RunId");
 
                     b.ToTable("node_filings", (string)null);
                 });
@@ -1560,6 +1631,20 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Dokument.Domain.Filing.FilingRun", b =>
+                {
+                    b.HasOne("Dokument.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dokument.Domain.Filing.FilingRule", null)
+                        .WithMany()
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("Dokument.Domain.Filing.NodeFiling", b =>
                 {
                     b.HasOne("Dokument.Domain.Files.Node", null)
@@ -1571,6 +1656,11 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.HasOne("Dokument.Domain.Filing.FilingRule", null)
                         .WithMany()
                         .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Dokument.Domain.Filing.FilingRun", null)
+                        .WithMany()
+                        .HasForeignKey("RunId")
                         .OnDelete(DeleteBehavior.SetNull);
                 });
 

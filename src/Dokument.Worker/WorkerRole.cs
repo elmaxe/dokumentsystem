@@ -62,9 +62,9 @@ public static class WorkerRole
         // One at a time, so two files filed into a new folder don't both make it.
         services.AddScoped<FileHandler>();
         services.AddSingleton(new JobHandlerRegistration(JobType.File, typeof(FileHandler), 1));
-        services.AddScoped<FilingRuleHandler>();
+        services.AddScoped<FilingRunHandler>();
         services.AddSingleton(
-            new JobHandlerRegistration(JobType.FilingRule, typeof(FilingRuleHandler), 1)
+            new JobHandlerRegistration(JobType.FilingRun, typeof(FilingRunHandler), 1)
         );
 
         services.AddSingleton<FFmpeg>();

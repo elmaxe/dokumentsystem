@@ -555,7 +555,7 @@ public sealed class JobMonitor(
                 .ToList();
 
         var tagRules = Ids(JobType.TagRule);
-        var filingRules = Ids(JobType.FilingRule);
+        var filingRuns = Ids(JobType.FilingRun);
         var tags = new Dictionary<(JobType, string), string>();
         if (tagRules.Count > 0)
         {
@@ -571,17 +571,18 @@ public sealed class JobMonitor(
             }
         }
 
-        if (filingRules.Count > 0)
+        // A run of one filing rule names its tag; a run of all of a person's rules names none.
+        if (filingRuns.Count > 0)
         {
             foreach (
-                var rule in await db
-                    .FilingRules.AsNoTracking()
-                    .Where(r => filingRules.Contains(r.Id))
-                    .Select(r => new { r.Id, r.Tag })
+                var run in await db
+                    .FilingRuns.AsNoTracking()
+                    .Where(r => filingRuns.Contains(r.Id) && r.RuleId != null)
+                    .Join(db.FilingRules, r => r.RuleId, f => f.Id, (r, f) => new { r.Id, f.Tag })
                     .ToListAsync(ct)
             )
             {
-                tags[(JobType.FilingRule, rule.Id.ToString())] = rule.Tag.Value;
+                tags[(JobType.FilingRun, run.Id.ToString())] = run.Tag.Value;
             }
         }
 

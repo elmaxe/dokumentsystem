@@ -26,6 +26,7 @@ import { logout, sessionQuery } from "./api";
 import { useLiveOffline, useLiveUpdates } from "./live";
 import { useAccountSettings } from "./settings/account";
 import { useFiledMessages } from "./settings/filing";
+import { useFilingRunMessages } from "./settings/filingRuns";
 import { NameDialog } from "./files/dialogs";
 import { drive, errorMessage, folderQuery, invalidateFolders, nameKey, nodeQuery, storageQuery } from "./files/drive";
 import { canPickFolders, fromDrop, fromFolderInput } from "./files/folderPicking";
@@ -66,6 +67,7 @@ function Shell() {
   const session = useQuery(sessionQuery);
   useLiveUpdates();
   useFiledMessages();
+  useFilingRunMessages();
   const newlyShared = useSharedWithYou();
   const offline = useLiveOffline();
   const storage = useQuery(storageQuery);

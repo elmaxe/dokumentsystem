@@ -46,6 +46,9 @@ import {
 import { ShareNodeDialog } from "./ShareNodeDialog";
 import { canEdit, invalidateSharing } from "./sharing";
 import { MergeDialog } from "./MergeDialog";
+import { filingRulesQuery } from "../settings/filing";
+import { latestRunQuery, type RunScope } from "../settings/filingRuns";
+import { RunFilingDialog } from "../settings/RunFilingDialog";
 import { BulkTagsDialog } from "./tags";
 import { useUploads } from "./uploadsContext";
 
@@ -145,6 +148,11 @@ export function FilesPage({ source }: { source: FilesSource }) {
   const query =
     source.place === "folder" ? listing : source.place === "starred" ? starred : source.place === "shared" ? shared : recent;
   const me = useQuery(sessionQuery).data?.user.id;
+  // Running filing rules on a selection takes a rule that is on, and files of the person's own (§13.6).
+  const hasRules = !!useQuery(filingRulesQuery).data?.some((rule) => rule.enabled);
+  const latestRun = useQuery(latestRunQuery).data;
+  const runBusy = latestRun?.status === "queued" || latestRun?.status === "running";
+  const [filingRun, setFilingRun] = useState<RunScope | null>(null);
   // Back from the viewer, the file it showed last is selected, so a panel left open shows it (§15.2).
   const [selected, setSelected] = useState<string[]>(() => {
     const id = lastViewed();
@@ -338,6 +346,9 @@ export function FilesPage({ source }: { source: FilesSource }) {
       case "merge":
         setMerging(targets);
         break;
+      case "runFiling":
+        setFilingRun({ nodeIds: targets.map((item) => item.id) });
+        break;
       case "split":
         void navigate({ to: "/files/$fileId/split", params: { fileId: first.id } });
         break;
@@ -354,6 +365,9 @@ export function FilesPage({ source }: { source: FilesSource }) {
   /** PDFs the server could read: only those can be merged or split (§8.4). */
   const readablePdf = (item: Item) => !!item.node.pdf?.readable;
   const splitAction: MenuAction = { id: "split", icon: "call_split", label: t("pdf.split.action") };
+  /** Folders count with what is in them, which may be the person's even in someone else's folder, so any item can be run on. */
+  const runFilingAction = (): MenuAction[] =>
+    hasRules ? [{ id: "runFiling", icon: "drive_file_move", label: t("filing.run.selection"), disabled: runBusy }] : [];
 
   const menu = (item: Row): MenuAction[] => {
     const edit = editable([item]);
@@ -370,6 +384,7 @@ export function FilesPage({ source }: { source: FilesSource }) {
       ...(edit && !isFolder(item) ? [{ id: "tags", icon: "sell", label: t("tags.action") }] : []),
       // Split adds the parts next to the file, so it takes being able to change that folder (§9).
       ...(edit && readablePdf(item) ? [splitAction] : []),
+      ...runFilingAction(),
       starAction([item]),
       ...(source.place === "folder" || source.place === "shared"
         ? []
@@ -536,6 +551,7 @@ export function FilesPage({ source }: { source: FilesSource }) {
                 ]}
                 moreActions={[
                   ...(single && editable([single]) && readablePdf(single) ? [splitAction] : []),
+                  ...runFilingAction(),
                   ...(single?.node.access === "owner"
                     ? [{ id: "share", icon: "person_add", label: t("actions.share") }]
                     : []),
@@ -669,6 +685,13 @@ export function FilesPage({ source }: { source: FilesSource }) {
       />
 
       <BulkTagsDialog items={tagging} onClose={() => setTagging([])} />
+
+      <RunFilingDialog
+        key={filingRun ? filingRun.nodeIds?.join() : "none"}
+        scope={filingRun}
+        onClose={() => setFilingRun(null)}
+        onStarted={() => setSelected([])}
+      />
 
       <MergeDialog
         key={merging.map((item) => item.id).join()}
