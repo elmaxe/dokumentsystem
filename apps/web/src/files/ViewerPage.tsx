@@ -32,7 +32,7 @@ import {
   transcriptQuery,
   wordsQuery,
 } from "./drive";
-import { useDetailsPanel } from "./detailsPanel";
+import { rememberViewed, useDetailsPanel } from "./detailsPanel";
 import { FileDetailsPanel } from "./FileDetailsPanel";
 import { ShareNodeDialog } from "./ShareNodeDialog";
 import { canEdit } from "./sharing";
@@ -169,6 +169,7 @@ export function ViewerPage({
   // For the person's Recent page only; opening a preview is never audited (§18).
   useEffect(() => {
     drive.opened(fileId).catch(() => {});
+    rememberViewed(fileId);
   }, [fileId]);
 
   // Opening something shared with the person takes the New off it in Shared with me.

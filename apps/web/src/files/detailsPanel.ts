@@ -24,3 +24,13 @@ const setDetailsPanel = (next: DetailsPanelState) => {
 
 export const useDetailsPanel = () =>
   [useSyncExternalStore(subscribe, () => state), setDetailsPanel] as const;
+
+/** The file the viewer showed last, selected again when the list comes back so the open panel has it to show. */
+let viewed: string | null = null;
+export const rememberViewed = (fileId: string) => {
+  viewed = fileId;
+};
+export const lastViewed = () => viewed;
+export const forgetViewed = () => {
+  viewed = null;
+};
