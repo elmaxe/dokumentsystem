@@ -14,15 +14,14 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                 name: "id_token",
                 table: "sessions",
                 type: "text",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "id_token",
-                table: "sessions");
+            migrationBuilder.DropColumn(name: "id_token", table: "sessions");
         }
     }
 }
