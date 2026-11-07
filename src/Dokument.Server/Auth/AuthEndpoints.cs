@@ -28,7 +28,7 @@ public static class AuthEndpoints
         auth.MapTokenEndpoint();
         auth.MapAppSignIn();
         auth.MapGet("/session", GetSession).WithName("GetSession").RequireAuthorization();
-        auth.MapPost("/logout", Logout).WithName("Logout").RequireAuthorization();
+        auth.MapSignOut();
 
         api.MapPut("/me/language", SetLanguage)
             .WithName("SetMyLanguage")
@@ -152,23 +152,6 @@ public static class AuthEndpoints
         await db.SaveChangesAsync(ct);
         await live.NotifyAsync(user.Id, LiveTopics.Account, ct);
         return TypedResults.Ok(UserProfile.From(user));
-    }
-
-    private static async Task<NoContent> Logout(
-        HttpContext context,
-        ClaimsPrincipal principal,
-        SessionStore sessions,
-        CancellationToken ct
-    )
-    {
-        await sessions.RevokeAsync(
-            principal.SessionId(),
-            principal.UserId(),
-            SessionEndReason.SignedOut,
-            ct
-        );
-        SessionAuthentication.DeleteCookie(context);
-        return TypedResults.NoContent();
     }
 
     private static async Task<Ok<List<SessionInfo>>> ListMySessions(

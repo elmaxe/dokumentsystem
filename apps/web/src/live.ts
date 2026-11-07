@@ -2,7 +2,7 @@ import { createLiveConnection, csrfHeader, liveRetryDelay, type LiveChanged, typ
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { clientId, sessionQuery } from "./api";
+import { clientId, isLeaving, sessionQuery } from "./api";
 
 /** What each topic refetches. Only queries on screen fetch at once; the rest are marked stale for next time. */
 const topicQueries: Record<LiveTopic, string[][]> = {
@@ -126,6 +126,8 @@ export function useLiveUpdates() {
     connection.on("signedOut", (message: LiveSignedOut) => {
       stopped = true;
       void connection.stop();
+      // This tab signed out and is going to the IdP; it comes back to the sign-in page from there.
+      if (isLeaving()) return;
       queryClient.setQueryData(sessionQuery.queryKey, null);
       queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
       void navigate({ to: "/signin", search: message.reason === "revoked" ? { reason: "ended" } : {} });

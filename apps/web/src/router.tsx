@@ -132,7 +132,7 @@ const adminSettingsRoute = createRoute({ getParentRoute: () => adminRoute, path:
 const adminTagsRoute = createRoute({ getParentRoute: () => adminRoute, path: "/tags", component: AdminTagsPage });
 
 /** `reason: "ended"`: this session was ended from another device (§15.4). */
-export type SignInSearch = { returnTo?: string; error?: string; reason?: "ended" };
+export type SignInSearch = { returnTo?: string; error?: string; reason?: "ended" | "signedOut" };
 
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -140,7 +140,7 @@ const signInRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): SignInSearch => ({
     returnTo: typeof search.returnTo === "string" ? search.returnTo : undefined,
     error: typeof search.error === "string" ? search.error : undefined,
-    reason: search.reason === "ended" ? "ended" : undefined,
+    reason: search.reason === "ended" || search.reason === "signedOut" ? search.reason : undefined,
   }),
   component: function SignInRoute() {
     return <SignInPage {...signInRoute.useSearch()} />;

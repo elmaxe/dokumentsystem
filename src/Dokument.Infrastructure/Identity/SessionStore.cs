@@ -8,11 +8,15 @@ namespace Dokument.Infrastructure.Identity;
 /// <summary>Issues, validates, lists and revokes app sessions (docs/design.md §5).</summary>
 public sealed class SessionStore(DokumentDbContext db, LiveChanges live, TimeProvider time)
 {
-    /// <summary>Creates a session and returns it with its token. The token is not stored and can't be recovered later.</summary>
+    /// <summary>
+    /// Creates a session and returns it with its token. The token is not stored and can't be recovered later.
+    /// <paramref name="idToken"/> is the IdP's ID token from this sign-in, kept so signing out can end the IdP session.
+    /// </summary>
     public async Task<(Session Session, SessionToken Token)> CreateAsync(
         Guid userId,
         SessionKind kind,
         DeviceName? deviceName,
+        string? idToken = null,
         CancellationToken ct = default
     )
     {
@@ -27,6 +31,7 @@ public sealed class SessionStore(DokumentDbContext db, LiveChanges live, TimePro
             CreatedAt = now,
             LastSeenAt = now,
             ExpiresAt = now + Session.IdleLifetime,
+            IdToken = idToken,
         };
         db.Sessions.Add(session);
         await db.SaveChangesAsync(ct);

@@ -21,6 +21,7 @@ export const en = {
     notConfigured: "Sign-in isn't set up yet. Ask your admin to configure OIDC for the server.",
     signedInAs: "Signed in as {{name}}",
     signOut: "Sign out",
+    signedOut: "You're signed out.",
     errors: {
       not_allowed:
         "Your account doesn't have access to Dokumentsystem. Ask your admin to add you to the right group.",

@@ -1,4 +1,4 @@
-import { createLiveConnection, liveRetryDelay, type LiveChanged, type LiveTopic } from "@dokument/api";
+import { createLiveConnection, liveRetryDelay, type LiveChanged, type LiveSignedOut, type LiveTopic } from "@dokument/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
@@ -40,14 +40,14 @@ export const useLiveConnected = () =>
  */
 export function useLiveUpdates() {
   const queryClient = useQueryClient();
-  const { state, signOut } = useSession();
+  const { state, sessionEnded } = useSession();
   const address = state.status === "signedIn" ? (state.route.using === "local" ? state.server.localUrl : state.server.mainUrl) : null;
   const token = state.status === "signedIn" ? state.session.token : null;
   const foreground = useForeground();
-  const signOutRef = useRef(signOut);
+  const sessionEndedRef = useRef(sessionEnded);
   useEffect(() => {
-    signOutRef.current = signOut;
-  }, [signOut]);
+    sessionEndedRef.current = sessionEnded;
+  }, [sessionEnded]);
 
   useEffect(() => {
     if (!address || !token || !foreground) return;
@@ -72,11 +72,12 @@ export function useLiveUpdates() {
       const keys = new Set(message.topics.flatMap((topic) => topicQueries[topic] ?? []).map((key) => JSON.stringify(key)));
       keys.forEach((key) => void queryClient.invalidateQueries({ queryKey: JSON.parse(key) as string[] }));
     });
-    // Signed out from Active devices somewhere else: the next request would get a 401 anyway.
-    connection.on("signedOut", () => {
+    // Signed out here, or from Active devices somewhere else: the next request would get a 401 anyway. When this app
+    // signed out itself, it has already left the signed-in state and this does nothing.
+    connection.on("signedOut", (message: LiveSignedOut) => {
       stopped = true;
       void connection.stop();
-      void signOutRef.current();
+      void sessionEndedRef.current(message.reason === "revoked");
     });
 
     connection.onreconnecting(offline);

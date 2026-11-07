@@ -22,9 +22,9 @@ export function SignInPage({ returnTo, error, reason }: SignInSearch) {
           <p className="text-body-lg text-on-surface-variant">{t("auth.body")}</p>
         </div>
 
-        {reason === "ended" && !errorKey && (
+        {reason && !errorKey && (
           <p role="status" className="rounded-sm bg-secondary-container p-3 text-body-md text-on-secondary-container">
-            {t("live.sessionEnded")}
+            {reason === "ended" ? t("live.sessionEnded") : t("auth.signedOut")}
           </p>
         )}
 

@@ -23,6 +23,7 @@ export const sv: Strings = {
     notConfigured: "Inloggningen är inte konfigurerad än. Be din administratör att ställa in OIDC för servern.",
     signedInAs: "Inloggad som {{name}}",
     signOut: "Logga ut",
+    signedOut: "Du är utloggad.",
     errors: {
       not_allowed:
         "Ditt konto har inte åtkomst till Dokumentsystem. Be din administratör att lägga till dig i rätt grupp.",

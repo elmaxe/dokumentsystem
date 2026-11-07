@@ -152,9 +152,14 @@ function Shell() {
     : {};
 
   async function signOut() {
-    await logout();
+    const endSessionUrl = await logout();
+    // Signs out at the IdP too, which comes back to the sign-in page (§5).
+    if (endSessionUrl) {
+      window.location.assign(endSessionUrl);
+      return;
+    }
     queryClient.setQueryData(sessionQuery.queryKey, null);
-    await navigate({ to: "/signin" });
+    await navigate({ to: "/signin", search: { reason: "signedOut" } });
   }
 
   const name = session.data?.user.displayName ?? "";

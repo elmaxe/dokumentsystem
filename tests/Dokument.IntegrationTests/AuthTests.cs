@@ -140,7 +140,7 @@ public sealed class AuthTests(PostgresFixture postgres)
 
         using var logout = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout");
         logout.Headers.Add(SessionAuthentication.CsrfHeader, session.CsrfToken);
-        Assert.Equal(HttpStatusCode.NoContent, (await browser.SendAsync(logout)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await browser.SendAsync(logout)).StatusCode);
         Assert.Equal(
             HttpStatusCode.Unauthorized,
             (await browser.GetAsync("/api/v1/auth/session")).StatusCode
@@ -235,7 +235,7 @@ public sealed class AuthTests(PostgresFixture postgres)
         )!;
         Assert.Null(session.CsrfToken);
         Assert.Equal(
-            HttpStatusCode.NoContent,
+            HttpStatusCode.OK,
             (await phone.PostAsync("/api/v1/auth/logout", null)).StatusCode
         );
         Assert.Equal(

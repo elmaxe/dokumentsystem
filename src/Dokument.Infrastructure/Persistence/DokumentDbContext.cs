@@ -140,6 +140,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.Property(s => s.LastSeenAt).HasColumnName("last_seen_at");
             e.Property(s => s.ExpiresAt).HasColumnName("expires_at");
             e.Property(s => s.RevokedAt).HasColumnName("revoked_at");
+            e.Property(s => s.IdToken).HasColumnName("id_token");
             e.HasIndex(s => s.TokenHash).IsUnique();
             e.HasIndex(s => s.UserId);
             e.HasOne(s => s.User)

@@ -46,7 +46,19 @@ export const sessionQuery = queryOptions({
   staleTime: 5 * 60_000,
 });
 
-export async function logout(): Promise<void> {
-  await api.POST("/api/v1/auth/logout");
+let leaving = false;
+
+/** True once this tab is on its way to the IdP's sign-out, so the live "signed out" notice doesn't navigate first. */
+export const isLeaving = () => leaving;
+
+/**
+ * Ends this session. Returns the IdP's end-session URL, where the browser goes next to sign out there too (§5), or
+ * null when the IdP has none and signing out stays here.
+ */
+export async function logout(): Promise<string | null> {
+  const { data } = await api.POST("/api/v1/auth/logout");
   csrfToken = null;
+  const url = data?.endSessionUrl ?? null;
+  leaving = url !== null;
+  return url;
 }

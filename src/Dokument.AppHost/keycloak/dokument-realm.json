@@ -24,7 +24,10 @@
         "${DOKUMENT_LAN_WEB_URL:http://localhost:5173}/api/v1/auth/app-callback"
       ],
       "webOrigins": ["http://localhost:5173"],
-      "attributes": { "pkce.code.challenge.method": "S256" },
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/api/v1/auth/signed-out##http://localhost:5173/api/v1/auth/app-signed-out##${DOKUMENT_LAN_WEB_URL:http://localhost:5173}/api/v1/auth/app-signed-out"
+      },
       "protocolMappers": [
         {
           "name": "groups",

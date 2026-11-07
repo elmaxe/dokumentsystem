@@ -223,10 +223,18 @@
         "tags": [
           "Auth"
         ],
+        "description": "Ends this session. Then send the browser to endSessionUrl, when there is one, to sign out at the IdP as well; the IdP returns to the sign-in page (web) or to the app.",
         "operationId": "Logout",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignOutResult"
+                }
+              }
+            }
           }
         }
       }
@@ -6871,6 +6879,20 @@
             "type": "string"
           },
           "quotaClaim": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SignOutResult": {
+        "required": [
+          "endSessionUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "endSessionUrl": {
             "type": [
               "null",
               "string"

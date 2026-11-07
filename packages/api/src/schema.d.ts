@@ -146,6 +146,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Ends this session. Then send the browser to endSessionUrl, when there is one, to sign out at the IdP as well; the IdP returns to the sign-in page (web) or to the app. */
         post: operations["Logout"];
         delete?: never;
         options?: never;
@@ -2597,6 +2598,9 @@ export interface components {
             adminGroup: string;
             quotaClaim: null | string;
         };
+        SignOutResult: {
+            endSessionUrl: null | string;
+        };
         SnippetDto: {
             text: string;
             highlights: number[][];
@@ -3110,12 +3114,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No Content */
-            204: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SignOutResult"];
+                };
             };
         };
     };

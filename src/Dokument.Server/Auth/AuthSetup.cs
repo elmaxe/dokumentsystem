@@ -106,8 +106,9 @@ public static class AuthSetup
             options.Scope.Add(scope);
         }
 
-        // We issue our own session, so the IdP's tokens are dropped after login.
-        options.SaveTokens = false;
+        // We issue our own session. Saving the tokens only puts them on this login's ticket, which is never stored:
+        // the ID token is read off it as the hint for signing out at the IdP (§5), and the rest is dropped.
+        options.SaveTokens = true;
 
         options.Events.OnTicketReceived = context => CompleteLoginAsync(context, oidc);
         options.Events.OnRemoteFailure = context =>
@@ -164,6 +165,7 @@ public static class AuthSetup
                 user.Id,
                 SessionKind.Cookie,
                 DeviceName.FromUserAgent(context.Request.Headers.UserAgent),
+                context.Properties?.GetTokenValue("id_token"),
                 http.RequestAborted
             );
         SessionAuthentication.SetCookie(http, token, session.ExpiresAt);
