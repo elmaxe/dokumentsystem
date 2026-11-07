@@ -14,7 +14,6 @@ import {
   sortItems,
   useFormat,
   useSnackbar,
-  type DetailsTab,
   type FileColumn,
   type MenuAction,
   type Sort,
@@ -27,6 +26,7 @@ import { useTranslation } from "react-i18next";
 import { sessionQuery } from "../api";
 import { useRemoteFileChanges } from "../live";
 import { MoveDialog, NameDialog } from "./dialogs";
+import { useDetailsPanel } from "./detailsPanel";
 import { FileDetailsPanel } from "./FileDetailsPanel";
 import {
   ApiError,
@@ -148,7 +148,7 @@ export function FilesPage({ source }: { source: FilesSource }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [view, setView] = useState<View>(() => stored("dokument.view", "grid", ["grid", "list"] as const));
   const [sort, setSort] = useState<Sort>({ key: "name", dir: "asc" });
-  const [details, setDetails] = useState<{ open: boolean; tab: DetailsTab }>({ open: false, tab: "info" });
+  const [details, setDetails] = useDetailsPanel();
   const [renaming, setRenaming] = useState<Item | null>(null);
   const [moving, setMoving] = useState<Item[]>([]);
   const [tagging, setTagging] = useState<Item[]>([]);
