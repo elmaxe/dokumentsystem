@@ -24,6 +24,10 @@ export type FileDetails = {
   people: SharePerson[];
   publicLink?: boolean;
   activity: ActivityEntry[];
+  /** Loads older activity; left out when there is none. */
+  onMoreActivity?: () => void;
+  /** Still fetching activity: the empty text waits. */
+  activityLoading?: boolean;
 };
 
 export type DetailsPanelProps = {
@@ -53,7 +57,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 py-2">
       <dt className="text-body-sm text-on-surface-variant">{label}</dt>
-      <dd className="m-0 text-body-md break-words text-on-surface">{children}</dd>
+      <dd className="m-0 text-body-md text-on-surface [overflow-wrap:anywhere]">{children}</dd>
     </div>
   );
 }
@@ -202,17 +206,25 @@ export function DetailsPanel({
             </Tabs.Content>
           )}
           <Tabs.Content value="activity" className="outline-none">
+            {details.activity.length === 0 && !details.activityLoading && (
+              <p className="m-0 pt-4 text-body-md text-on-surface-variant">{t("activity.empty")}</p>
+            )}
             <ol className="m-0 flex list-none flex-col p-0 pt-2">
               {details.activity.map((entry) => (
                 <li key={entry.id} className="flex gap-3 py-2">
                   <Avatar name={entry.who} tone={entry.tone} size="sm" className="mt-0.5" />
                   <div className="flex min-w-0 flex-col">
-                    <span className="text-body-md text-on-surface">{entry.what}</span>
+                    <span className="text-body-md text-on-surface [overflow-wrap:anywhere]">{entry.what}</span>
                     <span className="tabular text-body-sm text-on-surface-variant">{date(entry.at)}</span>
                   </div>
                 </li>
               ))}
             </ol>
+            {details.onMoreActivity && (
+              <Button variant="text" onClick={details.onMoreActivity} className="mt-1 self-start">
+                {t("activity.more")}
+              </Button>
+            )}
           </Tabs.Content>
         </div>
       </Tabs.Root>

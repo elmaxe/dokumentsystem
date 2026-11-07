@@ -1733,6 +1733,55 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/activity": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "description": "What happened to a file, or to a folder and everything in it, newest first. Everyone who can see it sees its changes; downloads only show for the owner, and for each person their own. Pass the last entry's `at` as `before` for more.",
+        "operationId": "ListActivity",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityListing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/search": {
       "get": {
         "tags": [
@@ -3804,6 +3853,187 @@
             "$ref": "#/components/schemas/FileStep"
           },
           "running": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ActivityDto": {
+        "required": [
+          "id",
+          "at",
+          "action",
+          "actor",
+          "nodeId",
+          "nodeName",
+          "isFolder",
+          "fromName",
+          "toName",
+          "from",
+          "to",
+          "tag",
+          "added",
+          "removed",
+          "person",
+          "role",
+          "versionNumber"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PersonDto"
+              }
+            ]
+          },
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nodeName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isFolder": {
+            "type": "boolean"
+          },
+          "fromName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "toName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "from": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityPlaceDto"
+              }
+            ]
+          },
+          "to": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityPlaceDto"
+              }
+            ]
+          },
+          "tag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "added": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "removed": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "person": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PersonDto"
+              }
+            ]
+          },
+          "role": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ShareRole"
+              }
+            ]
+          },
+          "versionNumber": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ActivityListing": {
+        "required": [
+          "entries",
+          "more"
+        ],
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityDto"
+            }
+          },
+          "more": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ActivityPlaceDto": {
+        "required": [
+          "folder",
+          "top"
+        ],
+        "type": "object",
+        "properties": {
+          "folder": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PathEntry"
+              }
+            ]
+          },
+          "top": {
             "type": "boolean"
           }
         }

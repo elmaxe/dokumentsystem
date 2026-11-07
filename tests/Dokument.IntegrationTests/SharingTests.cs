@@ -316,6 +316,63 @@ public sealed class SharingTests(PostgresFixture postgres)
         Assert.Equal(["Family"], hit.Path.Select(p => p.Name));
     }
 
+    [Fact]
+    public async Task Activity_shows_changes_to_everyone_and_downloads_to_the_owner()
+    {
+        await using var app = await DokumentApp.StartAsync(postgres);
+        using var alice = await SignInAsync(app, Alice);
+        using var bob = await SignInAsync(app, Bob);
+        var bobId = await UserIdAsync(bob);
+        var projects = await CreateFolderAsync(alice, null, "Projects");
+        var plan = await UploadAsync(alice, "plan.pdf", Bytes(100), projects.Id);
+        await ShareAsync(alice, projects.Id, bobId, ShareRole.Editor);
+
+        // Bob renames the file and downloads it; Alice downloads it too.
+        (
+            await bob.PostAsJsonAsync($"/api/v1/nodes/{plan}/rename", new { name = "plan v2.pdf" })
+        ).EnsureSuccessStatusCode();
+        (await bob.GetAsync($"/api/v1/nodes/{plan}/content")).EnsureSuccessStatusCode();
+        (await alice.GetAsync($"/api/v1/nodes/{plan}/content")).EnsureSuccessStatusCode();
+
+        // The owner sees everything, the folder's activity taking in the file.
+        var mine = await ActivityAsync(alice, projects.Id);
+        Assert.Equal(2, mine.Entries.Count(e => e.Action == AuditActions.FileDownload));
+        var rename = Assert.Single(mine.Entries, e => e.Action == AuditActions.NodeRename);
+        Assert.Equal("Bob Berg", rename.Actor!.Name);
+        Assert.Equal(("plan.pdf", "plan v2.pdf"), (rename.FromName, rename.ToName));
+        var share = Assert.Single(mine.Entries, e => e.Action == AuditActions.ShareGrant);
+        Assert.Equal((bobId, ShareRole.Editor), (share.Person!.Id, share.Role));
+
+        // Bob sees the same changes, but only his own download.
+        var his = await ActivityAsync(bob, plan);
+        var download = Assert.Single(his.Entries, e => e.Action == AuditActions.FileDownload);
+        Assert.Equal(bobId, download.Actor!.Id);
+        Assert.Contains(his.Entries, e => e.Action == AuditActions.NodeRename);
+        Assert.Contains(his.Entries, e => e.Action == AuditActions.FileUpload);
+
+        // Paged by time, newest first.
+        var first = await ActivityAsync(alice, projects.Id, "limit=2");
+        Assert.True(first.More);
+        var rest = await ActivityAsync(
+            alice,
+            projects.Id,
+            $"before={Uri.EscapeDataString(first.Entries[^1].At.ToString("O"))}"
+        );
+        Assert.Equal(mine.Entries.Skip(2).Select(e => e.Id), rest.Entries.Select(e => e.Id));
+    }
+
+    private static async Task<ActivityListing> ActivityAsync(
+        HttpClient client,
+        Guid id,
+        string query = ""
+    ) =>
+        (
+            await client.GetFromJsonAsync<ActivityListing>(
+                $"/api/v1/nodes/{id}/activity?{query}",
+                Json.Options
+            )
+        )!;
+
     private static async Task<AccessDto> ShareAsync(
         HttpClient client,
         Guid nodeId,

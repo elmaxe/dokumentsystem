@@ -906,6 +906,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What happened to a file, or to a folder and everything in it, newest first. Everyone who can see it sees its changes; downloads only show for the owner, and for each person their own. Pass the last entry's `at` as `before` for more. */
+        get: operations["ListActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -1828,6 +1845,37 @@ export interface components {
         ActiveStepDto: {
             step: components["schemas"]["FileStep"];
             running: boolean;
+        };
+        ActivityDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            at: string;
+            action: string;
+            actor: null | components["schemas"]["PersonDto"];
+            /** Format: uuid */
+            nodeId: string;
+            nodeName: null | string;
+            isFolder: boolean;
+            fromName: null | string;
+            toName: null | string;
+            from: null | components["schemas"]["ActivityPlaceDto"];
+            to: null | components["schemas"]["ActivityPlaceDto"];
+            tag: null | string;
+            added: null | string[];
+            removed: null | string[];
+            person: null | components["schemas"]["PersonDto"];
+            role: null | components["schemas"]["ShareRole"];
+            /** Format: int32 */
+            versionNumber: null | number;
+        };
+        ActivityListing: {
+            entries: components["schemas"]["ActivityDto"][];
+            more: boolean;
+        };
+        ActivityPlaceDto: {
+            folder: null | components["schemas"]["PathEntry"];
+            top: boolean;
         };
         AdminSettingsDto: {
             storage: components["schemas"]["StorageSettingsDto"];
@@ -4161,6 +4209,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MoveCheckResponse"];
+                };
+            };
+        };
+    };
+    ListActivity: {
+        parameters: {
+            query?: {
+                before?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityListing"];
                 };
             };
         };

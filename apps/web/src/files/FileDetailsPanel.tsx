@@ -1,6 +1,6 @@
 import { contentUrl, type PathEntry, type TextPage } from "@dokument/api";
 import { DetailsPanel, TextDialog, useSnackbar, type DetailsTab, type FileVersion } from "@dokument/ui";
-import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { sessionQuery } from "../api";
@@ -20,6 +20,7 @@ import {
   versionsQuery,
   type Item,
 } from "./drive";
+import { activityEntry, activityQuery } from "./activity";
 import { accessPeople, canEdit } from "./sharing";
 import { MadeFrom } from "./MadeFrom";
 import { FileTagsSection } from "./tags";
@@ -53,13 +54,14 @@ export function FileDetailsPanel({
   onLeave,
   className,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const toast = useSnackbar();
   const queryClient = useQueryClient();
   const isFile = item.node.kind === "file";
   const me = useQuery(sessionQuery).data?.user.id;
   const editable = canEdit(item.node.access);
   const access = useQuery({ ...accessQuery(item.id), enabled: tab === "sharing" });
+  const activity = useInfiniteQuery({ ...activityQuery(item.id), enabled: tab === "activity" });
   const sharedDirectly = access.data?.people.some((p) => p.person.id === me && !!p.shareId) ?? false;
   const versions = useQuery({
     ...versionsQuery(item.id),
@@ -202,7 +204,11 @@ export function FileDetailsPanel({
         people: access.data
           ? accessPeople(access.data, me)
           : [{ id: item.node.ownerId, name: item.owner, email: "", role: "owner", you: item.node.ownerId === me }],
-        activity: [],
+        activity: (activity.data?.pages ?? []).flatMap((page) =>
+          page.entries.map((entry) => activityEntry(t, entry, me, i18n.language)),
+        ),
+        onMoreActivity: activity.hasNextPage ? () => void activity.fetchNextPage() : undefined,
+        activityLoading: activity.isPending,
       }}
       tab={tab}
       onTabChange={onTabChange}
