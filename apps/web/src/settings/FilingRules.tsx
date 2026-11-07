@@ -1,4 +1,4 @@
-import type { FilingRule } from "@dokument/api";
+import type { FilingRule, FilingRun } from "@dokument/api";
 import {
   ActionMenu,
   Banner,
@@ -12,7 +12,9 @@ import {
   TagChip,
   TagField,
   TextField,
+  Progress,
   kindOf,
+  useFormat,
   useSnackbar,
   type MenuAction,
 } from "@dokument/ui";
@@ -21,8 +23,10 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError, errorMessage, tagSuggestionsQuery } from "../files/drive";
 import { exampleFolder, filing, filingRulesQuery, folderProblem } from "./filing";
+import { filingRuns, latestRunQuery, useUndoRun, type RunScope } from "./filingRuns";
+import { RunFilingDialog } from "./RunFilingDialog";
 
-type RuleAction = "edit" | "up" | "down" | "delete";
+type RuleAction = "edit" | "run" | "up" | "down" | "delete";
 
 /**
  * Filing rules in the person's Settings (docs/design.md §13.6): when one of their files gets a tag, move it to a
@@ -35,6 +39,10 @@ export function FilingRules() {
   const rules = useQuery(filingRulesQuery);
   const [editing, setEditing] = useState<FilingRule | "new" | null>(null);
   const [deleting, setDeleting] = useState<FilingRule | null>(null);
+  const [running, setRunning] = useState<RunScope | null>(null);
+  const latest = useQuery(latestRunQuery).data;
+  const busy = latest?.status === "queued" || latest?.status === "running";
+  const enabled = rules.data?.filter((rule) => rule.enabled).length ?? 0;
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: filingRulesQuery.queryKey });
   const attempt = async (change: () => Promise<unknown>) => {
@@ -57,10 +65,22 @@ export function FilingRules() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start gap-3">
         <p className="m-0 max-w-160 min-w-60 flex-1 text-body-md text-on-surface-variant">{t("filing.intro")}</p>
-        <Button icon="add" onClick={() => setEditing("new")}>
-          {t("filing.add")}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outlined"
+            icon="play_arrow"
+            disabled={enabled === 0 || busy}
+            title={busy ? t("filing.run.busy") : undefined}
+            onClick={() => setRunning({ rules: enabled })}
+          >
+            {t("filing.run.all")}
+          </Button>
+          <Button icon="add" onClick={() => setEditing("new")}>
+            {t("filing.add")}
+          </Button>
+        </div>
       </div>
+      {latest && <RunStatus run={latest} />}
       {rules.isError ? (
         <Banner tone="error">{t("filing.failed")}</Banner>
       ) : rules.data && rules.data.length === 0 ? (
@@ -71,6 +91,7 @@ export function FilingRules() {
             {rules.data.map((rule, index) => {
               const actions: MenuAction<RuleAction>[] = [
                 { id: "edit", label: t("filing.edit"), icon: "edit" },
+                { id: "run", label: t("filing.run.one"), icon: "play_arrow", disabled: !rule.enabled || busy },
                 { id: "up", label: t("filing.moveUp"), icon: "arrow_upward", disabled: index === 0 },
                 {
                   id: "down",
@@ -135,6 +156,7 @@ export function FilingRules() {
                     onAction={(id) => {
                       if (id === "edit") setEditing(rule);
                       else if (id === "delete") setDeleting(rule);
+                      else if (id === "run") setRunning({ ruleId: rule.id, ruleTag: rule.tag });
                       else move(index, id === "up" ? -1 : 1);
                     }}
                   />
@@ -145,6 +167,12 @@ export function FilingRules() {
           <p className="m-0 text-body-sm text-on-surface-variant">{t("filing.note")}</p>
         </>
       ) : null}
+
+      <RunFilingDialog
+        key={running ? JSON.stringify(running) : "none"}
+        scope={running}
+        onClose={() => setRunning(null)}
+      />
 
       <RuleDialog
         key={editing === "new" ? "new" : editing?.id}
@@ -184,6 +212,58 @@ export function FilingRules() {
           </>
         }
       />
+    </div>
+  );
+}
+
+/** A run that is going, with its progress and Stop, or the last one while it can still be undone. */
+function RunStatus({ run }: { run: FilingRun }) {
+  const { t } = useTranslation();
+  const toast = useSnackbar();
+  const format = useFormat();
+  const queryClient = useQueryClient();
+  const undo = useUndoRun();
+  const going = run.status === "queued" || run.status === "running";
+
+  if (going) {
+    const counting = run.status === "queued" || run.total === 0;
+    return (
+      <div className="flex flex-col gap-2 rounded-md bg-surface-container-lowest px-4 py-3" aria-live="polite">
+        <div className="flex items-center gap-3">
+          <Icon name="progress_activity" className="animate-spin text-primary" />
+          <span className="tabular flex-1 text-title-sm">
+            {counting ? t("filing.run.looking") : t("filing.run.progress", { done: run.done, total: run.total })}
+          </span>
+          <Button
+            variant="text"
+            disabled={run.stopRequested}
+            onClick={async () => {
+              try {
+                await filingRuns.stop(run.id);
+              } catch (error) {
+                toast(errorMessage(t, error));
+              }
+              await queryClient.invalidateQueries({ queryKey: latestRunQuery.queryKey });
+            }}
+          >
+            {run.stopRequested ? t("filing.run.stopping") : t("filing.run.stop")}
+          </Button>
+        </div>
+        <Progress value={counting ? undefined : run.total === 0 ? 0 : (run.done * 100) / run.total} label={t("filing.run.progress", { done: run.done, total: run.total })} />
+      </div>
+    );
+  }
+
+  if (!run.canUndo) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-surface-container-lowest py-2 pr-2 pl-4">
+      <Icon name="history" className="text-on-surface-variant" />
+      <span className="min-w-0 flex-1 text-body-md text-on-surface-variant">
+        {t("filing.run.last", { count: run.moved, when: format.date(run.finishedAt ?? run.createdAt, { inSentence: true }) })}
+      </span>
+      <Button variant="text" icon="undo" onClick={() => void undo(run)}>
+        {t("filing.run.undo")}
+      </Button>
     </div>
   );
 }

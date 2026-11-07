@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Dokument.Domain.Audit;
 using Dokument.Domain.Files;
+using Dokument.Domain.Filing;
 using Dokument.Domain.Jobs;
 using Dokument.Infrastructure.Persistence;
 using Dokument.Server.Admin;
@@ -259,7 +260,7 @@ public sealed class FilingTests(PostgresFixture postgres)
         var other = await UploadAsync(alice, "annat.pdf", TestFiles.TextPdf("Hå"), null);
         await TagAsync(alice, [other], "receipt");
         await WaitForWorkerAsync(app);
-        foreach (var queue in new[] { "file", "filingRule" })
+        foreach (var queue in new[] { "file", "filingRun" })
         {
             await PutAsync(
                 admin,
@@ -281,7 +282,7 @@ public sealed class FilingTests(PostgresFixture postgres)
         );
         var file = Assert.Single(waiting!.Items, j => j.Type == JobKind.File);
         Assert.Equal(receipt, Assert.Single(file.Files).NodeId);
-        var run = Assert.Single(waiting.Items, j => j.Type == JobKind.FilingRule);
+        var run = Assert.Single(waiting.Items, j => j.Type == JobKind.FilingRun);
         Assert.Equal("receipt", run.RuleTag);
         Assert.Empty(run.Files);
         Assert.Contains(
@@ -292,7 +293,7 @@ public sealed class FilingTests(PostgresFixture postgres)
                     TestContext.Current.CancellationToken
                 )
             )!,
-            q => q.Type == JobKind.FilingRule && q.Paused
+            q => q.Type == JobKind.FilingRun && q.Paused
         );
     }
 
@@ -338,6 +339,107 @@ public sealed class FilingTests(PostgresFixture postgres)
             Json.Options,
             TestContext.Current.CancellationToken
         );
+
+    [Fact]
+    public async Task A_run_files_what_people_have_and_refiles_after_a_rule_changes()
+    {
+        await using var app = await DokumentApp.StartAsync(postgres, FastWorker);
+        using var alice = await SignInAsync(app, Alice);
+        using var bob = await SignInAsync(app, Bob);
+        var inbox = await CreateFolderAsync(alice, null, "Inkorg");
+        var mine = await CreateFolderAsync(alice, null, "Eget");
+        var before = await UploadAsync(alice, "före.pdf", TestFiles.TextPdf("Före"), inbox.Id);
+        await TagAsync(alice, [before], "receipt");
+        var rule = await CreateRuleAsync(alice, new FilingRuleRequest("receipt", "Kvitton"));
+        var filed = await UploadAsync(alice, "filad.pdf", TestFiles.TextPdf("Filad"), null);
+        var placed = await UploadAsync(alice, "flyttad.pdf", TestFiles.TextPdf("Flyttad"), null);
+        await TagAsync(alice, [filed, placed], "receipt");
+        await WaitForWorkerAsync(app);
+        var kvitton = await FolderAsync(app, alice, ["Kvitton"]);
+        Assert.Equal(kvitton, await ParentAsync(app, filed));
+        Assert.Equal(inbox.Id, await ParentAsync(app, before));
+        await PostAsync<NodeDto>(alice, $"/api/v1/nodes/{placed}/move", new MoveRequest(mine.Id));
+
+        // The rule's folder changes; nothing moves until the person runs it.
+        await PutAsync(
+            alice,
+            $"/api/v1/me/filing-rules/{rule.Id}",
+            new FilingRuleRequest("receipt", "Kvitton/{year}")
+        );
+        var preview = await PostAsync<RunPreviewDto>(
+            alice,
+            "/api/v1/me/filing-runs/preview",
+            new FilingRunRequest()
+        );
+        Assert.Equal(2, preview.Move);
+        var group = Assert.Single(preview.Groups);
+        Assert.Equal(($"Kvitton / {Year}", true, 2), (group.Folder, group.NewFolder, group.Count));
+        Assert.Equal(
+            [("filad.pdf", "Kvitton"), ("före.pdf", "Inkorg")],
+            group.Files.Select(f => (f.Name, f.From)).OrderBy(f => f.Name)
+        );
+        Assert.Equal(1, preview.Placed);
+        Assert.Equal(
+            3,
+            (
+                await PostAsync<RunPreviewDto>(
+                    alice,
+                    "/api/v1/me/filing-runs/preview",
+                    new FilingRunRequest(IncludePlaced: true)
+                )
+            ).Move
+        );
+
+        // Running it moves the two and leaves the one the person placed; the per-file message stays quiet.
+        var run = await PostAsync<FilingRunDto>(
+            alice,
+            "/api/v1/me/filing-runs",
+            new FilingRunRequest()
+        );
+        await WaitForWorkerAsync(app);
+        var year = await FolderAsync(app, alice, ["Kvitton", Year]);
+        Assert.Equal(year, await ParentAsync(app, filed));
+        Assert.Equal(year, await ParentAsync(app, before));
+        Assert.Equal(mine.Id, await ParentAsync(app, placed));
+        var done = (
+            await alice.GetFromJsonAsync<FilingRunDto>(
+                "/api/v1/me/filing-runs/latest",
+                Json.Options,
+                TestContext.Current.CancellationToken
+            )
+        )!;
+        Assert.Equal(
+            (run.Id, FilingRunStatus.Done, 2, 2, 1, $"Kvitton / {Year}", true),
+            (done.Id, done.Status, done.Total, done.Moved, done.Folders, done.Folder, done.CanUndo)
+        );
+        Assert.Empty(await RecentAsync(alice));
+
+        // Undo puts each back where it was before the run.
+        var undone = await PostAsync<UndoRunResult>(
+            alice,
+            $"/api/v1/me/filing-runs/{run.Id}/undo",
+            new { }
+        );
+        Assert.Equal(2, undone.Files);
+        Assert.Equal(kvitton, await ParentAsync(app, filed));
+        Assert.Equal(inbox.Id, await ParentAsync(app, before));
+
+        // A run on a selection only looks at it, and a folder brings what is in it. Others' ids are refused.
+        var selection = await PostAsync<RunPreviewDto>(
+            alice,
+            "/api/v1/me/filing-runs/preview",
+            new FilingRunRequest(NodeIds: [inbox.Id], IncludePlaced: true)
+        );
+        Assert.Equal(["före.pdf"], selection.Groups.SelectMany(g => g.Files).Select(f => f.Name));
+        await CreateRuleAsync(bob, new FilingRuleRequest("receipt", "Kvitton"));
+        var foreign = await bob.PostAsJsonAsync(
+            "/api/v1/me/filing-runs/preview",
+            new FilingRunRequest(NodeIds: [inbox.Id]),
+            Json.Options,
+            TestContext.Current.CancellationToken
+        );
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+    }
 
     private static Task<FilingRuleDto> CreateRuleAsync(
         HttpClient client,

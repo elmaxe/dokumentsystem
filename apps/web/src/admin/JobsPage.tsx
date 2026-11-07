@@ -34,7 +34,7 @@ const queueIcons: Record<JobKind, string> = {
   pdfSave: "save",
   tagRule: "sell",
   file: "drive_file_move",
-  filingRule: "drive_file_move",
+  filingRun: "drive_file_move",
 };
 const pageSize = 50;
 
@@ -103,7 +103,7 @@ export function AdminJobsPage() {
           align="start"
           actions={[
             { id: "all", icon: !filter.type ? "check" : "", label: t("admin.jobs.allTypes") },
-            ...(["thumbnail", "metadata", "text", "transcode", "seekPreviews", "transcribe", "pageSheets", "pdf", "pdfSave", "tagRule", "file", "filingRule"] as const).map((type) => ({
+            ...(["thumbnail", "metadata", "text", "transcode", "seekPreviews", "transcribe", "pageSheets", "pdf", "pdfSave", "tagRule", "file", "filingRun"] as const).map((type) => ({
               id: type,
               icon: filter.type === type ? "check" : "",
               label: t(`admin.jobs.queues.${type}`),
@@ -230,7 +230,7 @@ function JobRow({ job, now, onRetry, onClear }: { job: Job; now: number; onRetry
   const file = job.files[0] as JobFile | undefined;
   const kind = file ? kindOf(file.name, job.mimeType) : "other";
   const tagRule = job.type === "tagRule";
-  const rule = tagRule || job.type === "filingRule";
+  const rule = tagRule || job.type === "filingRun";
   const mine = file?.ownerId === me;
   const when = (at: string) => format.date(at, { inSentence: true });
 
@@ -278,7 +278,7 @@ function JobRow({ job, now, onRetry, onClear }: { job: Job; now: number; onRetry
               job.ruleTag ? (
                 t("admin.jobs.filingRun", { tag: job.ruleTag })
               ) : (
-                <span className="text-on-surface-variant">{t("admin.jobs.filingDeleted")}</span>
+                t("admin.jobs.filingRunAll")
               )
             ) : file && mine && file.use === "current" ? (
               <Link

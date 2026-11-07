@@ -21,7 +21,7 @@ public enum JobKind
     PdfSave,
     TagRule,
     File,
-    FilingRule,
+    FilingRun,
 }
 
 /// <summary>
@@ -64,7 +64,7 @@ public static class JobKinds
             _ when type == JobType.PdfSave => JobKind.PdfSave,
             _ when type == JobType.TagRule => JobKind.TagRule,
             _ when type == JobType.File => JobKind.File,
-            _ when type == JobType.FilingRule => JobKind.FilingRule,
+            _ when type == JobType.FilingRun => JobKind.FilingRun,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(type),
                 type,
@@ -89,7 +89,7 @@ public static class JobKinds
             JobKind.PdfSave => JobType.PdfSave,
             JobKind.TagRule => JobType.TagRule,
             JobKind.File => JobType.File,
-            JobKind.FilingRule => JobType.FilingRule,
+            JobKind.FilingRun => JobType.FilingRun,
             _ => JobType.Text,
         };
 }

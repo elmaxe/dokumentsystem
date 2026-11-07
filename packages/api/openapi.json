@@ -2244,6 +2244,180 @@
         }
       }
     },
+    "/api/v1/me/filing-runs/preview": {
+      "post": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "What running your filing rules over files you already have would move, by folder. Changes nothing.",
+        "operationId": "PreviewFilingRun",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunPreviewDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-runs": {
+      "post": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Runs your filing rules over files you already have, in the background. One run at a time.",
+        "operationId": "StartFilingRun",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingRunDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-runs/latest": {
+      "get": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Your latest run, or 204 when you have none.",
+        "operationId": "GetLatestFilingRun",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingRunDto"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-runs/{id}": {
+      "get": {
+        "tags": [
+          "Filing"
+        ],
+        "operationId": "GetFilingRun",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilingRunDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-runs/{id}/stop": {
+      "post": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Stops a run after the file it is on. What it moved stays moved.",
+        "operationId": "StopFilingRun",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/me/filing-runs/{id}/undo": {
+      "post": {
+        "tags": [
+          "Filing"
+        ],
+        "description": "Moves the files a run moved back where they were, unless you have moved them since.",
+        "operationId": "UndoFilingRun",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoRunResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/filings/recent": {
       "get": {
         "tags": [
@@ -5029,6 +5203,135 @@
           }
         }
       },
+      "FilingRunDto": {
+        "required": [
+          "id",
+          "ruleId",
+          "ruleTag",
+          "status",
+          "stopRequested",
+          "total",
+          "done",
+          "moved",
+          "folders",
+          "folderId",
+          "folder",
+          "createdAt",
+          "finishedAt",
+          "undoneAt",
+          "canUndo"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ruleId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "ruleTag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/FilingRunStatus"
+          },
+          "stopRequested": {
+            "type": "boolean"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "done": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "moved": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "folders": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "folder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "undoneAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "canUndo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FilingRunRequest": {
+        "type": "object",
+        "properties": {
+          "ruleId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "nodeIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "includePlaced": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "FilingRunStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "stopped"
+        ]
+      },
       "FolderConflictPolicy": {
         "enum": [
           "fail",
@@ -5358,7 +5661,7 @@
           "pdfSave",
           "tagRule",
           "file",
-          "filingRule"
+          "filingRun"
         ]
       },
       "JobList": {
@@ -6543,6 +6846,109 @@
           }
         }
       },
+      "RunFileDto": {
+        "required": [
+          "nodeId",
+          "name",
+          "mimeType",
+          "from"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "from": {
+            "type": "string"
+          }
+        }
+      },
+      "RunGroupDto": {
+        "required": [
+          "folder",
+          "newFolder",
+          "count",
+          "files"
+        ],
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string"
+          },
+          "newFolder": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunFileDto"
+            }
+          }
+        }
+      },
+      "RunPreviewDto": {
+        "required": [
+          "move",
+          "groups",
+          "alreadyThere",
+          "placed",
+          "shared",
+          "blocked",
+          "noRule",
+          "notYours"
+        ],
+        "type": "object",
+        "properties": {
+          "move": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunGroupDto"
+            }
+          },
+          "alreadyThere": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "placed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "shared": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "blocked": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "noRule": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "notYours": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "ScannerSettingsDto": {
         "required": [
           "address"
@@ -7712,6 +8118,18 @@
         "type": "object",
         "properties": {
           "keepDays": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "UndoRunResult": {
+        "required": [
+          "files"
+        ],
+        "type": "object",
+        "properties": {
+          "files": {
             "type": "integer",
             "format": "int32"
           }

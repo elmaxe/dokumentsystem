@@ -31,8 +31,8 @@ public sealed record JobList(List<JobDto> Items, bool More);
 /// when no file uses it any more, and for keyword-rule runs.
 /// </param>
 /// <param name="RuleTag">
-/// For a keyword-rule run (<c>tagRule</c>) or a filing rule's run (<c>filingRule</c>): the tag of the rule it runs.
-/// Null once the rule is deleted.
+/// For a keyword-rule run (<c>tagRule</c>) or a filing run of one rule (<c>filingRun</c>): the tag of the rule it runs.
+/// Null once the rule is deleted, and for a filing run of all of a person's rules.
 /// </param>
 public sealed record JobDto(
     Guid Id,

@@ -10,8 +10,8 @@ const topicQueries: Record<LiveTopic, string[][]> = {
   recent: [["recent"]],
   trash: [["trash"]],
   storage: [["storage"]],
-  account: [["auth", "session"], ["storage"], ["filing-rules"]],
-  filings: [["filing-rules"]],
+  account: [["auth", "session"], ["storage"], ["filing-rules"], ["filing-run"]],
+  filings: [["filing-rules"], ["filing-run"]],
   shares: [["shared"], ["access"], ["folder"], ["node"], ["search"]],
 };
 

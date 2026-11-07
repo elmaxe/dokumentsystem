@@ -9,15 +9,15 @@ internal sealed class FileHandler(Filer filer) : IJobHandler
 {
     public Task RunAsync(Job job, CancellationToken ct) =>
         Guid.TryParse(job.Subject, out var id)
-            ? filer.FileAsync(id, ct: ct)
+            ? filer.FileAsync(id, ct)
             : throw new InvalidOperationException($"\"{job.Subject}\" isn't a node id.");
 }
 
-/// <summary>Files everything that has a filing rule's tag now, when the person asked for it with the rule (docs/design.md §13.6).</summary>
-internal sealed class FilingRuleHandler(FilingService filing) : IJobHandler
+/// <summary>Runs a person's filing rules over files they already have, when they asked for it (docs/design.md §13.6).</summary>
+internal sealed class FilingRunHandler(FilingService filing) : IJobHandler
 {
     public Task RunAsync(Job job, CancellationToken ct) =>
         Guid.TryParse(job.Subject, out var id)
-            ? filing.FileExistingAsync(id, ct)
-            : throw new InvalidOperationException($"\"{job.Subject}\" isn't a rule id.");
+            ? filing.RunAsync(id, ct)
+            : throw new InvalidOperationException($"\"{job.Subject}\" isn't a run id.");
 }

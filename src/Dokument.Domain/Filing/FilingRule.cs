@@ -40,28 +40,85 @@ public sealed class FilingRule
 }
 
 /// <summary>
-/// A file that a filing rule moved (docs/design.md §13.6). A file is filed at most once, so if its owner moves it back or
-/// elsewhere, or undoes the move, it stays there.
+/// A file that a filing rule moved (docs/design.md §13.6), one row per file. A rule moves a file once by itself; if its
+/// owner moves it back or elsewhere, or undoes the move, it stays there. A run (<see cref="FilingRun"/>) can move it
+/// again, and then updates this row.
 /// </summary>
 public sealed class NodeFiling
 {
     public required Guid NodeId { get; init; }
 
     /// <summary>The rule that moved it, until the rule is deleted.</summary>
-    public Guid? RuleId { get; init; }
+    public Guid? RuleId { get; set; }
 
     /// <summary>The tag that matched, kept for the message even after the rule is gone.</summary>
-    public required string Tag { get; init; }
+    public required string Tag { get; set; }
 
     /// <summary>Where it was, null for the top of My files.</summary>
-    public Guid? FromFolderId { get; init; }
-    public Guid? ToFolderId { get; init; }
-    public DateTimeOffset FiledAt { get; init; }
+    public Guid? FromFolderId { get; set; }
+    public Guid? ToFolderId { get; set; }
+    public DateTimeOffset FiledAt { get; set; }
     public DateTimeOffset? UndoneAt { get; set; }
 
     /// <summary>
-    /// The rule matched but didn't move the file, because the folder would hide it from people it is shared with. It
-    /// isn't tried again.
+    /// The rule matched but didn't move the file, because the folder would hide it from people it is shared with. A
+    /// rule doesn't try again by itself; a run does.
     /// </summary>
-    public bool Skipped { get; init; }
+    public bool Skipped { get; set; }
+
+    /// <summary>The run that filed it last, if it was a run (§13.6). Its files are announced and undone together.</summary>
+    public Guid? RunId { get; set; }
+
+    /// <summary>Whether the file is somewhere its owner put it: they moved it after it was filed, or pressed Undo.</summary>
+    public bool PlacedByOwner(Guid? parentId) =>
+        !Skipped && (UndoneAt is not null || parentId != ToFolderId);
+}
+
+public enum FilingRunStatus
+{
+    Queued,
+    Running,
+    Done,
+    Stopped,
+}
+
+/// <summary>
+/// A person asked to run their filing rules over files they already have (docs/design.md §13.6): all their rules or one,
+/// over all their files or some. Run by one <c>filing-run</c> job, and undone as a whole.
+/// </summary>
+public sealed class FilingRun
+{
+    /// <summary>How long a finished run can still be undone from Settings.</summary>
+    public static readonly TimeSpan UndoWindow = TimeSpan.FromDays(1);
+
+    public Guid Id { get; init; } = Guid.CreateVersion7();
+    public required Guid OwnerId { get; init; }
+
+    /// <summary>The one rule to run, or null for every rule that is on.</summary>
+    public Guid? RuleId { get; init; }
+
+    /// <summary>The files and folders (with everything in them) to run on, or null for all the person's files.</summary>
+    public Guid[]? NodeIds { get; init; }
+
+    /// <summary>Also move files their owner put somewhere after a rule filed them, or moved back with Undo.</summary>
+    public bool IncludePlaced { get; init; }
+
+    public FilingRunStatus Status { get; set; }
+
+    /// <summary>Files the run will move, once it has looked.</summary>
+    public int Total { get; set; }
+
+    /// <summary>Files it has gone through of <see cref="Total"/>.</summary>
+    public int Done { get; set; }
+
+    /// <summary>Files it moved.</summary>
+    public int Moved { get; set; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? FinishedAt { get; set; }
+    public DateTimeOffset? UndoneAt { get; set; }
+
+    /// <summary>The person asked it to stop; it stops after the file it is on.</summary>
+    public bool StopRequested { get; set; }
+
+    public bool Active => Status is FilingRunStatus.Queued or FilingRunStatus.Running;
 }

@@ -21,8 +21,8 @@ public sealed record JobType
     /// <summary>Runs its owner's filing rules on one file, after it got a tag or new bytes (§13.6). The subject is the node id.</summary>
     public static readonly JobType File = new("file");
 
-    /// <summary>Files everything that has a filing rule's tag now, when the person asks for it (§13.6).</summary>
-    public static readonly JobType FilingRule = new("filing-rule");
+    /// <summary>Runs a person's filing rules over files they already have, when they ask for it (§13.6). The subject is the run's id.</summary>
+    public static readonly JobType FilingRun = new("filing-run");
 
     /// <summary>A playable copy of a video or audio blob the browser can't play as it is (§10.2, §14).</summary>
     public static readonly JobType Transcode = new("transcode");
@@ -60,7 +60,7 @@ public sealed record JobType
         PdfSave,
         TagRule,
         File,
-        FilingRule,
+        FilingRun,
     ];
 
     private JobType(string name) => Name = name;
