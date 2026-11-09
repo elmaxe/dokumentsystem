@@ -1,5 +1,6 @@
 add
 add_circle
+add_photo_alternate
 arrow_back
 arrow_downward
 arrow_upward
@@ -21,6 +22,7 @@ content_copy
 content_cut
 create_new_folder
 delete
+delete_forever
 description
 devices
 dns
@@ -28,6 +30,7 @@ document_scanner
 download
 draft
 drive_file_move
+drive_file_rename_outline
 edit
 error
 fingerprint
@@ -57,6 +60,7 @@ public
 radio_button_unchecked
 refresh
 remove_circle
+restore_from_trash
 router
 schedule
 search

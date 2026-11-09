@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, View } from "react-native";
@@ -184,6 +184,7 @@ export default function FileScreen() {
         node={actions ? (node ?? null) : null}
         onClose={() => setActions(false)}
         onOpenFolder={() => {}}
+        onTrashed={() => router.back()}
       />
     </View>
   );
