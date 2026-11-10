@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { ActivityIndicator, FlatList, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { canEdit, createFolder } from "../state/changes";
-import { folderQuery } from "../state/queries";
+import { folderQuery, sessionQuery } from "../state/queries";
 import { useTheme } from "../state/theme";
 import { Button, IconButton } from "./Button";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -18,7 +18,8 @@ export type PickedFolder = { id: string | null; name: string; path: string };
 
 /**
  * A full-screen folder picker (docs/design.md §15.3), for moving items and for where shared files go. It lists only
- * folders, with a way up and a way to make a new one; folders the person can only view can't be picked.
+ * folders, with a way up and a way to make a new one; folders the person can only view can't be picked. In someone
+ * else's folder it goes up only as far as the top folder shared with the person, as their path does (§9).
  */
 export function FolderPicker({
   title,
@@ -55,9 +56,14 @@ export function FolderPicker({
   const folders = (listing.data?.items ?? []).filter((item) => item.kind === "folder");
   const path = listing.data?.path ?? [];
   const here = listing.data?.folder ?? null;
-  const parentName = path.length > 1 ? path[path.length - 2]!.name : t("nav.myFiles");
+  const me = useQuery(sessionQuery).data?.user.id;
+  const theirs = !!here && !!me && here.ownerId !== me;
+  const root = theirs ? t("nav.sharedWithMe") : t("nav.myFiles");
+  const parentName = path.length > 1 ? path[path.length - 2]!.name : root;
+  // At the top folder shared with the person, what holds it is out of sight.
+  const canGoUp = folderId !== null && !(theirs && path.length <= 1);
   const editable = folderId === null || canEdit(here?.access);
-  const names = [t("nav.myFiles"), ...path.map((entry) => entry.name)];
+  const names = [root, ...path.map((entry) => entry.name)];
   const disabled =
     busy || listing.isPending || !editable || !!blocked?.(folderId) || (folderId !== null && !!unavailable?.has(folderId));
 
@@ -92,7 +98,7 @@ export function FolderPicker({
           data={folders}
           keyExtractor={(folder) => folder.id}
           ListHeaderComponent={
-            folderId !== null ? (
+            canGoUp ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setFolderId(here?.parentId ?? null)}
@@ -122,7 +128,7 @@ export function FolderPicker({
             busy={busy}
             disabled={disabled}
             onPress={() =>
-              onSubmit({ id: folderId, name: here?.name ?? t("nav.myFiles"), path: names.slice(0, -1).join(" / ") })
+              onSubmit({ id: folderId, name: here?.name ?? root, path: names.slice(0, -1).join(" / ") })
             }
           />
         </View>

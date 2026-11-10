@@ -1312,9 +1312,24 @@ export const en = {
       notConfigured: "This server can't sign in apps yet. Ask your admin to update it.",
       unreachable: "Can't reach the server or its sign-in provider. Check your connection and try again.",
     },
-    sharingSoon: {
-      title: "Sharing is coming",
-      text: "Files and folders people share with you will show up here.",
+    sharing: {
+      addPlaceholder: "Name or email",
+      canEdit: "Can edit",
+      canView: "Can view",
+      addAs: "Add people as",
+      viewerHint: "Open, search and download",
+      editorHint: "Also upload, rename, move, tag and move to the trash",
+      alreadyHas: "Already has access",
+      onlySignedIn: "Only people who have signed in to Dokumentsystem are listed.",
+      linksLater: "Public links come in a later update.",
+      inheritHint: "Sharing a folder shares everything in it. Someone with access through a folder above can be given more here, never less.",
+      removeTitle: "Remove {{name}}'s access?",
+      removeText: "{{name}} stops seeing “{{item}}”, unless a folder above it is shared with them.",
+    },
+    activity: {
+      folder: "{{name}} and everything in it",
+      today: "Today",
+      yesterday: "Yesterday",
     },
     search: {
       in: "In",
@@ -1365,6 +1380,7 @@ export const en = {
     },
     move: {
       viewOnly: "You can only view this folder",
+      outOfSight: "This is at the top of what's shared with you, so it can't be moved from here.",
     },
     scan: {
       title: "Save scan",

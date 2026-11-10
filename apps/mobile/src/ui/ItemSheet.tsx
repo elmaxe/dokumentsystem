@@ -8,6 +8,7 @@ import { useFormat } from "../state/format";
 import { openInAnotherApp } from "../state/openFile";
 import { readablePdf } from "../state/pdf";
 import { canEdit, rename, startMove, trash, useCanMove } from "../state/changes";
+import { AccessSheet } from "./AccessSheet";
 import { drive, invalidateStars, kindOfNode } from "../state/queries";
 import { useTheme } from "../state/theme";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -19,7 +20,7 @@ import { Text } from "./Text";
 
 /**
  * What can be done with one file or folder (docs/design.md §15.3, §16.3). Rename, Move and Move to trash need edit
- * access (§9).
+ * access (§9). The owner shares; everyone else sees who has access, and can leave what was shared with them directly.
  */
 export function ItemSheet({
   node,
@@ -27,14 +28,17 @@ export function ItemSheet({
   onOpenFolder,
   onSelect,
   onTrashed,
+  topShared,
 }: {
   node: NodeDto | null;
   onClose: () => void;
   onOpenFolder: (node: NodeDto) => void;
   /** Starts selecting files with this one, as a long press does. */
   onSelect?: (node: NodeDto) => void;
-  /** Leaves a page that only shows this item, such as the viewer, once it's in the trash. */
+  /** Leaves a page that only shows this item, such as the viewer, once it's in the trash or the person left it. */
   onTrashed?: () => void;
+  /** Listed in Shared with me: what holds it is out of sight, so it can't be moved or trashed from here, only left. */
+  topShared?: boolean;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -43,6 +47,7 @@ export function ItemSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<NodeDto | null>(null);
+  const [viewing, setViewing] = useState<{ node: NodeDto; leave: boolean } | null>(null);
   const canMove = useCanMove();
 
   const renameSheet = renaming ? (
@@ -57,6 +62,20 @@ export function ItemSheet({
       onSubmit={(name) => rename(t, queryClient, renaming, name)}
     />
   ) : null;
+  const sheets = (
+    <>
+      {renameSheet}
+      {viewing ? (
+        <AccessSheet
+          key={viewing.node.id}
+          node={viewing.node}
+          leave={viewing.leave}
+          onClose={() => setViewing(null)}
+          onLeft={onTrashed}
+        />
+      ) : null}
+    </>
+  );
 
   const close = () => {
     setError(null);
@@ -64,7 +83,7 @@ export function ItemSheet({
     onClose();
   };
 
-  if (!node) return renameSheet;
+  if (!node) return sheets;
   const kind = kindOfNode(node);
   const isFolder = node.kind === "folder";
   const meta = isFolder
@@ -156,7 +175,46 @@ export function ItemSheet({
         label={node.starred ? t("actions.unstar") : t("actions.star")}
         onPress={() => void star()}
       />
-      {editable ? (
+      {node.access === "owner" ? (
+        <SheetAction
+          icon={<Icon name="person_add" />}
+          label={t("actions.share")}
+          onPress={() => {
+            close();
+            router.push({ pathname: "/people/[id]", params: { id: node.id } });
+          }}
+        />
+      ) : (
+        <SheetAction
+          icon={<Icon name="group" />}
+          label={t("share.peopleWithAccess")}
+          onPress={() => {
+            close();
+            setViewing({ node, leave: false });
+          }}
+        />
+      )}
+      <SheetAction
+        icon={<Icon name="history" />}
+        label={t("details.tabs.activity")}
+        onPress={() => {
+          close();
+          router.push({ pathname: "/activity/[id]", params: { id: node.id } });
+        }}
+      />
+      {topShared ? (
+        <>
+          <View className="my-2 h-px bg-outline-variant" />
+          <SheetAction
+            icon={<Icon name="person_remove" />}
+            label={t("share.leave")}
+            onPress={() => {
+              close();
+              setViewing({ node, leave: true });
+            }}
+          />
+        </>
+      ) : editable ? (
         <>
           <View className="my-2 h-px bg-outline-variant" />
           <SheetAction
@@ -189,7 +247,7 @@ export function ItemSheet({
         </>
       ) : null}
     </Sheet>
-    {renameSheet}
+    {sheets}
     </>
   );
 }

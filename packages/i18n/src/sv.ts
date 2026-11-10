@@ -1318,9 +1318,24 @@ export const sv: Strings = {
       notConfigured: "Den här servern kan inte logga in appar än. Be din administratör att uppdatera den.",
       unreachable: "Det går inte att nå servern eller dess inloggningstjänst. Kontrollera anslutningen och försök igen.",
     },
-    sharingSoon: {
-      title: "Delning kommer snart",
-      text: "Filer och mappar som andra delar med dig visas här.",
+    sharing: {
+      addPlaceholder: "Namn eller e-post",
+      canEdit: "Kan redigera",
+      canView: "Kan visa",
+      addAs: "Lägg till personer som",
+      viewerHint: "Öppna, söka och ladda ner",
+      editorHint: "Även ladda upp, byta namn, flytta, tagga och flytta till papperskorgen",
+      alreadyHas: "Har redan åtkomst",
+      onlySignedIn: "Bara personer som har loggat in i Dokumentsystem visas.",
+      linksLater: "Publika länkar kommer i en senare uppdatering.",
+      inheritHint: "När du delar en mapp delas allt i den. Den som har åtkomst via en mapp ovanför kan få mer här, aldrig mindre.",
+      removeTitle: "Ta bort åtkomsten för {{name}}?",
+      removeText: "{{name}} slutar se ”{{item}}”, om inte en mapp ovanför delas med hen.",
+    },
+    activity: {
+      folder: "{{name}} och allt i den",
+      today: "I dag",
+      yesterday: "I går",
     },
     search: {
       in: "I",
@@ -1371,6 +1386,7 @@ export const sv: Strings = {
     },
     move: {
       viewOnly: "Du kan bara visa den här mappen",
+      outOfSight: "Det här ligger överst i det som delas med dig, så det kan inte flyttas härifrån.",
     },
     scan: {
       title: "Spara skanning",

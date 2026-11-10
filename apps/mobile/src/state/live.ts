@@ -13,9 +13,16 @@ const topicQueries: Record<LiveTopic, string[][]> = {
   storage: [["storage"]],
   account: [["auth", "session"], ["storage"]],
   filings: [],
-  // Shared with me isn't in the app yet; what's in a folder can still change.
-  shares: [["folder"], ["node"]],
+  shares: [["shared"], ["access"], ["folder"], ["node"], ["search"]],
 };
+
+const shareListeners = new Set<() => void>();
+
+/** Calls back on each notice that something was shared, changed or unshared with the person. */
+export function onShares(listener: () => void) {
+  shareListeners.add(listener);
+  return () => void shareListeners.delete(listener);
+}
 
 let connected = false;
 const listeners = new Set<() => void>();
@@ -71,6 +78,7 @@ export function useLiveUpdates() {
       if (message.origin === clientId) return;
       const keys = new Set(message.topics.flatMap((topic) => topicQueries[topic] ?? []).map((key) => JSON.stringify(key)));
       keys.forEach((key) => void queryClient.invalidateQueries({ queryKey: JSON.parse(key) as string[] }));
+      if (message.topics.includes("shares")) shareListeners.forEach((listener) => listener());
     });
     // Signed out here, or from Active devices somewhere else: the next request would get a 401 anyway. When this app
     // signed out itself, it has already left the signed-in state and this does nothing.
