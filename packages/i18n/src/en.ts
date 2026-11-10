@@ -1468,8 +1468,23 @@ export const en = {
       test: "Test",
       add: "Add",
       remove: "Remove",
+      otherNetwork: "Not in use: this isn't one of your home Wi-Fi networks. Checked {{date}}.",
       explain:
-        "The app uses the local address whenever this server answers there and proves it's the same server. It checks again when your network changes, so nothing needs your location.",
+        "The app uses the local address whenever this server answers there and proves it's the same server. It checks again when your network changes.",
+      homeNetworks: "Home Wi-Fi networks",
+      homeNetworksNone:
+        "The local address is tried on every network. Add your home Wi-Fi to try it only there.",
+      homeNetworksOnly: "The local address is only tried on these networks.",
+      addThisNetwork: "Add this network",
+      removeNetwork: "Remove {{name}}",
+      openSettings: "Open settings",
+      wifiProblem: {
+        denied: "The app needs location access to read the Wi-Fi network's name.",
+        notWifi: "Connect to your home Wi-Fi first.",
+        unknown: "The Wi-Fi network's name couldn't be read.",
+      },
+      locationWhy:
+        "Your phone only tells apps a Wi-Fi network's name when they may see your location. The app only reads the name, never where you are.",
     },
     devices: {
       title: "Active devices",

@@ -1474,8 +1474,23 @@ export const sv: Strings = {
       test: "Testa",
       add: "Lägg till",
       remove: "Ta bort",
+      otherNetwork: "Används inte: det här är inte ett av dina wifi-nätverk hemma. Kontrollerad {{date}}.",
       explain:
-        "Appen använder den lokala adressen när den här servern svarar där och bevisar att det är samma server. Den kontrollerar igen när nätverket ändras, så inget behöver din plats.",
+        "Appen använder den lokala adressen när den här servern svarar där och bevisar att det är samma server. Den kontrollerar igen när nätverket ändras.",
+      homeNetworks: "Wifi-nätverk hemma",
+      homeNetworksNone:
+        "Den lokala adressen prövas i alla nätverk. Lägg till ditt wifi hemma för att bara pröva den där.",
+      homeNetworksOnly: "Den lokala adressen prövas bara i de här nätverken.",
+      addThisNetwork: "Lägg till det här nätverket",
+      removeNetwork: "Ta bort {{name}}",
+      openSettings: "Öppna inställningar",
+      wifiProblem: {
+        denied: "Appen behöver tillgång till platsen för att läsa wifi-nätverkets namn.",
+        notWifi: "Anslut till ditt wifi hemma först.",
+        unknown: "Wifi-nätverkets namn gick inte att läsa.",
+      },
+      locationWhy:
+        "Telefonen visar bara ett wifi-nätverks namn för appar som får se din plats. Appen läser bara namnet, aldrig var du är.",
     },
     devices: {
       title: "Aktiva enheter",

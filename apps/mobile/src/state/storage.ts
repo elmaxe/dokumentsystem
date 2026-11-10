@@ -8,6 +8,8 @@ export type SavedServer = {
   mainUrl: string;
   /** An optional local address, used whenever the server proves itself there. */
   localUrl: string | null;
+  /** Wi-Fi names the local address is tried on; empty tries it on every network. */
+  homeNetworks?: string[];
 };
 
 /** The bearer session, kept in the Keychain or Android Keystore (§5). */

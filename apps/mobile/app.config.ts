@@ -37,6 +37,8 @@ const config: ExpoConfig = {
       NSLocalNetworkUsageDescription:
         "Connects to your Dokumentsystem server at its local address.",
     },
+    // The Wi-Fi network's name, for home networks (§15.3).
+    entitlements: { "com.apple.developer.networking.wifi-info": true },
   },
   android: {
     package: "io.github.elmaxe.dokumentsystem",
@@ -90,6 +92,17 @@ const config: ExpoConfig = {
     [
       "expo-image-picker",
       { photosPermission: false, cameraPermission: false, microphonePermission: false },
+    ],
+    // Home Wi-Fi networks (§15.3): the system only tells an app the Wi-Fi network's name when it may see the
+    // location, so the app asks while in use, and only when the person adds a network.
+    [
+      "expo-location",
+      {
+        locationWhenInUsePermission:
+          "Dokumentsystem reads your Wi-Fi network's name to know when you're home. It never reads where you are.",
+        isAndroidBackgroundLocationEnabled: false,
+        isIosBackgroundLocationEnabled: false,
+      },
     ],
     // Only local notifications, for uploads that carried on after the app was closed (decision 37).
     ["expo-notifications", { enableRemoteNotifications: false }],
