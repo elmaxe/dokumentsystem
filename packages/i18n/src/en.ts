@@ -1331,6 +1331,18 @@ export const en = {
       today: "Today",
       yesterday: "Yesterday",
     },
+    info: {
+      open: "Info",
+      file: "File",
+      you: "You",
+      shared: "Shared",
+      notShared: "Not shared",
+      sharedWith_one: "With {{count}} person",
+      sharedWith_other: "With {{count}} people",
+      tagsReadOnly: "Only people who can edit this file can change its tags.",
+      addTagHint: "Separate several with commas.",
+      onTheWeb: "Editing the details and older versions are on the web for now.",
+    },
     search: {
       in: "In",
       inTitle: "Search in",

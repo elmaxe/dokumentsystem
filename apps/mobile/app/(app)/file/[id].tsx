@@ -116,6 +116,7 @@ export default function FileScreen() {
         return (
           <MediaViewer
             key={preview.uri}
+            node={node}
             uri={preview.uri}
             audio={preview.type === "audio"}
             search={
@@ -220,6 +221,11 @@ export default function FileScreen() {
         actions={
           node ? (
             <>
+              <IconButton
+                icon="info"
+                label={t("mobile.info.open")}
+                onPress={() => router.push({ pathname: "/info/[id]", params: { id: node.id } })}
+              />
               <IconButton
                 icon="star"
                 filled={node.starred}
