@@ -1280,7 +1280,7 @@ export const en = {
       moveDown: "Move {{name}} down",
       leaveOut: "Leave {{name}} out of the merge",
       mode: "How to split",
-      pagesHint: "Tap a page to cut after it or leave it out.",
+      pagesHint: "Tap a page to leave it out or put it back. Hold it to start a new file after it.",
       leftOut: "Left out",
       inFile: "In file {{number}}",
       cutAfter: "a new file starts after it",

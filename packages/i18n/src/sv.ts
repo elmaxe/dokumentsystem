@@ -1286,7 +1286,7 @@ export const sv: Strings = {
       moveDown: "Flytta ned {{name}}",
       leaveOut: "Ta bort {{name}} från sammanslagningen",
       mode: "Hur den delas upp",
-      pagesHint: "Tryck på en sida för att klippa efter den eller utelämna den.",
+      pagesHint: "Tryck på en sida för att utelämna den eller ta med den igen. Håll på den för att börja en ny fil efter den.",
       leftOut: "Utelämnad",
       inFile: "I fil {{number}}",
       cutAfter: "en ny fil börjar efter den",

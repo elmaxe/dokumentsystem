@@ -299,7 +299,9 @@ export default function Split() {
                           .join(", ")
                   }
                   disabled={mode === "ranges"}
-                  onPress={() => setPage(p)}
+                  // A tap leaves the page out or puts it back; holding it offers the cut after it.
+                  onPress={() => setLeft((set) => toggle(set, p))}
+                  onLongPress={() => setPage(p)}
                   className="items-center gap-1"
                 >
                   <View
