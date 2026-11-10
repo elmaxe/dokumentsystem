@@ -584,8 +584,13 @@ export async function restoreUploads(): Promise<{ count: number; folder?: string
   for (const job of saved) {
     if (jobs.has(job.id)) continue;
     // The app's folders can move when it's updated, so the file is found by its id.
-    const file = new File(uploadsFolder(), job.id);
-    if (!file.exists) continue;
+    let file: File;
+    try {
+      file = new File(uploadsFolder(), job.id);
+      if (!file.exists) continue;
+    } catch {
+      continue;
+    }
     const restored: Job = { ...job, uri: file.uri };
     if (job.state === "checking") {
       checking.push(job.id);
