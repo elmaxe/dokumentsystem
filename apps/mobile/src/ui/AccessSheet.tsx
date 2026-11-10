@@ -18,11 +18,14 @@ import { Text } from "./Text";
  * shared with them directly. Leaving asks first.
  */
 export function AccessSheet({
+  open = true,
   node,
   leave: leaving,
   onClose,
   onLeft,
 }: {
+  /** False while it slides away; the parent keeps it mounted until then. */
+  open?: boolean;
   node: NodeDto;
   /** Opens on the question, for Leave in an item's actions. */
   leave?: boolean;
@@ -65,7 +68,7 @@ export function AccessSheet({
 
   return (
     <Sheet
-      open
+      open={open}
       onClose={close}
       title={asking ? t("share.leaveTitle", { name: node.name }) : t("share.peopleWithAccess")}
     >

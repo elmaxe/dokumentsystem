@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Modal, Pressable, useWindowDimensions, View } from "react-native";
+import { Keyboard, Modal, Platform, Pressable, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -36,15 +36,31 @@ export function Sheet({
   const [mounted, setMounted] = useState(open);
   const progress = useSharedValue(0);
   const height = useSharedValue(screen.height);
+  // How far the keyboard covers the sheet: a Modal isn't resized for it, so the sheet moves up by itself.
+  const keyboard = useSharedValue(0);
 
   if (open && !mounted) setMounted(true);
   useEffect(() => {
     animate(progress, open, () => setMounted(false));
   }, [open, progress]);
+  useEffect(() => {
+    if (!mounted) return;
+    const ios = Platform.OS === "ios";
+    const shown = Keyboard.addListener(ios ? "keyboardWillShow" : "keyboardDidShow", (event) =>
+      lift(keyboard, Math.max(0, event.endCoordinates.height - insets.bottom), event.duration),
+    );
+    const hidden = Keyboard.addListener(ios ? "keyboardWillHide" : "keyboardDidHide", (event) =>
+      lift(keyboard, 0, event.duration),
+    );
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, [mounted, keyboard, insets.bottom]);
 
   const scrim = useAnimatedStyle(() => ({ opacity: progress.value }));
   const sheet = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - progress.value) * height.value }],
+    transform: [{ translateY: (1 - progress.value) * height.value - keyboard.value }],
   }));
 
   return (
@@ -71,7 +87,8 @@ export function Sheet({
         <Animated.View
           style={sheet}
           onLayout={(event) => {
-            height.value = event.nativeEvent.layout.height;
+            // Measured while open, so content that empties as it closes doesn't change how far it slides.
+            if (open) height.value = event.nativeEvent.layout.height;
           }}
         >
           <View
@@ -95,6 +112,20 @@ export function Sheet({
       </View>
     </Modal>
   );
+}
+
+/**
+ * The last value that wasn't null, so a sheet opened for something (`open={!!chosen}`) still shows it while it
+ * slides away after `chosen` went back to null.
+ */
+export function useKept<T>(value: T | null): T | null {
+  const [kept, setKept] = useState(value);
+  if (value !== null && value !== kept) setKept(value);
+  return value ?? kept;
+}
+
+function lift(keyboard: { value: number }, to: number, duration: number) {
+  keyboard.value = withTiming(to, { duration: duration > 0 ? duration : 200 });
 }
 
 // Outside the component, where React's rules see a plain object rather than a hook's value.

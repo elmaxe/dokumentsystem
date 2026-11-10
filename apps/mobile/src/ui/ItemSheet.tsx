@@ -15,7 +15,7 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { NameSheet } from "./NameSheet";
 import { Icon } from "./Icon";
 import { Notice } from "./Notice";
-import { Sheet, SheetAction } from "./Sheet";
+import { Sheet, SheetAction, useKept } from "./Sheet";
 import { Text } from "./Text";
 
 /**
@@ -23,7 +23,7 @@ import { Text } from "./Text";
  * access (§9). The owner shares; everyone else sees who has access, and can leave what was shared with them directly.
  */
 export function ItemSheet({
-  node,
+  node: chosen,
   onClose,
   onOpenFolder,
   onSelect,
@@ -48,28 +48,33 @@ export function ItemSheet({
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<NodeDto | null>(null);
   const [viewing, setViewing] = useState<{ node: NodeDto; leave: boolean } | null>(null);
+  // Each sheet keeps showing its item while it slides away after the item went back to null.
+  const node = useKept(chosen);
+  const renamed = useKept(renaming);
+  const viewed = useKept(viewing);
   const canMove = useCanMove();
 
-  const renameSheet = renaming ? (
+  const renameSheet = renamed ? (
     <NameSheet
-      key={renaming.id}
-      open
+      key={renamed.id}
+      open={!!renaming}
       onClose={() => setRenaming(null)}
       title={t("dialogs.rename.title")}
       label={t("dialogs.rename.label")}
       submitLabel={t("dialogs.rename.save")}
-      initial={renaming.name}
-      onSubmit={(name) => rename(t, queryClient, renaming, name)}
+      initial={renamed.name}
+      onSubmit={(name) => rename(t, queryClient, renamed, name)}
     />
   ) : null;
   const sheets = (
     <>
       {renameSheet}
-      {viewing ? (
+      {viewed ? (
         <AccessSheet
-          key={viewing.node.id}
-          node={viewing.node}
-          leave={viewing.leave}
+          key={viewed.node.id}
+          open={!!viewing}
+          node={viewed.node}
+          leave={viewed.leave}
           onClose={() => setViewing(null)}
           onLeft={onTrashed}
         />
@@ -116,7 +121,7 @@ export function ItemSheet({
 
   return (
     <>
-    <Sheet open onClose={close}>
+    <Sheet open={!!chosen} onClose={close}>
       <View className="mx-5 mb-2 flex-row items-center gap-3">
         <FileTypeIcon kind={kind} />
         <View className="min-w-0 flex-1">

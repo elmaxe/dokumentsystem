@@ -336,7 +336,8 @@ function TagsSection({ node }: { node: NodeDto }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const tags = useQuery(fileTagsQuery(node.id));
-  const [adding, setAdding] = useState(false);
+  // The add sheet stays mounted while it slides away; a new key starts it empty next time.
+  const [adding, setAdding] = useState({ key: 0, open: false });
   const editable = canEdit(node.access);
   const shown: Tag[] = tags.data?.tags ?? node.tags;
 
@@ -378,7 +379,7 @@ function TagsSection({ node }: { node: NodeDto }) {
         {editable ? (
           <Pressable
             accessibilityRole="button"
-            onPress={() => setAdding(true)}
+            onPress={() => setAdding((a) => ({ key: a.key + 1, open: true }))}
             className="h-8 flex-row items-center gap-1 rounded-sm border border-dashed border-outline px-3 active:bg-surface-container-high"
           >
             <Icon name="add" size={18} color="primary" />
@@ -393,12 +394,14 @@ function TagsSection({ node }: { node: NodeDto }) {
           {shown.length === 0 ? t("tags.readOnly") : t("mobile.info.tagsReadOnly")}
         </Text>
       ) : null}
-      {adding ? (
+      {adding.key > 0 ? (
         <AddTagSheet
+          key={adding.key}
+          open={adding.open}
           existing={shown.map((tag) => tag.name.toLowerCase())}
-          onClose={() => setAdding(false)}
+          onClose={() => setAdding((a) => ({ ...a, open: false }))}
           onAdd={(names) => {
-            setAdding(false);
+            setAdding((a) => ({ ...a, open: false }));
             void change({ add: names }, t("toasts.tagsChanged", { count: 1 }));
           }}
         />
@@ -464,10 +467,12 @@ function TagChip({
 
 /** Type a tag, or several separated by commas, or pick one already used. */
 function AddTagSheet({
+  open,
   existing,
   onClose,
   onAdd,
 }: {
+  open: boolean;
   existing: string[];
   onClose: () => void;
   onAdd: (names: string[]) => void;
@@ -486,7 +491,7 @@ function AddTagSheet({
     .slice(0, 6);
 
   return (
-    <Sheet open onClose={onClose} title={t("tags.add")}>
+    <Sheet open={open} onClose={onClose} title={t("tags.add")}>
       <View className="mx-5 gap-3">
         <TextField
           label={t("tags.addLabel")}

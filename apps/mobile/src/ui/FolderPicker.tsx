@@ -51,7 +51,8 @@ export function FolderPicker({
   const queryClient = useQueryClient();
   const [folderId, setFolderId] = useState<string | null>(start);
   const listing = useQuery(folderQuery(folderId));
-  const [naming, setNaming] = useState(0);
+  // The name sheet stays mounted while it slides away; a new key starts it empty next time.
+  const [naming, setNaming] = useState({ key: 0, open: false });
 
   const folders = (listing.data?.items ?? []).filter((item) => item.kind === "folder");
   const path = listing.data?.path ?? [];
@@ -78,7 +79,7 @@ export function FolderPicker({
           <IconButton
             icon="create_new_folder"
             label={t("dialogs.newFolder.title")}
-            onPress={() => setNaming((n) => n + 1)}
+            onPress={() => setNaming((n) => ({ key: n.key + 1, open: true }))}
             color="on-surface"
           />
         ) : null}
@@ -133,11 +134,11 @@ export function FolderPicker({
           />
         </View>
       </View>
-      {naming > 0 ? (
+      {naming.key > 0 ? (
         <NameSheet
-          key={naming}
-          open
-          onClose={() => setNaming(0)}
+          key={naming.key}
+          open={naming.open}
+          onClose={() => setNaming((n) => ({ ...n, open: false }))}
           title={t("dialogs.newFolder.title")}
           label={t("dialogs.newFolder.label")}
           submitLabel={t("dialogs.newFolder.create")}
