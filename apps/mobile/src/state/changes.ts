@@ -1,10 +1,10 @@
 import type { NodeDto, NodeRole } from "@dokument/api";
-import { useQuery, type QueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import type { TFunction } from "i18next";
 import { toast } from "../ui/Snackbar";
 import { ApiError } from "./api";
-import { drive, invalidateFolders, invalidateTrash, sessionQuery } from "./queries";
+import { drive, invalidateFolders, invalidateTrash } from "./queries";
 
 // Changes to files and folders from the app (docs/design.md §15.3), each told in a snackbar, with Undo where the web
 // has one. The app skips live notices about its own changes, so each refetches what it changed itself.
@@ -13,12 +13,12 @@ import { drive, invalidateFolders, invalidateTrash, sessionQuery } from "./queri
 export const canEdit = (access: NodeRole | undefined) => access === "owner" || access === "editor";
 
 /**
- * Whether the person can move these from here: their own things, with edit access. Moving inside someone else's shared
- * folder comes with Shared with me in the app (§9).
+ * Whether the person can move these: with edit access, all from one owner's files, since moves stay within them (§9).
+ * The picker refuses what sits at the top of something shared with the person, whose folder they can't see.
  */
 export function useCanMove() {
-  const me = useQuery(sessionQuery).data?.user.id;
-  return (nodes: NodeDto[]) => nodes.length > 0 && nodes.every((node) => canEdit(node.access) && node.ownerId === me);
+  return (nodes: NodeDto[]) =>
+    nodes.length > 0 && nodes.every((node) => canEdit(node.access) && node.ownerId === nodes[0]!.ownerId);
 }
 
 /** Opens the folder picker for these, starting where the first one is. */

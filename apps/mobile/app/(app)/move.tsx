@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 import { move } from "../../src/state/changes";
 import { drive, nodeQuery } from "../../src/state/queries";
+import { EmptyState } from "../../src/ui/EmptyState";
+import { TopBar } from "../../src/ui/TopBar";
 import { Button } from "../../src/ui/Button";
 import { FolderPicker } from "../../src/ui/FolderPicker";
 import { Sheet } from "../../src/ui/Sheet";
@@ -32,6 +34,11 @@ export default function Move() {
   const [target, setTarget] = useState<string | null>(null);
   const [losing, setLosing] = useState<Person[] | null>(null);
   const moving = new Set(nodes.map((node) => node.id));
+  // Something shared with the person at its own level sits in a folder they can't see, so there's nowhere to start.
+  const outOfSight = queries.some(
+    (query) =>
+      !!query.data?.node.parentId && query.data.path.at(-1)?.id !== query.data.node.parentId,
+  );
 
   const finish = async (folderId: string | null) => {
     setBusy(true);
@@ -49,6 +56,15 @@ export default function Move() {
       setLosing(people);
     } else await finish(folderId);
   };
+
+  if (outOfSight) {
+    return (
+      <View className="flex-1 bg-surface">
+        <TopBar title={t("actions.move")} back />
+        <EmptyState icon="block" title={t("mobile.move.outOfSight")} />
+      </View>
+    );
+  }
 
   return (
     <FolderPicker

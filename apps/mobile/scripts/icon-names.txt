@@ -42,12 +42,15 @@ folder_shared
 folder_zip
 graphic_eq
 grid_view
+group
+help
 history
 hourglass_top
 image
 info
 keyboard_arrow_down
 keyboard_arrow_up
+link
 login
 logout
 manage_search
@@ -57,6 +60,8 @@ movie
 music_note
 open_in_new
 pause_circle
+person_add
+person_remove
 photo_camera
 photo_library
 picture_as_pdf
