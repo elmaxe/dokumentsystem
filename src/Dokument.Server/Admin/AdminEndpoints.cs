@@ -91,6 +91,7 @@ public static class AdminEndpoints
         admin.MapGet("/users", ListUsers).WithName("AdminListUsers");
         admin.MapPut("/users/{id:guid}/quota", PutUserQuota).WithName("AdminPutUserQuota");
         admin.MapJobEndpoints();
+        admin.MapBackupEndpoints();
         return api;
     }
 

@@ -3635,6 +3635,139 @@
         }
       }
     },
+    "/api/v1/admin/backups": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "The schedule, the newest backups first, and the space they take.",
+        "operationId": "AdminGetBackups",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupsDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Queues a backup; the worker starts it within seconds. 409 when one is already queued or running.",
+        "operationId": "AdminBackUpNow",
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/settings/backups": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Old backups past the new number to keep are deleted after the next successful backup.",
+        "operationId": "AdminPutBackupSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/backups/{id}/dismiss": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "Hides the banner about this failed backup.",
+        "operationId": "AdminDismissBackup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/alerts": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "description": "What the banner at the top of every admin page says, if anything.",
+        "operationId": "AdminGetAlerts",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAlertsDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/tag-rules": {
       "get": {
         "tags": [
@@ -4046,6 +4179,24 @@
           }
         }
       },
+      "AdminAlertsDto": {
+        "required": [
+          "backup"
+        ],
+        "type": "object",
+        "properties": {
+          "backup": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BackupAlertDto"
+              }
+            ]
+          }
+        }
+      },
       "AdminSettingsDto": {
         "required": [
           "storage",
@@ -4198,6 +4349,229 @@
             ]
           }
         }
+      },
+      "BackupAlertDto": {
+        "required": [
+          "failed",
+          "lastGoodAt"
+        ],
+        "type": "object",
+        "properties": {
+          "failed": {
+            "$ref": "#/components/schemas/BackupDto"
+          },
+          "lastGoodAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "BackupDto": {
+        "required": [
+          "id",
+          "status",
+          "trigger",
+          "requestedBy",
+          "queuedAt",
+          "startedAt",
+          "finishedAt",
+          "databaseFile",
+          "databaseBytes",
+          "manifestBytes",
+          "error",
+          "errorDetail",
+          "dismissed"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BackupStatus"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/BackupTrigger"
+          },
+          "requestedBy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "queuedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "databaseFile": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "databaseBytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "manifestBytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BackupError"
+              }
+            ]
+          },
+          "errorDetail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dismissed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BackupError": {
+        "enum": [
+          "noSpace",
+          "folderNotWritable",
+          "dumpFailed",
+          "manifestFailed",
+          "timedOut",
+          null
+        ]
+      },
+      "BackupFrequency": {
+        "enum": [
+          "daily",
+          "weekly",
+          "off"
+        ]
+      },
+      "BackupsDto": {
+        "required": [
+          "settings",
+          "nextAt",
+          "folder",
+          "count",
+          "totalBytes",
+          "freeBytes",
+          "backups"
+        ],
+        "type": "object",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/BackupSettingsDto"
+          },
+          "nextAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "freeBytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "backups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupDto"
+            }
+          }
+        }
+      },
+      "BackupSettingsDto": {
+        "required": [
+          "frequency",
+          "at",
+          "weekday",
+          "timeZone",
+          "keep"
+        ],
+        "type": "object",
+        "properties": {
+          "frequency": {
+            "$ref": "#/components/schemas/BackupFrequency"
+          },
+          "at": {
+            "type": "string"
+          },
+          "weekday": {
+            "$ref": "#/components/schemas/DayOfWeek"
+          },
+          "timeZone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "keep": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "BackupStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed"
+        ]
+      },
+      "BackupTrigger": {
+        "enum": [
+          "schedule",
+          "admin",
+          "command"
+        ]
       },
       "ChangeShareRequest": {
         "required": [
@@ -4364,6 +4738,17 @@
           "month",
           "day",
           "time"
+        ]
+      },
+      "DayOfWeek": {
+        "enum": [
+          "sunday",
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday"
         ]
       },
       "DetailField": {

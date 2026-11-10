@@ -1,11 +1,15 @@
-import type { AdminSettings, AdminUser, ProbeResult } from "@dokument/api";
+import type { AdminSettings, AdminUser, BackupSettings, ProbeResult } from "@dokument/api";
 import { formatBytes, formatDuration } from "@dokument/core";
-import { Avatar, Banner, Button, Dialog, Icon, IconButton, Progress, Switch, TextField, useSnackbar } from "@dokument/ui";
+import { Avatar, Banner, Button, Dialog, Icon, IconButton, Progress, Switch, TextField, useFormat, useSnackbar } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "@tanstack/react-router";
+import { ApiError } from "../files/drive";
 import {
   admin,
+  adminAlertsQuery,
+  backupsQuery,
   adminSettingsQuery,
   adminUsersQuery,
   mlStatusQuery,
@@ -19,6 +23,7 @@ import {
 
 const sections = [
   { id: "storage", icon: "hard_drive" },
+  { id: "backups", icon: "backup" },
   { id: "people", icon: "group" },
   { id: "textRecognition", icon: "document_scanner" },
   { id: "videos", icon: "movie" },
@@ -45,7 +50,12 @@ export function AdminStoragePage() {
   const { t } = useTranslation();
   return (
     <AdminFrame title={t("admin.nav.storage")}>
-      {(settings) => <StorageSection key={settings.dataUpdatedAt} settings={settings.data} />}
+      {(settings) => (
+        <>
+          <StorageSection key={settings.dataUpdatedAt} settings={settings.data} />
+          <BackupsSection />
+        </>
+      )}
     </AdminFrame>
   );
 }
@@ -80,6 +90,7 @@ export function AdminFrame({ title, children }: { title: string; children: React
   return (
     <main className="min-w-0 flex-1 overflow-y-auto px-4 pb-12 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-220 flex-col gap-4 pt-2 lg:mx-0">
+        <AdminAlerts />
         <h1 className="m-0 text-headline-sm lg:text-headline-md">{title}</h1>
         {typeof children !== "function" ? (
           children
@@ -96,7 +107,20 @@ export function AdminFrame({ title, children }: { title: string; children: React
 }
 
 /** A card on an admin page. On a page with one card the page title is its heading. */
-function Section({ id, intro, heading = true, children }: { id: SectionId; intro?: string; heading?: boolean; children: ReactNode }) {
+function Section({
+  id,
+  intro,
+  heading = true,
+  action,
+  children,
+}: {
+  id: SectionId;
+  intro?: string;
+  heading?: boolean;
+  /** A button beside the heading, such as "Back up now". */
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   const { t } = useTranslation();
   const icon = sections.find((s) => s.id === id)!.icon;
   return (
@@ -107,10 +131,13 @@ function Section({ id, intro, heading = true, children }: { id: SectionId; intro
       className="rounded-lg bg-surface-container-low p-4 sm:p-6"
     >
       {heading && (
-        <h2 id={`admin-${id}-title`} className="m-0 mb-1 flex items-center gap-2 text-title-lg">
-          <Icon name={icon} className="text-primary" />
-          {t(`admin.sections.${id}`)}
-        </h2>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+          <h2 id={`admin-${id}-title`} className="m-0 flex items-center gap-2 text-title-lg">
+            <Icon name={icon} className="text-primary" />
+            {t(`admin.sections.${id}`)}
+          </h2>
+          {action}
+        </div>
       )}
       {intro && <p className="m-0 max-w-160 text-body-md text-on-surface-variant">{intro}</p>}
       <div className="mt-5 flex flex-col gap-5">{children}</div>
@@ -1146,5 +1173,278 @@ function Group({ name, template = "admin.signIn.membersOf" }: { name: string; te
       <span className="font-mono text-mono-sm">{name}</span>
       {after}
     </>
+  );
+}
+
+/** The banner on every admin page after a backup failed (§19), until a backup works or someone dismisses it. */
+function AdminAlerts() {
+  const { t } = useTranslation();
+  const format = useFormat();
+  const queryClient = useQueryClient();
+  const alerts = useQuery(adminAlertsQuery);
+  const backup = alerts.data?.backup;
+  if (!backup) return null;
+  const dismiss = async () => {
+    await admin.dismissBackup(backup.failed.id);
+    await queryClient.invalidateQueries({ queryKey: ["admin", "alerts"] });
+  };
+  return (
+    <Banner
+      tone="error"
+      action={<IconButton icon="close" label={t("admin.alerts.dismiss")} size="sm" onClick={() => void dismiss()} />}
+    >
+      <strong className="font-semibold">{t("admin.alerts.backupFailed")}</strong>{" "}
+      {backup.failed.error && t(`admin.backups.errors.${backup.failed.error}`)}{" "}
+      {backup.lastGoodAt
+        ? t("admin.alerts.lastGood", { when: format.date(backup.lastGoodAt, { inSentence: true }) })
+        : t("admin.alerts.neverGood")}{" "}
+      <Link to="/admin/storage" hash="admin-backups" className="text-label-lg whitespace-nowrap text-on-error-container underline">
+        {t("admin.alerts.seeBackups")}
+      </Link>
+    </Banner>
+  );
+}
+
+const weekdays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+
+/** A weekday's name in the UI language: 4 January 1970 was a Sunday. */
+const weekdayName = (day: number, language: string) =>
+  new Intl.DateTimeFormat(language === "en" ? "en-GB" : language, { weekday: "long", timeZone: "UTC" }).format(
+    new Date(Date.UTC(1970, 0, 4 + day)),
+  );
+
+/** Database backups on the Storage page (§19): the latest result, the schedule, and the recent backups. */
+function BackupsSection() {
+  const { t, i18n } = useTranslation();
+  const format = useFormat();
+  const toast = useSnackbar();
+  const queryClient = useQueryClient();
+  const backups = useQuery(backupsQuery);
+  const [starting, setStarting] = useState(false);
+  const data = backups.data;
+  if (!data) return backups.isError ? <Banner tone="error">{t("errors.generic")}</Banner> : <Progress label={t("admin.sections.backups")} />;
+
+  const time = (value: string) =>
+    new Intl.DateTimeFormat(i18n.language === "en" ? "en-GB" : i18n.language, { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  /** "today 03:00", "yesterday 03:00", "8 Nov 03:00". */
+  const when = (value: string, inSentence = false) => {
+    const date = format.date(value, { inSentence });
+    return date.includes(":") ? date : `${date} ${time(value)}`;
+  };
+  const active = data.backups.find((b) => b.status === "queued" || b.status === "running");
+  const latest = data.backups.find((b) => b.status === "done" || b.status === "failed");
+
+  const backUpNow = async () => {
+    setStarting(true);
+    try {
+      await admin.backUpNow();
+    } catch (error) {
+      toast(error instanceof ApiError && error.status === 409 ? t("admin.backups.busy") : t("errors.generic"));
+    } finally {
+      setStarting(false);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "backups"] });
+    }
+  };
+
+
+  return (
+    <Section
+      id="backups"
+      action={
+        <Button variant="outlined" icon="play_arrow" disabled={starting || !!active} onClick={() => void backUpNow()}>
+          {t("admin.backups.backUpNow")}
+        </Button>
+      }
+    >
+      {active ? (
+        <Banner tone="info" icon="hourglass_top">
+          {active.status === "running" ? t("admin.backups.running") : t("admin.backups.queued")}
+        </Banner>
+      ) : latest?.status === "done" ? (
+        <Banner tone="success">
+          <strong className="font-semibold">{t("admin.backups.lastDone", { when: when(latest.finishedAt!, true) })}</strong>{" "}
+          {t("admin.backups.lastDoneBody", {
+            database: format.bytes(latest.databaseBytes ?? 0),
+            manifest: format.bytes(latest.manifestBytes ?? 0),
+          })}
+        </Banner>
+      ) : latest?.status === "failed" ? (
+        <Banner tone="error">
+          <strong className="font-semibold">{t("admin.backups.lastFailed", { when: when(latest.finishedAt!, true) })}</strong>{" "}
+          {latest.error && t(`admin.backups.errors.${latest.error}`)}
+          {latest.errorDetail && (
+            <details className="mt-1">
+              <summary className="cursor-pointer text-label-lg">{t("admin.backups.details")}</summary>
+              <pre className="m-0 mt-1 font-mono text-body-sm break-words whitespace-pre-wrap">{latest.errorDetail}</pre>
+            </details>
+          )}
+        </Banner>
+      ) : (
+        <Banner tone="info">{t("admin.backups.none")}</Banner>
+      )}
+
+      <BackupSchedule key={JSON.stringify(data.settings)} settings={data.settings} nextAt={data.nextAt ? when(data.nextAt, true) : null} />
+
+      {data.backups.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <h3 className="m-0 text-title-sm">{t("admin.backups.recent")}</h3>
+          <div className="overflow-x-auto rounded-md bg-surface-container-lowest">
+            <table className="w-full border-collapse text-body-md">
+              <thead>
+                <tr className="text-left text-body-sm text-on-surface-variant">
+                  <th className="px-4 py-2.5 font-normal">{t("admin.backups.when")}</th>
+                  <th className="px-4 py-2.5 font-normal">{t("admin.backups.database")}</th>
+                  <th className="px-4 py-2.5 font-normal max-sm:hidden">{t("admin.backups.fileList")}</th>
+                  <th className="px-4 py-2.5 font-normal">{t("admin.backups.startedBy")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.backups.map((backup) => (
+                  <tr key={backup.id} className={`border-t border-outline-variant/60 ${backup.status === "failed" ? "bg-error-container/30" : ""}`}>
+                    <td className="px-4 py-3">
+                      <span className="flex items-center gap-2">
+                        <Icon
+                          name={backup.status === "done" ? "check_circle" : backup.status === "failed" ? "error" : "hourglass_top"}
+                          size="sm"
+                          className={backup.status === "done" ? "text-success" : backup.status === "failed" ? "text-error" : "text-on-surface-variant"}
+                        />
+                        <span className="tabular">{when(backup.finishedAt ?? backup.startedAt ?? backup.queuedAt)}</span>
+                      </span>
+                    </td>
+                    {backup.status === "done" ? (
+                      <>
+                        <td className="tabular px-4 py-3">{format.bytes(backup.databaseBytes ?? 0)}</td>
+                        <td className="tabular px-4 py-3 max-sm:hidden">{format.bytes(backup.manifestBytes ?? 0)}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-4 py-3 text-on-surface-variant">
+                          {backup.status === "failed" ? backup.error && t(`admin.backups.errors.${backup.error}`) : t("admin.backups.inProgress")}
+                        </td>
+                        <td className="max-sm:hidden" />
+                      </>
+                    )}
+                    <td className="px-4 py-3 text-on-surface-variant">
+                      {backup.trigger === "schedule"
+                        ? t("admin.backups.bySchedule")
+                        : backup.trigger === "command"
+                          ? t("admin.backups.byCommand")
+                          : (backup.requestedBy ?? "")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <span className="tabular text-body-sm text-on-surface-variant">
+            {t("admin.backups.summary", { count: data.count, size: format.bytes(data.totalBytes), folder: data.folder })}{" "}
+            {data.freeBytes !== null && t("admin.backups.free", { size: format.bytes(data.freeBytes) })}
+          </span>
+        </div>
+      )}
+
+      <Banner tone="info" icon="cloud_upload">
+        {t("admin.backups.offsite", { originals: "/data/originals", backups: data.folder })}{" "}
+        <a href={backupDocs} target="_blank" rel="noreferrer" className="text-label-lg underline">
+          {t("admin.backups.howTo")}
+        </a>
+      </Banner>
+    </Section>
+  );
+}
+
+/** Where the backup and restore steps are written down (§19). */
+const backupDocs = "https://github.com/elmaxe/dokumentsystem/blob/main/docs/design.md#19-backups";
+
+function BackupSchedule({ settings, nextAt }: { settings: BackupSettings; nextAt: string | null }) {
+  const { t, i18n } = useTranslation();
+  const [frequency, setFrequency] = useState(settings.frequency);
+  const [weekday, setWeekday] = useState(settings.weekday);
+  const [at, setAt] = useState(settings.at);
+  const [keep, setKeep] = useState(String(settings.keep));
+  const { busy, save } = useSave();
+  const keepNumber = Number(keep);
+  const keepInvalid = !Number.isInteger(keepNumber) || keepNumber < 1 || keepNumber > 365;
+  const timeInvalid = !/^([01]\d|2[0-3]):[0-5]\d$/.test(at);
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const dirty =
+    frequency !== settings.frequency ||
+    (frequency === "weekly" && weekday !== settings.weekday) ||
+    at !== settings.at ||
+    keepNumber !== settings.keep ||
+    (frequency !== "off" && zone !== settings.timeZone);
+  const weekdayId = useId();
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-label-lg text-on-surface">{t("admin.backups.frequency")}</span>
+          <Segmented
+            label={t("admin.backups.frequency")}
+            value={frequency}
+            options={[
+              { id: "daily", label: t("admin.backups.daily") },
+              { id: "weekly", label: t("admin.backups.weekly") },
+              { id: "off", label: t("admin.backups.offShort") },
+            ]}
+            onChange={setFrequency}
+          />
+        </div>
+        {frequency === "weekly" && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor={weekdayId} className="text-label-lg text-on-surface">
+              {t("admin.backups.weekday")}
+            </label>
+            <select
+              id={weekdayId}
+              value={weekday}
+              onChange={(event) => setWeekday(event.target.value as BackupSettings["weekday"])}
+              className="h-control rounded-sm border border-outline bg-surface-container-lowest px-3 text-body-lg text-on-surface"
+            >
+              {[1, 2, 3, 4, 5, 6, 0].map((day) => (
+                <option key={day} value={weekdays[day]}>
+                  {weekdayName(day, i18n.language)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {frequency !== "off" && (
+          <TextField
+            label={t("admin.backups.at")}
+            type="time"
+            value={at}
+            onChange={(event) => setAt(event.target.value)}
+            className="tabular w-32"
+          />
+        )}
+        <div className="flex items-end gap-2">
+          <TextField
+            label={t("admin.backups.keep")}
+            inputMode="numeric"
+            value={keep}
+            onChange={(event) => setKeep(event.target.value)}
+            error={keepInvalid && keep !== "" ? t("admin.backups.keepInvalid") : undefined}
+            className="tabular w-24"
+          />
+          <span className="mb-2.5">{t("admin.backups.keepUnit")}</span>
+        </div>
+      </div>
+      <span className="text-body-sm text-on-surface-variant">
+        {settings.frequency === "off" ? t("admin.backups.off") : nextAt && t("admin.backups.next", { when: nextAt })}
+        {settings.frequency !== "off" &&
+          settings.timeZone !== zone &&
+          ` ${t("admin.backups.otherZone", { zone: settings.timeZone ?? t("admin.backups.serverZone"), yours: zone })}`}
+      </span>
+      <SaveButton
+        disabled={busy || keepInvalid || timeInvalid || !dirty}
+        onClick={() =>
+          void save(() =>
+            admin.putBackups({ frequency, weekday, at, keep: keepNumber, timeZone: zone }),
+          )
+        }
+      />
+    </div>
   );
 }

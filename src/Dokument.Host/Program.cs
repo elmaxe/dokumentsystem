@@ -11,6 +11,11 @@ if (args is ["healthcheck", ..])
     return await HealthCheckCommand.RunAsync();
 }
 
+if (args is ["backup", .. var backupArgs])
+{
+    return await BackupCommand.RunAsync(backupArgs);
+}
+
 var roles = HostRoles.Parse(Environment.GetEnvironmentVariable("ROLE"));
 
 var builder = WebApplication.CreateBuilder(args);

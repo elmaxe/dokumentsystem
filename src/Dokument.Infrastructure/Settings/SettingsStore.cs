@@ -36,6 +36,7 @@ public sealed class SettingsStore(
             when (e
                     is JsonException
                         or FormatException
+                        or ArgumentException
                         or KeyNotFoundException
                         or InvalidOperationException
             )

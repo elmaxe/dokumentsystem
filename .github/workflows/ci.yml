@@ -107,6 +107,14 @@ jobs:
       # The worker reads metadata with exiftool and text in scans with Tesseract (docs/design.md §13.2).
       - name: Install exiftool and Tesseract
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libimage-exiftool-perl tesseract-ocr tesseract-ocr-swe tesseract-ocr-eng fonts-dejavu-core ffmpeg
+      # Backups and the restore test need pg_dump and pg_restore of our Postgres image's major version (§19).
+      - name: Install the PostgreSQL 17 client
+        run: |
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          echo "DOKUMENT_TEST_PG_DUMP=/usr/lib/postgresql/17/bin/pg_dump" >> "$GITHUB_ENV"
+          echo "DOKUMENT_TEST_PG_RESTORE=/usr/lib/postgresql/17/bin/pg_restore" >> "$GITHUB_ENV"
       - run: dotnet test --configuration Release --no-build
       - name: Migrations match the model
         run: dotnet ef migrations has-pending-model-changes -p src/Dokument.Infrastructure -s src/Dokument.Host --configuration Release --no-build

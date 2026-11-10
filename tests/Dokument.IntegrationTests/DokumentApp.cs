@@ -24,16 +24,22 @@ public sealed class DokumentApp(
 
     public string OriginalsPath => Path.Combine(dataRoot, "originals");
 
+    public string BackupsPath => Path.Combine(dataRoot, "backups");
+
+    public string ConnectionString => connectionString;
+
     /// <param name="services">Replaces services for the test, e.g. a fake ML service behind its HTTP client.</param>
+    /// <param name="database">A database to use instead of a new, empty one, e.g. one restored from a backup.</param>
     public static async Task<DokumentApp> StartAsync(
         PostgresFixture postgres,
         IReadOnlyDictionary<string, string?>? settings = null,
-        Action<IServiceCollection>? services = null
+        Action<IServiceCollection>? services = null,
+        string? database = null
     )
     {
         var app = new DokumentApp(
             postgres,
-            await postgres.CreateDatabaseAsync(),
+            database ?? await postgres.CreateDatabaseAsync(),
             await FakeOidcProvider.StartAsync(),
             settings,
             services

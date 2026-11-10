@@ -1,5 +1,8 @@
 import type {
+  AdminAlerts,
   AdminSettings,
+  Backups,
+  BackupSettings,
   AdminUser,
   CopyStats,
   MlEndpointStatus,
@@ -66,7 +69,25 @@ export const transcriptionProgressQuery = queryOptions({
   refetchInterval: (query) => ((query.state.data?.waiting ?? 0) + (query.state.data?.running ?? 0) > 0 ? 10_000 : false),
 });
 
+/** Backups (§19), refreshed every few seconds while one is waiting or running. */
+export const backupsQuery = queryOptions({
+  queryKey: ["admin", "backups"],
+  queryFn: (): Promise<Backups> => unwrap(api.GET("/api/v1/admin/backups")),
+  refetchInterval: (query) =>
+    query.state.data?.backups.some((b) => b.status === "queued" || b.status === "running") ? 2_000 : false,
+});
+
+/** The banner at the top of every admin page. */
+export const adminAlertsQuery = queryOptions({
+  queryKey: ["admin", "alerts"],
+  queryFn: (): Promise<AdminAlerts> => unwrap(api.GET("/api/v1/admin/alerts")),
+  refetchInterval: 60_000,
+});
+
 export const admin = {
+  putBackups: (settings: BackupSettings) => unwrap(api.PUT("/api/v1/admin/settings/backups", { body: settings })),
+  backUpNow: () => send(api.POST("/api/v1/admin/backups")),
+  dismissBackup: (id: string) => send(api.POST("/api/v1/admin/backups/{id}/dismiss", { params: { path: { id } } })),
   createTagRule: (tag: string, words: string, enabled: boolean) =>
     unwrap(api.POST("/api/v1/admin/tag-rules", { body: { tag, words, enabled } })),
   updateTagRule: (id: string, tag: string, words: string, enabled: boolean) =>

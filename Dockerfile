@@ -39,17 +39,24 @@ RUN dotnet publish src/Dokument.Host -c Release -a $TARGETARCH --no-restore -o /
 
 # The app without the web UI: what Aspire runs as the dev worker (`--target runtime`), so it has the same tools.
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
+# The major version of docker/postgres. Backups need a pg_dump at least as new as the server (§19).
+ARG PG_MAJOR=17
 # libvips for thumbnails (docs/design.md §10.3), with libde265 so HEIC photos decode. PDFium ships with the app.
 # exiftool reads metadata and Tesseract recognizes text in scans, in Swedish and English (§13.2). FFmpeg makes video
-# posters and playable copies (§14); Debian's is built with zimg, for tone mapping HDR.
+# posters and playable copies (§14); Debian's is built with zimg, for tone mapping HDR. pg_dump for backups (§19)
+# comes from the PostgreSQL project's own apt repository, since Ubuntu's is a version behind our Postgres image.
 RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates postgresql-common \
+    && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
     && apt-get install -y --no-install-recommends libvips42t64 libheif-plugin-libde265 \
         libimage-exiftool-perl tesseract-ocr tesseract-ocr-swe tesseract-ocr-eng ffmpeg \
+        postgresql-client-${PG_MAJOR} \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=server /app ./
 ENV ASPNETCORE_HTTP_PORTS=8080 \
-    ROLE=server
+    ROLE=server \
+    Backups__PgDumpCommand=/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump
 EXPOSE 8080
 # The built-in non-root "app" user. Compose overrides it with PUID:PGID so files on the NAS get the right owner.
 USER $APP_UID
