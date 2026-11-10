@@ -6,6 +6,7 @@ arrow_downward
 arrow_drop_down
 arrow_upward
 article
+auto_awesome
 block
 bolt
 call_merge
@@ -17,6 +18,8 @@ check_circle
 chevron_left
 chevron_right
 close
+closed_caption
+closed_caption_off
 cloud_off
 computer
 content_copy
@@ -40,6 +43,8 @@ folder
 folder_open
 folder_shared
 folder_zip
+forward_10
+fullscreen
 graphic_eq
 grid_view
 group
@@ -59,6 +64,7 @@ more_vert
 movie
 music_note
 open_in_new
+pause
 pause_circle
 person_add
 person_remove
@@ -73,6 +79,7 @@ radio_button_checked
 radio_button_unchecked
 refresh
 remove_circle
+replay_10
 restore_from_trash
 router
 schedule
@@ -85,6 +92,8 @@ slideshow
 smartphone
 sort
 star
+subtitles
+subtitles_off
 table_chart
 text_snippet
 translate

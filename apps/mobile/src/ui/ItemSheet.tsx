@@ -150,6 +150,14 @@ export function ItemSheet({
       ) : (
         <SheetAction icon={<Icon name="open_in_new" />} label={t("mobile.item.openIn")} onPress={() => void open()} />
       )}
+      <SheetAction
+        icon={<Icon name="info" />}
+        label={t("mobile.info.open")}
+        onPress={() => {
+          close();
+          router.push({ pathname: "/info/[id]", params: { id: node.id } });
+        }}
+      />
       {readablePdf(node) ? (
         <SheetAction
           icon={<Icon name="call_split" />}

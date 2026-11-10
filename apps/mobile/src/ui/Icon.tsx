@@ -14,11 +14,14 @@ export function Icon({
   size = 24,
   color = "on-surface-variant",
   filled = false,
+  white = false,
 }: {
   name: IconName;
   size?: number;
   color?: ColorToken;
   filled?: boolean;
+  /** White whatever the theme, for controls over a video. */
+  white?: boolean;
 }) {
   const theme = useTheme();
   return (
@@ -33,7 +36,7 @@ export function Icon({
         width: size,
         height: size,
         textAlign: "center",
-        color: theme.color(color),
+        color: white ? "#ffffff" : theme.color(color),
       }}
     >
       {String.fromCodePoint(iconCodepoints[name])}

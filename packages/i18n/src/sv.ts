@@ -1337,6 +1337,18 @@ export const sv: Strings = {
       today: "I dag",
       yesterday: "I går",
     },
+    info: {
+      open: "Info",
+      file: "Fil",
+      you: "Du",
+      shared: "Delad",
+      notShared: "Inte delad",
+      sharedWith_one: "Med {{count}} person",
+      sharedWith_other: "Med {{count}} personer",
+      tagsReadOnly: "Bara de som kan redigera filen kan ändra dess taggar.",
+      addTagHint: "Skilj flera åt med kommatecken.",
+      onTheWeb: "Att redigera detaljerna och äldre versioner finns på webben tills vidare.",
+    },
     search: {
       in: "I",
       inTitle: "Sök i",
