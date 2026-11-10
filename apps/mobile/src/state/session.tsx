@@ -9,6 +9,7 @@ import { probeLocalAddress, type ProbeResult } from "../lib/localAddress";
 import { connect, disconnect, setUnauthorizedHandler } from "./api";
 import { drive } from "./queries";
 import { persister } from "./queryClient";
+import { forgetUploads } from "./uploads";
 import {
   forgetServer,
   forgetSession,
@@ -77,6 +78,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearData = useCallback(async () => {
+    // Uploads belong to the account: they stop, and their copies on the phone go.
+    await forgetUploads();
     disconnect();
     queryClient.clear();
     await persister.removeClient();
