@@ -17,17 +17,20 @@ export function networkOf(info: NetInfoState): Network {
 export const currentNetwork = async () => networkOf(await NetInfo.fetch());
 
 /**
- * The Wi-Fi network's name for adding it as a home network. The system only tells it to apps that may see the
- * location, so this asks for that first. "denied" when the person said no, "notWifi" off Wi-Fi.
+ * The Wi-Fi network's name for adding it as a home network. Android only tells it to apps with precise location
+ * while location is on, so this asks for that first. NetInfo keeps the state from before the permission, so it's
+ * read again rather than taken from the cache.
  */
-export async function readWifiName(): Promise<
-  { name: string } | { error: "denied" | "notWifi" | "unknown" }
-> {
+export async function readWifiName(): Promise<{ name: string } | { error: WifiProblem }> {
   if (Platform.OS !== "web") {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (!permission.granted) return { error: "denied" };
+    if (Platform.OS === "android" && permission.android?.accuracy !== "fine") return { error: "approximate" };
+    if (!(await Location.hasServicesEnabledAsync())) return { error: "locationOff" };
   }
-  const network = await currentNetwork();
+  const network = networkOf(await NetInfo.refresh());
   if (!network.wifi) return { error: "notWifi" };
   return network.name ? { name: network.name } : { error: "unknown" };
 }
+
+export type WifiProblem = "denied" | "approximate" | "locationOff" | "notWifi" | "unknown";

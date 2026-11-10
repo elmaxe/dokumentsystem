@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { KeyboardAvoidingView, Linking, Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { parseAddress } from "../../../src/lib/address";
-import { readWifiName } from "../../../src/lib/wifi";
+import { readWifiName, type WifiProblem } from "../../../src/lib/wifi";
 import { useFormat } from "../../../src/state/format";
 import { useSession, useSignedIn } from "../../../src/state/session";
 import { Button, IconButton } from "../../../src/ui/Button";
@@ -159,7 +159,7 @@ function HomeNetworks() {
   const { setHomeNetworks } = useSession();
   const { server } = useSignedIn();
   const names = server.homeNetworks ?? [];
-  const [problem, setProblem] = useState<"denied" | "notWifi" | "unknown" | null>(null);
+  const [problem, setProblem] = useState<WifiProblem | null>(null);
   const [busy, setBusy] = useState(false);
 
   const addThis = async () => {
@@ -209,7 +209,7 @@ function HomeNetworks() {
           onPress={() => void addThis()}
           busy={busy}
         />
-        {problem === "denied" ? (
+        {problem === "denied" || problem === "approximate" ? (
           <Button
             label={t("mobile.addresses.openSettings")}
             variant="text"

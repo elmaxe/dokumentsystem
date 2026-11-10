@@ -1486,6 +1486,9 @@ export const sv: Strings = {
       openSettings: "Öppna inställningar",
       wifiProblem: {
         denied: "Appen behöver tillgång till platsen för att läsa wifi-nätverkets namn.",
+        approximate:
+          "Android visar bara wifi-nätverkets namn med exakt plats. Slå på Använd exakt plats för appen.",
+        locationOff: "Slå på platstjänster i telefonen så att den kan visa wifi-nätverkets namn.",
         notWifi: "Anslut till ditt wifi hemma först.",
         unknown: "Wifi-nätverkets namn gick inte att läsa.",
       },

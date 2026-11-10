@@ -46,8 +46,14 @@ export function Sheet({
   useEffect(() => {
     if (!mounted) return;
     const ios = Platform.OS === "ios";
+    // iOS counts the home indicator's strip in the keyboard's height, which the sheet's padding already clears.
+    // Android leaves the navigation bar out of it, and the Modal is drawn under that bar, so the whole height counts.
     const shown = Keyboard.addListener(ios ? "keyboardWillShow" : "keyboardDidShow", (event) =>
-      lift(keyboard, Math.max(0, event.endCoordinates.height - insets.bottom), event.duration),
+      lift(
+        keyboard,
+        Math.max(0, event.endCoordinates.height - (ios ? insets.bottom : 0)),
+        event.duration,
+      ),
     );
     const hidden = Keyboard.addListener(ios ? "keyboardWillHide" : "keyboardDidHide", (event) =>
       lift(keyboard, 0, event.duration),

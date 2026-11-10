@@ -1480,6 +1480,9 @@ export const en = {
       openSettings: "Open settings",
       wifiProblem: {
         denied: "The app needs location access to read the Wi-Fi network's name.",
+        approximate:
+          "Android only tells the Wi-Fi network's name with precise location. Turn on Use precise location for the app.",
+        locationOff: "Turn on location on your phone so it can tell the Wi-Fi network's name.",
         notWifi: "Connect to your home Wi-Fi first.",
         unknown: "The Wi-Fi network's name couldn't be read.",
       },
