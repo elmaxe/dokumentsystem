@@ -1774,6 +1774,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The schedule, the newest backups first, and the space they take. */
+        get: operations["AdminGetBackups"];
+        put?: never;
+        /** @description Queues a backup; the worker starts it within seconds. 409 when one is already queued or running. */
+        post: operations["AdminBackUpNow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Old backups past the new number to keep are deleted after the next successful backup. */
+        put: operations["AdminPutBackupSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/backups/{id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Hides the banner about this failed backup. */
+        post: operations["AdminDismissBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What the banner at the top of every admin page says, if anything. */
+        get: operations["AdminGetAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/tag-rules": {
         parameters: {
             query?: never;
@@ -1878,6 +1947,9 @@ export interface components {
             folder: null | components["schemas"]["PathEntry"];
             top: boolean;
         };
+        AdminAlertsDto: {
+            backup: null | components["schemas"]["BackupAlertDto"];
+        };
         AdminSettingsDto: {
             storage: components["schemas"]["StorageSettingsDto"];
             versions: components["schemas"]["VersionSettingsDto"];
@@ -1914,6 +1986,61 @@ export interface components {
             scope: null | string;
             appRedirectUri: null | string;
         };
+        BackupAlertDto: {
+            failed: components["schemas"]["BackupDto"];
+            /** Format: date-time */
+            lastGoodAt: null | string;
+        };
+        BackupDto: {
+            /** Format: uuid */
+            id: string;
+            status: components["schemas"]["BackupStatus"];
+            trigger: components["schemas"]["BackupTrigger"];
+            requestedBy: null | string;
+            /** Format: date-time */
+            queuedAt: string;
+            /** Format: date-time */
+            startedAt: null | string;
+            /** Format: date-time */
+            finishedAt: null | string;
+            databaseFile: null | string;
+            /** Format: int64 */
+            databaseBytes: null | number;
+            /** Format: int64 */
+            manifestBytes: null | number;
+            error: null | components["schemas"]["BackupError"];
+            errorDetail: null | string;
+            dismissed: boolean;
+        };
+        /** @enum {unknown} */
+        BackupError: "noSpace" | "folderNotWritable" | "dumpFailed" | "manifestFailed" | "timedOut" | null;
+        /** @enum {unknown} */
+        BackupFrequency: "daily" | "weekly" | "off";
+        BackupsDto: {
+            settings: components["schemas"]["BackupSettingsDto"];
+            /** Format: date-time */
+            nextAt: null | string;
+            folder: string;
+            /** Format: int32 */
+            count: number;
+            /** Format: int64 */
+            totalBytes: number;
+            /** Format: int64 */
+            freeBytes: null | number;
+            backups: components["schemas"]["BackupDto"][];
+        };
+        BackupSettingsDto: {
+            frequency: components["schemas"]["BackupFrequency"];
+            at: string;
+            weekday: components["schemas"]["DayOfWeek"];
+            timeZone: null | string;
+            /** Format: int32 */
+            keep: number;
+        };
+        /** @enum {unknown} */
+        BackupStatus: "queued" | "running" | "done" | "failed";
+        /** @enum {unknown} */
+        BackupTrigger: "schedule" | "admin" | "command";
         ChangeShareRequest: {
             role: components["schemas"]["ShareRole"];
         };
@@ -1956,6 +2083,8 @@ export interface components {
         };
         /** @enum {unknown} */
         DatePrecision: "year" | "month" | "day" | "time";
+        /** @enum {unknown} */
+        DayOfWeek: "sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday";
         DetailField: {
             key: string;
             value: string;
@@ -5644,6 +5773,133 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    AdminGetBackups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupsDto"];
+                };
+            };
+        };
+    };
+    AdminBackUpNow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupDto"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminPutBackupSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupSettingsDto"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupSettingsDto"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    AdminDismissBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminGetAlerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAlertsDto"];
+                };
             };
         };
     };

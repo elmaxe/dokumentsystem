@@ -1,5 +1,6 @@
 using Dokument.Application.Files;
 using Dokument.Domain.Audit;
+using Dokument.Domain.Backups;
 using Dokument.Domain.Files;
 using Dokument.Domain.Filing;
 using Dokument.Domain.Identity;
@@ -45,6 +46,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
     public DbSet<NodeFiling> NodeFilings => Set<NodeFiling>();
     public DbSet<Share> Shares => Set<Share>();
     public DbSet<BlobTranscript> BlobTranscripts => Set<BlobTranscript>();
+    public DbSet<Backup> Backups => Set<Backup>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -151,6 +153,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
 
         ConfigureFiles(modelBuilder);
         ConfigureJobs(modelBuilder);
+        ConfigureBackups(modelBuilder);
         ConfigurePreviews(modelBuilder);
         ConfigureSearch(modelBuilder);
         ConfigureTags(modelBuilder);
@@ -199,6 +202,57 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.HasIndex(j => new { j.Type, j.Subject });
         });
     }
+
+    private static void ConfigureBackups(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Backup>(e =>
+        {
+            e.ToTable("backups");
+            e.HasKey(b => b.Id);
+            e.Property(b => b.Id).HasColumnName("id");
+            e.Property(b => b.Trigger)
+                .HasColumnName("trigger")
+                .HasConversion(LowercaseEnum<BackupTrigger>());
+            e.Property(b => b.RequestedBy).HasColumnName("requested_by");
+            e.Property(b => b.ScheduledFor).HasColumnName("scheduled_for");
+            e.Property(b => b.Status)
+                .HasColumnName("status")
+                .HasConversion(LowercaseEnum<BackupStatus>());
+            e.Property(b => b.QueuedAt).HasColumnName("queued_at");
+            e.Property(b => b.StartedAt).HasColumnName("started_at");
+            e.Property(b => b.FinishedAt).HasColumnName("finished_at");
+            e.Property(b => b.LockedUntil).HasColumnName("locked_until");
+            e.Property(b => b.Name).HasColumnName("name");
+            e.Property(b => b.DatabaseBytes).HasColumnName("database_bytes");
+            e.Property(b => b.ManifestBytes).HasColumnName("manifest_bytes");
+            e.Property(b => b.Error)
+                .HasColumnName("error")
+                .HasConversion(
+                    new ValueConverter<BackupError?, string?>(
+                        v => v == null ? null : SnakeCase(v.Value.ToString()),
+                        v => v == null ? null : Enum.Parse<BackupError>(v.Replace("_", ""), true)
+                    )
+                );
+            e.Property(b => b.ErrorDetail).HasColumnName("error_detail");
+            e.Property(b => b.Dismissed).HasColumnName("dismissed");
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(b => b.RequestedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(b => b.ScheduledFor).IsUnique();
+            e.HasIndex(b => b.QueuedAt);
+        });
+    }
+
+    private static string SnakeCase(string name) =>
+        string.Concat(
+            name.Select(
+                (c, i) =>
+                    i > 0 && char.IsUpper(c)
+                        ? "_" + char.ToLowerInvariant(c)
+                        : char.ToLowerInvariant(c).ToString()
+            )
+        );
 
     private static void ConfigurePreviews(ModelBuilder modelBuilder)
     {

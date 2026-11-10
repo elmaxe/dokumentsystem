@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Dokument.Domain.Backups;
 using Dokument.Domain.Identity;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Settings;
@@ -153,6 +154,32 @@ public static class SettingKeys
             json.GetProperty("enabled").GetBoolean(),
             json.GetProperty("model").GetString() ?? TranscriptionSettings.AutoModel,
             json.GetProperty("videos").GetBoolean()
+        )
+    );
+
+    public static readonly SettingKey<BackupSettings> Backups = new(
+        "backups",
+        BackupSettings.Default,
+        s => new JsonObject
+        {
+            ["frequency"] = s.Frequency.ToString().ToLowerInvariant(),
+            ["at"] = s.At.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture),
+            ["weekday"] = (int)s.Weekday,
+            ["timeZone"] = s.TimeZone,
+            ["keep"] = s.Keep,
+        },
+        json => new BackupSettings(
+            Enum.Parse<BackupFrequency>(json.GetProperty("frequency").GetString()!, true),
+            TimeOnly.ParseExact(
+                json.GetProperty("at").GetString()!,
+                "HH:mm",
+                System.Globalization.CultureInfo.InvariantCulture
+            ),
+            (DayOfWeek)json.GetProperty("weekday").GetInt32(),
+            json.TryGetProperty("timeZone", out var zone) && zone.ValueKind == JsonValueKind.String
+                ? zone.GetString()
+                : null,
+            json.GetProperty("keep").GetInt32()
         )
     );
 }

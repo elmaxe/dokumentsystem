@@ -59,6 +59,9 @@ public static class AuditActions
     /// <summary>The purge job removed a version past the retention policy (§8.2). Written by the system.</summary>
     public const string VersionPurge = "version.purge";
     public const string SettingsChange = "settings.change";
+
+    /// <summary>An admin clicked "Back up now" (§19). Scheduled backups aren't audited; the Storage page lists them.</summary>
+    public const string BackupRequest = "backup.request";
     public const string QuotaChange = "user.quota_change";
 
     /// <summary>An admin added, changed or deleted a keyword rule (§13.4).</summary>

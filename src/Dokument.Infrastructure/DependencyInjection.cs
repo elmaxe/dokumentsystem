@@ -75,6 +75,11 @@ public static class DependencyInjection
         services.AddSingleton<MlHealth>();
         services.AddScoped<MlServices>();
         services.AddScoped<TranscriptService>();
+        services.Configure<Backups.BackupOptions>(
+            configuration.GetSection(Backups.BackupOptions.SectionName)
+        );
+        services.AddScoped<Backups.NameManifest>();
+        services.AddScoped<Backups.BackupService>();
 
         // Keys live on the originals volume, so they're backed up with it and survive restarts (§21). The worker
         // shares them to read the ML services' API keys.

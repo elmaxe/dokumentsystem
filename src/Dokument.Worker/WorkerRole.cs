@@ -113,6 +113,7 @@ public static class WorkerRole
         services.AddHostedService<JobRunner>();
         services.AddHostedService<ThumbnailBackfill>();
         services.AddHostedService<ContentBackfill>();
+        services.AddHostedService<Backups.BackupRunner>();
         return services;
     }
 

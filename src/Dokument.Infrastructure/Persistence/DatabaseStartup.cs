@@ -42,6 +42,7 @@ public static class DatabaseStartup
         {
             logger.LogInformation("Applying database migrations");
             await db.Database.MigrateAsync(ct);
+            await EnsureSearchIndexesAsync(db, logger, ct);
             return;
         }
 
@@ -104,6 +105,54 @@ public static class DatabaseStartup
                     + string.Join(", ", problems)
                     + ". Use the dokumentsystem-postgres image that matches this release."
             );
+        }
+    }
+
+    /// <summary>
+    /// The BM25 indexes, as the AddSearch migration made them (docs/design.md §13.1). Keep them in step with it.
+    /// pg_search 0.20 writes these into a <c>pg_dump</c> in a form it can't read back, so a restore leaves them out
+    /// (§19) and the server makes them again here on its next start.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> SearchIndexes = new Dictionary<
+        string,
+        string
+    >
+    {
+        ["ix_content_pages_bm25"] = """
+            CREATE INDEX ix_content_pages_bm25 ON content_pages USING bm25 (
+                id,
+                (text::pdb.simple('alias=text_raw')),
+                (text::pdb.simple('stemmer=swedish', 'alias=text_sv')),
+                (text::pdb.simple('stemmer=english', 'alias=text_en'))
+            ) WITH (key_field = 'id');
+            """,
+        ["ix_nodes_bm25"] = """
+            CREATE INDEX ix_nodes_bm25 ON nodes USING bm25 (
+                id,
+                (name::pdb.simple('alias=name_words')),
+                (name::pdb.ngram(3, 3, 'alias=name_ngram'))
+            ) WITH (key_field = 'id');
+            """,
+    };
+
+    private static async Task EnsureSearchIndexesAsync(
+        DokumentDbContext db,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        var existing = await db
+            .Database.SqlQueryRaw<string>(
+                "SELECT indexname AS \"Value\" FROM pg_indexes WHERE schemaname = 'public'"
+            )
+            .ToListAsync(ct);
+        foreach (var (name, sql) in SearchIndexes.Where(i => !existing.Contains(i.Key)))
+        {
+            logger.LogWarning(
+                "The search index {Index} is missing, e.g. after restoring a backup; making it again",
+                name
+            );
+            await db.Database.ExecuteSqlRawAsync(sql, ct);
         }
     }
 

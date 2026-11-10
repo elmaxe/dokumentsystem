@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.54** · Last updated: 2026-11-10
+> Status: **Draft v0.55** · Last updated: 2026-11-10
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -187,7 +187,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 ### 4.3 Configuration
 
 - **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
-- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17, 18, 24, 32 and 33): the default quota, trash and version retention, text recognition on or off, video copies (when they're made and their size), the Gotenberg URL, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
+- **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17, 18, 24, 32, 33 and 46): the default quota, the backup schedule, trash and version retention, text recognition on or off, video copies (when they're made and their size), the Gotenberg URL, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
   - quota defaults
   - trash and version retention
   - SMTP
@@ -397,6 +397,7 @@ Decided 2026-10-24 (decision 22) over a live mirror of hardlinks, real paths on 
 
 - **Name manifest:** right after each scheduled DB dump (§19), the worker writes `manifest-{timestamp}.jsonl.gz` beside it in `/data/backups`, with the same retention as the dumps. It has one line per version that isn't purged: owner (id, email, display name), path of folder names from the top of My files, name, version number, whether it's current, trashed or kept forever, blob hash, size, MIME type and modified time. Written to a temp file, then renamed, so a half-written manifest never replaces a good one.
   - With the blobs and a manifest, the tree can be rebuilt with no Postgres at all. `dokument export --manifest <file>` does that, and the format is documented so a short script can too.
+  - **Format (built, decision 46):** `manifest-{yyyyMMdd-HHmmss}.jsonl.gz` beside `dokument-{same}.dump`, both named by the backup's start in UTC (a second later if another backup already has that name). One JSON object per line: `{"owner":{"id","email","name"},"path":["Kvitton","2024"],"name":"kvitto.pdf","version":3,"current":true,"trashed":false,"keepForever":false,"hash":"…","size":1234,"mimeType":"application/pdf","modifiedAt":"…","blob":"blobs/{owner id}/ab/cd/{hash}"}`. `path` is the folders from the top of the owner's My files, `blob` is relative to `/data/originals`, and `modifiedAt` is the file's own modified time when the uploader's device sent one, else the upload time. It is read in one repeatable-read snapshot, so a file moved meanwhile is listed in one place.
 - **Export job:** writes a person's files (or everyone's, one folder per person) as an ordinary folder tree with original names and modified times.
   - Runs on the job queue in the worker, which only reads originals, into the optional `/data/exports` volume. Admins start it from the admin Storage page, and the CLI `dokument export --user X --to /path` runs the same code.
   - Writes current versions by default; "include old versions" adds them as `name (v3).ext` in a `.versions/` folder beside each file. Trash is left out.
@@ -1083,7 +1084,7 @@ People who are managed in an IdP can get their storage from it instead of from t
   - system: the purge removing expired trash (`node.purge`) and old versions (`version.purge`), and filing rules moving files (`node.move`, `folder.create`, naming the rule, §13.6), with the actor kind `system`
   - **Not logged:** opening a preview or viewing a file. It's too noisy for its value. Downloads of the original *are* logged. (Each person's Recent page remembers their own opens in `recent_files`, which nobody else sees and which isn't part of the audit log, §15.2.)
   - sharing: share granted, changed, revoked or left (`share.grant`, `share.change`, `share.revoke`, `share.leave`, naming the person and role); later link created/accessed/revoked
-  - admin: settings changed, quota changed, keyword rule added, changed or deleted (`admin.tag_rule`), user disabled
+  - admin: settings changed, quota changed, keyword rule added, changed or deleted (`admin.tag_rule`), "Back up now" (`backup.request`; scheduled backups are listed on the Storage page instead), user disabled
 - **Partitioned by month** (from M6; M1 ships a plain table with indexes on `at` and `(target_node_id, at)`). An admin setting controls retention (default 1 year).
 - **Views:**
   - the details panel's **Activity** tab (built, decision 39): what happened to a file, or to a folder and everything in it, newest first, 30 at a time with "Show older" (`GET /nodes/{id}/activity`). Everyone who can see the item sees its changes: uploads, versions, renames, moves (naming folders only when the person can see them), tags, details and text edits, trash and restore, shares. Downloads show only to the owner, and to each person for their own. Admin, account and purge events stay out of it.
@@ -1094,14 +1095,27 @@ People who are managed in an IdP can get their storage from it instead of from t
 
 ## 19. Backups
 
-- **A scheduled DB dump** run by the worker with `pg_dump -Fc` (the client version matches our Postgres image), into `/data/backups`.
-  - Admin settings: cron schedule (default nightly) and number of dumps to keep (default 14).
+- **A scheduled DB dump** run by the worker with `pg_dump -Fc` (the client version matches our Postgres image), into `/data/backups`, with the name manifest beside it (§7.1).
+  - Admin settings: how often (every day, every week on a chosen day, or off), the time of day in the admin's time zone, and how many backups to keep (default: every day at 03:00, keep 14). Saved as plain fields, not a cron expression, since nobody should have to type one; the browser's IANA zone is saved with them, and until someone saves, the server's own zone applies.
   - Failures notify admins.
+- **Built (decision 46):**
+  - The `backups` table is the record and the queue: one row per backup with its trigger (schedule, an admin's "Back up now", or `dokument backup`), status, sizes and, for a failure, a reason (`noSpace`, `folderNotWritable`, `dumpFailed`, `manifestFailed`, `timedOut`) plus the tool's own words. The worker polls it every 5 s, so "Back up now" starts within seconds, and claims a row like a job (`FOR UPDATE SKIP LOCKED`, a lease of the 2 h timeout plus 10 minutes). One backup runs at a time. Backups aren't jobs on the Jobs page.
+  - The schedule queues each due time once (`scheduled_for` is unique, so two workers can't both queue it). A time missed while the server was off is caught up when the worker starts, but not on a new install with no backups yet, not a time before the schedule was last saved, and not one with any backup queued after it.
+  - Both files are written as `.partial` and renamed when both are done, so a half-written backup never looks like a good one; a failed run deletes its partial files. Before the dump, the worker checks there's at least the last backup's size plus a tenth free.
+  - After each success, successful backups past "keep" are deleted with their files, and failed ones older than the oldest kept (at most 30 are kept).
+  - **Admin › Storage › Backups:** the latest result, the schedule with the next time, "Back up now", the recent backups (when, database and file list sizes, who or what started it, why one failed), the total size and free space, and a reminder to copy the backups off the disk. Dumps can't be downloaded from the web.
+  - **Until notifications land (§20),** a failed backup shows as a banner at the top of every admin page until a later backup succeeds or an admin dismisses it (`GET /api/v1/admin/alerts`).
+  - `dokument backup` runs one now from the command line with the same code (e.g. `docker compose exec worker dotnet /app/dokument.dll backup` before an upgrade) and prints where the files went.
+  - The image installs `postgresql-client-17` from the PostgreSQL project's apt repository (Ubuntu's is 16) and points `Backups__PgDumpCommand` at it.
 - **Documented 3-2-1 guidance:** a DB dump on its own is **not** a backup.
   - Back up `/data/originals` + `/data/backups` together. Ideally use ZFS/Btrfs snapshots plus an off-site copy (e.g. restic, rclone, Hyper Backup).
   - `/data/derived` can be skipped.
   - Order: dump the DB first, then snapshot the files. Orphan blobs after a restore are harmless (the integrity job cleans them up); missing blobs are not.
-- **Restore procedure** documented and tested in CI: restore the dump, start, run an integrity check.
+- **Restore procedure** (tested in CI by `BackupTests`: restored into an empty database, the app starts and every file, version and search hit is back):
+  1. Stop the server and worker, and create an empty database (or drop and recreate `dokument`).
+  2. pg_search 0.20 writes its BM25 indexes into a dump in a form it can't read back, so restore everything else: `pg_restore --list dump > list`, delete the lines with `_bm25`, then `pg_restore --no-owner --exit-on-error --use-list=list --dbname=dokument dump`.
+  3. Start the server. It notices the missing search indexes and makes them again (a while on a big library), then carries on as usual.
+  4. Run an integrity check (coming next in M6).
 - **If the DB is lost with no usable dump,** the newest name manifest plus `/data/originals/blobs` still give back every file with its name and folder (§7.1).
 
 ---
@@ -1114,7 +1128,7 @@ People who are managed in an IdP can get their storage from it instead of from t
   - Shared with you
   - Quota warning (80% / 95%)
   - Trash purge upcoming
-  - Admins only: job failures above a threshold, backup failed, disk space low, integrity problems
+  - Admins only: job failures above a threshold, backup failed, disk space low, integrity problems. Until this lands, a failed backup is a banner on the admin pages (§19).
 - **Per-user preferences:** a matrix of event × channel (email, in-app).
 - Templates are localized (sv / en), with a plain-text alternative.
 - **Digest mode:** instead of one email per share event, send a daily digest. This avoids spam during bulk sharing.
@@ -1143,7 +1157,7 @@ People who are managed in an IdP can get their storage from it instead of from t
 - Structured logging (Serilog → console/JSON). Log level can be changed from the admin UI.
 - OpenTelemetry traces, metrics and logs, exported over OTLP when configured (§22.1).
 - **Admin "System" page:** versions, extension versions, disk usage, queue stats, ML endpoint status, last backup, integrity report.
-- **CLI inside the container (`dokument …`):** `admin`, `export`, `integrity-check`, `reindex`, `regenerate`, `migrate`.
+- **CLI inside the container (`dokument …`):** `admin`, `backup` (built, §19), `export`, `integrity-check`, `reindex`, `regenerate`, `migrate`.
 
 ### 22.1 OpenTelemetry
 
@@ -1209,7 +1223,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | **M3: Search** | Text extraction, Tesseract OCR, pg_search BM25 with Swedish/English, search UI with snippets. **Built:** the metadata stage (exiftool), text from PDFs, Office/ODF and plain text, Tesseract for scans and photos with an admin switch, BM25 over names and text, the search bar with suggestions, the search page with filters, and hits marked in the viewer (decision 26). Then details and text in the file info, with corrections search uses (§13.6, decision 28). Tags with keyword rules came next (§13.4, decision 29). Then filing rules that move tagged files (§13.6, decision 30). |
 | **M4: Sharing** | User shares, public links, Shared with me, SMTP + in-app notifications. **Built so far:** sharing with people, Shared with me, role-aware menus, editors adding to the owner's storage and trash, the move warning, search operators and live updates (decision 39). Public links and notifications are next. |
 | **M5: Mobile** | Expo app: browse, view, upload, search, share target, document scanner, LAN/WAN switching. **Built so far:** the app's foundation (§15.3): sign-in through the token endpoint and callback page, main and local addresses with the session proof, My files, Starred, Recent, Settings, active devices, the offline cache and live updates (decision 37); the viewers, the document scanner, PDF merge and split, then file actions and the Trash, then uploads with the share target and resuming, then search with marks in the viewers, then sharing with people and Activity, then the app's own players with the waveform and seek previews, and the Info screen. Next: public links. |
-| **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. |
+| **M6: Ops** | DB dump schedule, integrity job, admin system page, export job and CLI with name manifests (§7.1), docs, multi-arch release. OpenTelemetry (§22.1): the base wiring (OTLP export, standard instrumentation, Serilog sink) can land any time before this; each milestone adds its own spans and `dokument.*` metrics, and M6 adds the `/metrics` port and the docs' collector example. **Built so far:** multi-arch images and the `/metrics` port (from earlier milestones), then scheduled backups with name manifests, "Back up now", `dokument backup` and the restore test (decision 46). Next: the integrity check, export, the System page and audit log, then docs and releases. |
 | **M7: ML** | ML service (OCR+, embeddings, hybrid search, ML tags), remote ML URLs with fallback. Transcription of audio and video into searchable, timed text is pulled ahead as the ML image's first piece, right after the M2 video work (§11.1, decision 34) |
 | **Later** | WebDAV, offline files, push via ntfy/UnifiedPush, groups, optional ClamAV, file-request links (public upload folders), merging Office files and photos into PDFs (§8.4) |
 
@@ -1261,6 +1275,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 41 | Audio waveform | 2026-11-02: an audio file's timeline is its Audacity-style waveform: one mixed lane, peaks outline plus RMS core, scaled to the file's loudest moment, no zoom for now. The thumbnail stage decodes once with ffmpeg (8 kHz mono) into ≤ 32,768 slices of min/max/RMS, stored as a `waveform` rendition in a small binary format; `GET /nodes/{id}/waveform`, unaudited. Audio without cover art gets its waveform as its tile. Videos get seek previews instead (§14) |
 | 43 | Merging and splitting PDFs | 2026-11-04: PDFs only for now (Axel chose this over Office files and photos too); PDFium in the worker, not Gotenberg or the clients; results are new files next to the originals, never versions, with Move the originals to the trash off by default; sources pinned by blob; the worker writes to the derived volume and the server saves, hashing again; text, words and text corrections copied per page, people's tags carried over, details from the first source, filing rules skipped, "Made from" per version; duplicates made anyway with Remove this copy; quota reserved from the sources and settled; 100 files or 2,000 pages per merge, 500 parts per split; page sheets on demand; the tray follows operations by polling; the app's selection mode and screens come in a second pull request (§8.4) |
 | 44 | Signing out at the IdP | 2026-11-07: signing out on the web and in the app also ends the person's session at the IdP (RP-initiated logout) when its discovery lists an `end_session_endpoint`, so signing in again isn't silent (Axel chose web and app together over web only or staying local). The session keeps the IdP's ID token as `id_token_hint`; the IdP returns to `/api/v1/auth/signed-out` (web) or `/api/v1/auth/app-signed-out` (app), which must be registered as post-logout redirect URIs; without the endpoint, sign-out stays local. Ending sessions under Active devices stays local; back-channel logout is later (§5) |
+| 46 | Backups (M6) | 2026-11-10: the worker runs `pg_dump -Fc` plus the name manifest on a schedule of every day / every week / off at a time in the admin's time zone (not cron), keeping 14 by default; the `backups` table is both the list and the queue; "Back up now" on Admin › Storage and `dokument backup`; no download of dumps from the web; until notifications exist, a failed backup is a banner on every admin page until a backup succeeds or it's dismissed. A restore leaves out pg_search's BM25 indexes, which it can't read back from a dump, and the server makes them again on start (§7.1, §19) |
 
 ## 26. Open questions
 
