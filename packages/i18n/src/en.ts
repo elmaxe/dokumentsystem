@@ -1341,7 +1341,7 @@ export const en = {
       sharedWith_other: "With {{count}} people",
       tagsReadOnly: "Only people who can edit this file can change its tags.",
       addTagHint: "Separate several with commas.",
-      onTheWeb: "Editing the details and older versions are on the web for now.",
+      onTheWeb: "Editing the details is on the web for now.",
     },
     search: {
       in: "In",
