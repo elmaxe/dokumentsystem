@@ -16,18 +16,23 @@ const maxScale = 6;
 
 /**
  * An image fitted to the screen. Pinch zooms around the fingers, a double tap zooms in to 2.5× or back out, and a drag
- * moves a zoomed image without letting it leave the screen.
+ * moves a zoomed image without letting it leave the screen. Opened from search, the words recognized in it are marked
+ * (docs/design.md §13.3), and the marks zoom with it.
  */
 export function ImageViewer({
   uri,
   cacheKey,
   label,
+  boxes,
 }: {
   uri: string;
   cacheKey: string;
   label: string;
+  /** Recognized words to mark, as fractions of the image: x, y, width, height. */
+  boxes?: number[][];
 }) {
   const [frame, setFrame] = useState<LayoutRectangle | null>(null);
+  const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const width = useSharedValue(0);
   const height = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -128,10 +133,40 @@ export function ImageViewer({
               transition={120}
               accessibilityLabel={label}
               accessible
+              onLoad={(event) => setNatural({ width: event.source.width, height: event.source.height })}
             />
+            {boxes?.length && natural ? <Marks boxes={boxes} frame={frame} natural={natural} /> : null}
           </Animated.View>
         ) : null}
       </View>
     </GestureDetector>
+  );
+}
+
+/** The marks over the picture as it's fitted to the screen, inside the frame that zooms. */
+function Marks({
+  boxes,
+  frame,
+  natural,
+}: {
+  boxes: number[][];
+  frame: LayoutRectangle;
+  natural: { width: number; height: number };
+}) {
+  const scale = Math.min(frame.width / natural.width, frame.height / natural.height);
+  const width = natural.width * scale;
+  const height = natural.height * scale;
+  const left = (frame.width - width) / 2;
+  const top = (frame.height - height) / 2;
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", left, top, width, height }}>
+      {boxes.map(([x = 0, y = 0, w = 0, h = 0], i) => (
+        <View
+          key={i}
+          className="absolute rounded-xs border-2 border-warning bg-warning-container opacity-60"
+          style={{ left: x * width - 2, top: y * height - 2, width: w * width + 4, height: h * height + 4 }}
+        />
+      ))}
+    </View>
   );
 }

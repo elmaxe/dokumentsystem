@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, View } from "react-native";
 import { previewOf, type Preview } from "../../../src/state/preview";
+import { matchesQuery } from "../../../src/state/search";
 import { drive, invalidateStars, nodeQuery } from "../../../src/state/queries";
 import { useTheme } from "../../../src/state/theme";
 import { IconButton } from "../../../src/ui/Button";
@@ -14,6 +15,7 @@ import { TopBar } from "../../../src/ui/TopBar";
 import { ImageViewer } from "../../../src/viewers/ImageViewer";
 import { MediaViewer } from "../../../src/viewers/MediaViewer";
 import { PdfViewer } from "../../../src/viewers/PdfViewer";
+import { MatchBar } from "../../../src/viewers/MatchBar";
 import { TextViewer } from "../../../src/viewers/TextViewer";
 
 /** While the worker prepares a preview or a playable copy, the file is fetched again until it's ready. */
@@ -24,7 +26,18 @@ const waiting = (preview: Preview) => preview.type === "preparing" || preview.ty
  * actions, among them Open in another app for what the app can't show.
  */
 export default function FileScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, q, page, at } = useLocalSearchParams<{
+    id: string;
+    q?: string;
+    page?: string;
+    at?: string;
+  }>();
+  // Opened from search: the words are marked until the person stops it (docs/design.md §13.3).
+  const [marking, setMarking] = useState(!!q);
+  const query = marking ? (q ?? "") : "";
+  const matches = useQuery(matchesQuery(id, query));
+  const found = query && matches.data ? matches.data : null;
+  const stop = () => setMarking(false);
   const { t } = useTranslation();
   const theme = useTheme();
   const queryClient = useQueryClient();
@@ -85,10 +98,38 @@ export default function FileScreen() {
     const cacheKey = `${node.id}/${node.currentVersionId ?? ""}`;
     switch (preview.type) {
       case "image":
-        return <ImageViewer uri={preview.uri} cacheKey={`${cacheKey}/preview`} label={node.name} />;
+        return (
+          <View className="flex-1">
+            <ImageViewer
+              uri={preview.uri}
+              cacheKey={`${cacheKey}/preview`}
+              label={node.name}
+              boxes={found?.pages.flatMap((hit) => hit.boxes)}
+            />
+            {found ? (
+              <MatchBar query={query} detail={t("search.foundInPhoto")} onClose={stop} />
+            ) : null}
+          </View>
+        );
       case "video":
       case "audio":
-        return <MediaViewer key={preview.uri} uri={preview.uri} audio={preview.type === "audio"} />;
+        return (
+          <MediaViewer
+            key={preview.uri}
+            uri={preview.uri}
+            audio={preview.type === "audio"}
+            search={
+              found
+                ? {
+                    query,
+                    times: found.pages.flatMap((hit) => hit.times),
+                    start: at ? Number(at) : undefined,
+                    onClear: stop,
+                  }
+                : null
+            }
+          />
+        );
       case "pdf":
         return (
           <View className="flex-1">
@@ -97,7 +138,21 @@ export default function FileScreen() {
                 <Notice icon="info" text={t("mobile.viewer.shownAsPdf")} />
               </View>
             ) : null}
-            <PdfViewer uri={preview.uri} cacheKey={cacheKey} />
+            <PdfViewer
+              uri={preview.uri}
+              cacheKey={cacheKey}
+              search={
+                found
+                  ? {
+                      query,
+                      terms: found.terms,
+                      pages: found.pages,
+                      start: page ? Number(page) : undefined,
+                      onClear: stop,
+                    }
+                  : null
+              }
+            />
           </View>
         );
       case "text":
@@ -108,6 +163,7 @@ export default function FileScreen() {
             markdown={preview.type === "markdown"}
             cacheKey={cacheKey}
             size={node.size ?? 0}
+            search={found ? { query, terms: found.terms, onClear: stop } : null}
           />
         );
       case "preparing":

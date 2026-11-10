@@ -1316,9 +1316,16 @@ export const en = {
       title: "Sharing is coming",
       text: "Files and folders people share with you will show up here.",
     },
-    searchSoon: {
-      title: "Search is coming to the app",
-      text: "Until then, search in Dokumentsystem in a browser.",
+    search: {
+      in: "In",
+      inTitle: "Search in",
+      searchHere: "Search here",
+      inFolder: "Search in {{folder}}",
+      tip: 'type:pdf  in:Kvitton  after:2025-01-01  "exact words"',
+      anyType: "Any type",
+      anyTime: "Any time",
+      sort: "Sort by",
+      sortBy: "Sorted by {{order}}. Change",
     },
     account: {
       openAdmin: "Open admin pages in the browser",
@@ -1331,6 +1338,10 @@ export const en = {
       meta: "{{kind}} · {{size}}",
     },
     viewer: {
+      matchPage: "Page {{page}} · {{current}} of {{total}} pages",
+      matchAt: "At {{time}} · {{current}} of {{total}}",
+      marked_one: "{{count}} match marked",
+      marked_other: "{{count}} matches marked",
       noPreviewText: "Open it in another app from the file's actions.",
       convertingText: "This phone can't play the file as it is. It starts here when the copy is ready.",
       convertingWaiting: "This phone can't play the file as it is. A copy is next in line after the ones before it.",

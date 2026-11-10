@@ -1322,9 +1322,16 @@ export const sv: Strings = {
       title: "Delning kommer snart",
       text: "Filer och mappar som andra delar med dig visas här.",
     },
-    searchSoon: {
-      title: "Sökning kommer snart till appen",
-      text: "Till dess kan du söka i Dokumentsystem i en webbläsare.",
+    search: {
+      in: "I",
+      inTitle: "Sök i",
+      searchHere: "Sök här",
+      inFolder: "Sök i {{folder}}",
+      tip: 'type:pdf  in:Kvitton  after:2025-01-01  "exakta ord"',
+      anyType: "Alla typer",
+      anyTime: "När som helst",
+      sort: "Sortera efter",
+      sortBy: "Sorterat efter {{order}}. Ändra",
     },
     account: {
       openAdmin: "Öppna administrationen i webbläsaren",
@@ -1337,6 +1344,10 @@ export const sv: Strings = {
       meta: "{{kind}} · {{size}}",
     },
     viewer: {
+      matchPage: "Sida {{page}} · {{current}} av {{total}} sidor",
+      matchAt: "Vid {{time}} · {{current}} av {{total}}",
+      marked_one: "{{count}} träff markerad",
+      marked_other: "{{count}} träffar markerade",
       noPreviewText: "Öppna den i en annan app från filens åtgärder.",
       convertingText: "Telefonen kan inte spela filen som den är. Den startar här när kopian är klar.",
       convertingWaiting: "Telefonen kan inte spela filen som den är. En kopia görs när de före den är klara.",

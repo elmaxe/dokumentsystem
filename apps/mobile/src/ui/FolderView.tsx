@@ -7,6 +7,7 @@ import { ActivityIndicator, View } from "react-native";
 import { canEdit } from "../state/changes";
 import { folderQuery } from "../state/queries";
 import { useTheme } from "../state/theme";
+import { IconButton } from "./Button";
 import { EmptyState } from "./EmptyState";
 import { FileList, openFile } from "./FileList";
 import { ItemSheet } from "./ItemSheet";
@@ -28,7 +29,22 @@ export function FolderView({ folderId }: { folderId: string | null }) {
 
   return (
     <View className="flex-1 bg-surface">
-      {selection.active ? <SelectionBar selection={selection} /> : <TopBar title={title} back={!!folderId} actions={<ListActions account={!folderId} />} />}
+      {selection.active ? <SelectionBar selection={selection} /> : <TopBar
+          title={title}
+          back={!!folderId}
+          actions={
+            <>
+              {folderId ? (
+                <IconButton
+                  icon="search"
+                  label={t("mobile.search.inFolder", { folder: title })}
+                  onPress={() => router.push({ pathname: "/find", params: { folder: folderId } })}
+                />
+              ) : null}
+              <ListActions account={!folderId} />
+            </>
+          }
+        />}
       {listing.isPending ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color={theme.color("primary")} />
