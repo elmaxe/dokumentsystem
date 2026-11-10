@@ -1343,9 +1343,17 @@ export const en = {
       tooLargeText: "Open it in another app from the file's actions.",
       markdownImage: "Image: {{alt}}",
     },
+    new: {
+      button: "New",
+      buttonLabel: "Add something to {{folder}}",
+      title: "New in {{folder}}",
+      folder: "New folder",
+      scan: "Scan a document",
+    },
+    move: {
+      viewOnly: "You can only view this folder",
+    },
     scan: {
-      button: "Scan",
-      buttonLabel: "Scan a document to a PDF",
       title: "Save scan",
       defaultName: "Scan",
       name: "Name",

@@ -20,7 +20,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
   const storage = useQuery({ ...storageQuery, enabled: open });
   const user = session.data?.user;
 
-  const go = (href: "/starred" | "/settings") => {
+  const go = (href: "/starred" | "/trash" | "/settings") => {
     onClose();
     router.push(href);
   };
@@ -48,6 +48,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
         </View>
       ) : null}
       <SheetAction icon={<Icon name="star" />} label={t("nav.starred")} onPress={() => go("/starred")} />
+      <SheetAction icon={<Icon name="delete" />} label={t("nav.trash")} onPress={() => go("/trash")} />
       <SheetAction icon={<Icon name="settings" />} label={t("account.settings")} onPress={() => go("/settings")} />
       {user?.role === "admin" ? (
         // Admin pages stay in the browser (decision 6).

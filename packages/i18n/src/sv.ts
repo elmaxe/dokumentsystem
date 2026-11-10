@@ -1349,9 +1349,17 @@ export const sv: Strings = {
       tooLargeText: "Öppna den i en annan app från filens åtgärder.",
       markdownImage: "Bild: {{alt}}",
     },
+    new: {
+      button: "Ny",
+      buttonLabel: "Lägg till något i {{folder}}",
+      title: "Nytt i {{folder}}",
+      folder: "Ny mapp",
+      scan: "Skanna ett dokument",
+    },
+    move: {
+      viewOnly: "Du kan bara visa den här mappen",
+    },
     scan: {
-      button: "Skanna",
-      buttonLabel: "Skanna ett dokument till PDF",
       title: "Spara skanning",
       defaultName: "Skanning",
       name: "Namn",

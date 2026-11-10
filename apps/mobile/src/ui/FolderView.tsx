@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, View } from "react-native";
+import { canEdit } from "../state/changes";
 import { folderQuery } from "../state/queries";
 import { useTheme } from "../state/theme";
 import { EmptyState } from "./EmptyState";
@@ -11,7 +12,7 @@ import { FileList, openFile } from "./FileList";
 import { ItemSheet } from "./ItemSheet";
 import { ListActions } from "./ListActions";
 import { Notice } from "./Notice";
-import { ScanButton } from "./Scan";
+import { NewButton } from "./Scan";
 import { TopBar } from "./TopBar";
 import { SelectionBar, useSelection } from "./Selection";
 
@@ -50,7 +51,9 @@ export function FolderView({ folderId }: { folderId: string | null }) {
         />
       )}
       {/* Below My files the tab bar is gone, so the button keeps clear of the system's own bar. */}
-      <ScanButton folderId={folderId} folderName={title} safeArea={!!folderId} />
+      {folderId === null || canEdit(listing.data?.folder?.access) ? (
+        <NewButton folderId={folderId} folderName={title} safeArea={!!folderId} />
+      ) : null}
       <ItemSheet node={selected} onClose={() => setSelected(null)} onOpenFolder={openFolder} onSelect={selection.toggle} />
     </View>
   );
