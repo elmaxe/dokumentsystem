@@ -86,6 +86,27 @@ const config: ExpoConfig = {
       "react-native-document-scanner-plugin",
       { cameraPermission: "Dokumentsystem uses the camera to scan documents." },
     ],
+    // Uploads (§15.3): the system pickers hand over only what's picked, so the app asks for no photo library access.
+    [
+      "expo-image-picker",
+      { photosPermission: false, cameraPermission: false, microphonePermission: false },
+    ],
+    // Only local notifications, for uploads that carried on after the app was closed (decision 37).
+    ["expo-notifications", { enableRemoteNotifications: false }],
+    // Files, photos and videos shared from another app open the share screen; text and links don't.
+    [
+      "expo-share-intent",
+      {
+        iosActivationRules: {
+          NSExtensionActivationSupportsImageWithMaxCount: 50,
+          NSExtensionActivationSupportsMovieWithMaxCount: 50,
+          NSExtensionActivationSupportsFileWithMaxCount: 50,
+        },
+        iosShareExtensionName: "Dokumentsystem",
+        androidIntentFilters: ["*/*"],
+        androidMultiIntentFilters: ["*/*"],
+      },
+    ],
   ],
   experiments: { typedRoutes: true },
 };
