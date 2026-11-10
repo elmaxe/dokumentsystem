@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import * as WebBrowser from "expo-web-browser";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, View } from "react-native";
@@ -7,6 +8,7 @@ import { useFormat } from "../state/format";
 import { useTheme } from "../state/theme";
 import { EmptyState } from "../ui/EmptyState";
 import { Notice } from "../ui/Notice";
+import { MatchBar } from "./MatchBar";
 import TextDom from "./TextDom";
 
 /** The first megabyte is enough to read on a phone; longer files say so and open in another app. */
@@ -18,12 +20,16 @@ export function TextViewer({
   markdown,
   cacheKey,
   size,
+  search,
 }: {
   uri: string;
   markdown: boolean;
   cacheKey: string;
   size: number;
+  /** Opened from search: the words to mark (docs/design.md §13.3). */
+  search?: { query: string; terms: string[]; onClear: () => void } | null;
 }) {
+  const [marked, setMarked] = useState<number | null>(null);
   const { t } = useTranslation();
   const theme = useTheme();
   const format = useFormat();
@@ -78,13 +84,23 @@ export function TextViewer({
           link: theme.color("primary"),
           code: theme.color("surface-container-high"),
           border: theme.color("outline-variant"),
+          mark: theme.color("warning-container"),
         }}
+        terms={search?.terms}
+        onMarks={async (count) => setMarked(count)}
         imageLabel={t("mobile.viewer.markdownImage", { alt: "{{alt}}" })}
         openLink={async (url) => {
           await WebBrowser.openBrowserAsync(url);
         }}
         dom={{ style: { flex: 1 }, matchContents: false }}
       />
+      {search ? (
+        <MatchBar
+          query={search.query}
+          detail={marked === null ? undefined : t("mobile.viewer.marked", { count: marked })}
+          onClose={search.onClear}
+        />
+      ) : null}
     </View>
   );
 }

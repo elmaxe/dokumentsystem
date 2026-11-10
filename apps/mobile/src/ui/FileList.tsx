@@ -241,7 +241,7 @@ function useMeta(meta?: (node: NodeDto) => string) {
   };
 }
 
-function Thumbnail({
+export function Thumbnail({
   node,
   size,
   className,
