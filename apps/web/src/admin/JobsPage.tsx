@@ -1,4 +1,4 @@
-import type { Job, JobFile, JobKind, JobQueue } from "@dokument/api";
+import { avatarUrl, type Job, type JobFile, type JobKind, type JobQueue } from "@dokument/api";
 import { formatBytes } from "@dokument/core";
 import {
   ActionMenu,
@@ -35,6 +35,7 @@ const queueIcons: Record<JobKind, string> = {
   tagRule: "sell",
   file: "drive_file_move",
   filingRule: "drive_file_move",
+  avatar: "account_circle",
 };
 const pageSize = 50;
 
@@ -103,7 +104,7 @@ export function AdminJobsPage() {
           align="start"
           actions={[
             { id: "all", icon: !filter.type ? "check" : "", label: t("admin.jobs.allTypes") },
-            ...(["thumbnail", "metadata", "text", "transcode", "seekPreviews", "transcribe", "pageSheets", "pdf", "pdfSave", "tagRule", "file", "filingRule"] as const).map((type) => ({
+            ...(["thumbnail", "metadata", "text", "transcode", "seekPreviews", "transcribe", "pageSheets", "pdf", "pdfSave", "tagRule", "file", "filingRule", "avatar"] as const).map((type) => ({
               id: type,
               icon: filter.type === type ? "check" : "",
               label: t(`admin.jobs.queues.${type}`),
@@ -230,7 +231,8 @@ function JobRow({ job, now, onRetry, onClear }: { job: Job; now: number; onRetry
   const file = job.files[0] as JobFile | undefined;
   const kind = file ? kindOf(file.name, job.mimeType) : "other";
   const tagRule = job.type === "tagRule";
-  const rule = tagRule || job.type === "filingRule";
+  const avatar = job.type === "avatar";
+  const rule = tagRule || job.type === "filingRule" || avatar;
   const mine = file?.ownerId === me;
   const when = (at: string) => format.date(at, { inSentence: true });
 
@@ -273,6 +275,12 @@ function JobRow({ job, now, onRetry, onClear }: { job: Job; now: number; onRetry
               ) : (
                 <span className="text-on-surface-variant">{t("admin.jobs.ruleDeleted")}</span>
               )
+            ) : avatar ? (
+              job.person ? (
+                t("admin.jobs.avatarOf", { name: job.person.name })
+              ) : (
+                <span className="text-on-surface-variant">{t("admin.jobs.avatarGone")}</span>
+              )
             ) : rule ? (
               // Filing rules are each person's own, so there is nowhere for an admin to open one.
               job.ruleTag ? (
@@ -299,16 +307,22 @@ function JobRow({ job, now, onRetry, onClear }: { job: Job; now: number; onRetry
             )}
           </span>
           {rule ? (
-            <span className="truncate text-body-sm text-on-surface-variant">{t(tagRule ? "admin.jobs.ruleRunNote" : "admin.jobs.filingRunNote")}</span>
+            <span className="truncate text-body-sm text-on-surface-variant">{t(tagRule ? "admin.jobs.ruleRunNote" : avatar ? "admin.jobs.avatarNote" : "admin.jobs.filingRunNote")}</span>
           ) : (
             where && <span className="truncate text-body-sm text-on-surface-variant">{where}</span>
           )}
         </div>
       </div>
       <div className="flex min-w-0 items-center gap-2">
+        {job.person && (
+          <>
+            <Avatar name={job.person.name} picture={avatarUrl(job.person.id, job.person.avatar)} size="sm" tone={job.person.id === me ? 1 : 3} />
+            <span className="truncate">{job.person.id === me ? t("admin.jobs.you") : job.person.name}</span>
+          </>
+        )}
         {file && (
           <>
-            <Avatar name={file.ownerName} size="sm" tone={mine ? 1 : 3} />
+            <Avatar name={file.ownerName} picture={avatarUrl(file.ownerId, file.ownerAvatar)} size="sm" tone={mine ? 1 : 3} />
             <span className="truncate">{mine ? t("admin.jobs.you") : file.ownerName}</span>
           </>
         )}

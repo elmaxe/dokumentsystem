@@ -27,3 +27,4 @@ export {
   type PagesProblem,
 } from "./pdf";
 export { seekFrame, type SeekSheet } from "./media";
+export { initials } from "./people";

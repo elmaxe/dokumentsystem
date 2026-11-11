@@ -24,6 +24,8 @@ x-app-env: &app-env
   OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:-dokument-admins}
   OIDC_SCOPE: ${OIDC_SCOPE:-openid profile email}
   OIDC_QUOTA_CLAIM: ${OIDC_QUOTA_CLAIM:-}
+  # Unset reads the standard "picture" claim; set but empty turns profile pictures off (docs/design.md §5.1).
+  OIDC_PICTURE_CLAIM: ${OIDC_PICTURE_CLAIM-picture}
   # Telemetry is off unless set (docs/design.md §22.1). Other OTEL_* variables can be added here the same way.
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}

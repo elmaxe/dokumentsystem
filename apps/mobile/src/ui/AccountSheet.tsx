@@ -29,7 +29,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
     <Sheet open={open} onClose={onClose}>
       {user ? (
         <View className="mx-5 mb-4 flex-row items-center gap-3">
-          <Avatar name={user.displayName} size={48} />
+          <Avatar name={user.displayName} id={user.id} avatar={user.avatar} size={56} tone={1} />
           <View className="min-w-0 flex-1">
             <Text variant="title-md" numberOfLines={1} className="text-on-surface">
               {user.displayName}

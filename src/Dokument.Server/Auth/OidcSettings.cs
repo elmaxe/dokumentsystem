@@ -7,6 +7,10 @@ namespace Dokument.Server.Auth;
 /// OIDC bootstrap configuration from environment variables (docs/design.md §4.3, §5). Sign-in is off until
 /// <c>OIDC_ISSUER</c> and <c>OIDC_CLIENT_ID</c> are set, so a fresh install still starts and passes health checks.
 /// </summary>
+/// <param name="PictureClaim">
+/// The claim with each person's picture (§5.1), <c>picture</c> unless <c>OIDC_PICTURE_CLAIM</c> names another; null
+/// when it is set but empty, which turns pictures off.
+/// </param>
 /// <param name="QuotaClaim">The claim that sets each person's quota at login (§17.1); null reads none.</param>
 public sealed record OidcSettings(
     string? Issuer,
@@ -16,9 +20,12 @@ public sealed record OidcSettings(
     string GroupsClaim,
     string? ProviderName,
     LoginPolicy Policy,
-    string? QuotaClaim = null
+    string? QuotaClaim = null,
+    string? PictureClaim = OidcSettings.DefaultPictureClaim
 )
 {
+    public const string DefaultPictureClaim = "picture";
+
     public bool Enabled =>
         !string.IsNullOrWhiteSpace(Issuer) && !string.IsNullOrWhiteSpace(ClientId);
 
@@ -38,7 +45,11 @@ public sealed record OidcSettings(
                 UserGroup: Get("OIDC_USER_GROUP"),
                 AdminGroup: Get("OIDC_ADMIN_GROUP") ?? LoginPolicy.DefaultAdminGroup
             ),
-            QuotaClaim: Get("OIDC_QUOTA_CLAIM")
+            QuotaClaim: Get("OIDC_QUOTA_CLAIM"),
+            // Unset means the standard claim; set but empty means off.
+            PictureClaim: configuration["OIDC_PICTURE_CLAIM"] is { } picture
+                ? (string.IsNullOrWhiteSpace(picture) ? null : picture.Trim())
+                : DefaultPictureClaim
         );
     }
 }

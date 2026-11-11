@@ -693,9 +693,9 @@ public static class FileEndpoints
     )
     {
         var uploaderIds = versions.Select(v => v.UploadedBy).Distinct().ToList();
-        var names = await db
+        var uploaders = await db
             .Users.Where(u => uploaderIds.Contains(u.Id))
-            .ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+            .ToDictionaryAsync(u => u.Id, ct);
         var retention = (await settings.GetAsync(SettingKeys.Versions, ct)).Retention;
         var purge = retention.PurgeDates(versions, node.CurrentVersionId, time.GetUtcNow());
         return versions
@@ -706,7 +706,8 @@ public static class FileEndpoints
                 v.MimeType,
                 v.OriginalName.Value,
                 v.UploadedBy,
-                names.GetValueOrDefault(v.UploadedBy, ""),
+                uploaders.GetValueOrDefault(v.UploadedBy)?.DisplayName ?? "",
+                uploaders.GetValueOrDefault(v.UploadedBy)?.AvatarVersion,
                 v.UploadedAt,
                 v.ClientModifiedAt,
                 v.KeepForever,

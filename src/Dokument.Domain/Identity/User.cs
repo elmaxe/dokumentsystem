@@ -45,6 +45,29 @@ public sealed class User
 
     /// <summary>Show times to the second ("09:14:07") instead of to the minute (§16.5).</summary>
     public bool ShowSeconds { get; set; }
+
+    /// <summary>The sign-in provider's picture claim at the last sign-in (§5.1): a URL, or null when it sent none.</summary>
+    public string? PictureUrl { get; set; }
+
+    public string? AvatarVersion { get; private set; }
+    public string? AvatarSource { get; private set; }
+    public string? AvatarETag { get; private set; }
+
+    /// <summary>The stored profile picture, or null when initials show instead (§5.1).</summary>
+    public Avatar? Avatar
+    {
+        get =>
+            AvatarVersion is { } version
+                ? new Avatar(version, AvatarSource ?? "", AvatarETag)
+                : null;
+        set
+        {
+            AvatarVersion = value?.Version;
+            AvatarSource = value?.SourceUrl;
+            AvatarETag = value?.ETag;
+        }
+    }
+
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? LastLoginAt { get; set; }
     public DateTimeOffset? DisabledAt { get; set; }
