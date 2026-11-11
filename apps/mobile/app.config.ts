@@ -93,6 +93,9 @@ const config: ExpoConfig = {
       "expo-image-picker",
       { photosPermission: false, cameraPermission: false, microphonePermission: false },
     ],
+    // Audio keeps playing with the screen off and shows the now playing notification (§15.3), which needs the
+    // playback service in the manifest.
+    ["expo-video", { supportsBackgroundPlayback: true, supportsPictureInPicture: false }],
     // Home Wi-Fi networks (§15.3): the system only tells an app the Wi-Fi network's name when it may see the
     // location, so the app asks while in use, and only when the person adds a network.
     [
