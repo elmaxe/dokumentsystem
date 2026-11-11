@@ -1,4 +1,4 @@
-import type { AdminSettings, AdminUser, ProbeResult } from "@dokument/api";
+import { avatarUrl, type AdminSettings, type AdminUser, type ProbeResult } from "@dokument/api";
 import { formatBytes, formatDuration } from "@dokument/core";
 import { Avatar, Banner, Button, Dialog, Icon, IconButton, Progress, Switch, TextField, useSnackbar } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -284,7 +284,7 @@ function PeopleSection() {
           const used = formatBytes(user.usedBytes, i18n.language);
           return (
             <li key={user.id} className="flex flex-wrap items-center gap-3 py-3">
-              <Avatar name={user.displayName} tone={tones[index % tones.length]} />
+              <Avatar name={user.displayName} picture={avatarUrl(user.id, user.avatar)} tone={tones[index % tones.length]} />
               <div className="flex min-w-0 flex-[1_1_12rem] flex-col">
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="truncate text-title-sm text-on-surface">{user.displayName}</span>

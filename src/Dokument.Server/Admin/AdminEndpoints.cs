@@ -614,7 +614,8 @@ public static class AdminEndpoints
             QuotaFromClaim(user, oidc) ? QuotaSource.Claim : QuotaSource.Admin,
             user.Quota.Resolve(defaultQuota),
             user.LastLoginAt,
-            user.IsDisabled
+            user.IsDisabled,
+            user.AvatarVersion
         );
 
     private static MlSettingsDto MlDto(MlSettings ml) =>

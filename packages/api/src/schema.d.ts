@@ -54,6 +54,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/people/{id}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A person's profile picture: a 256 px square WebP from their sign-in provider. 404 when they have none, so clients show initials. Pass the person's avatar as v; such a URL never changes and is cached for a year. Not audited. */
+        get: operations["GetAvatar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/config": {
         parameters: {
             query?: never;
@@ -1905,6 +1922,7 @@ export interface components {
             /** Format: date-time */
             lastLoginAt: null | string;
             disabled: boolean;
+            avatar: null | string;
         };
         AuthConfig: {
             enabled: boolean;
@@ -2187,6 +2205,7 @@ export interface components {
             mimeType: null | string;
             files: components["schemas"]["JobFileDto"][];
             ruleTag: null | string;
+            person: null | components["schemas"]["PersonDto"];
         };
         JobFileDto: {
             /** Format: uuid */
@@ -2195,6 +2214,7 @@ export interface components {
             /** Format: uuid */
             ownerId: string;
             ownerName: string;
+            ownerAvatar: null | string;
             use: components["schemas"]["JobFileUse"];
             /** Format: int32 */
             versionNumber: number;
@@ -2203,7 +2223,7 @@ export interface components {
         /** @enum {unknown} */
         JobFileUse: "current" | "trashed" | "olderVersion";
         /** @enum {unknown} */
-        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews" | "transcribe" | "pageSheets" | "pdf" | "pdfSave" | "tagRule" | "file" | "filingRule";
+        JobKind: "thumbnail" | "metadata" | "text" | "transcode" | "seekPreviews" | "transcribe" | "pageSheets" | "pdf" | "pdfSave" | "tagRule" | "file" | "filingRule" | "avatar";
         JobList: {
             items: components["schemas"]["JobDto"][];
             more: boolean;
@@ -2431,6 +2451,7 @@ export interface components {
             id: string;
             name: string;
             email: null | string;
+            avatar: null | string;
         };
         PlaceDto: {
             /** Format: double */
@@ -2853,6 +2874,7 @@ export interface components {
             role: components["schemas"]["UserRole"];
             language: null | string;
             showSeconds: boolean;
+            avatar: null | string;
         };
         /** @enum {unknown} */
         UserQuotaKind: "default" | "limit" | "unlimited";
@@ -2870,6 +2892,7 @@ export interface components {
             /** Format: uuid */
             uploadedBy: string;
             uploadedByName: string;
+            uploadedByAvatar: null | string;
             /** Format: date-time */
             uploadedAt: string;
             /** Format: date-time */
@@ -2984,6 +3007,28 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UserProfile"];
                 };
+            };
+        };
+    };
+    GetAvatar: {
+        parameters: {
+            query?: {
+                v?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

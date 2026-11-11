@@ -46,6 +46,13 @@ public sealed class FakeOidcProvider : IAsyncDisposable
     /// </summary>
     public bool SupportsEndSession { get; set; } = true;
 
+    /// <summary>Pictures served at <c>{Issuer}/pictures/{name}</c>, with an ETag, for picture claims (§5.1).</summary>
+    public ConcurrentDictionary<string, byte[]> Pictures { get; } = new();
+
+    /// <summary>How often a picture was asked for, and how often it was answered 304 Not Modified.</summary>
+    public int PictureRequests;
+    public int PicturesNotModified;
+
     private FakeOidcProvider(WebApplication app) => this.app = app;
 
     public HttpMessageHandler Handler => app.GetTestServer().CreateHandler();
@@ -64,6 +71,28 @@ public sealed class FakeOidcProvider : IAsyncDisposable
 
     private void Map()
     {
+        app.MapGet(
+            "/pictures/{name}",
+            (string name, HttpRequest request) =>
+            {
+                Interlocked.Increment(ref PictureRequests);
+                if (!Pictures.TryGetValue(name, out var bytes))
+                {
+                    return Results.NotFound();
+                }
+
+                var etag = $"\"{Convert.ToHexStringLower(SHA256.HashData(bytes))[..16]}\"";
+                if (request.Headers.IfNoneMatch.ToString() == etag)
+                {
+                    Interlocked.Increment(ref PicturesNotModified);
+                    return Results.StatusCode(StatusCodes.Status304NotModified);
+                }
+
+                request.HttpContext.Response.Headers.ETag = etag;
+                return Results.Bytes(bytes, "image/png");
+            }
+        );
+
         app.MapGet(
             "/.well-known/openid-configuration",
             () =>

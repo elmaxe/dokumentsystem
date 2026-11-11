@@ -1,5 +1,6 @@
 using Dokument.Application.Files;
 using Dokument.Domain.Files;
+using Dokument.Domain.Identity;
 using Dokument.Domain.Jobs;
 using Dokument.Domain.Previews;
 using Dokument.Domain.Search;
@@ -41,12 +42,19 @@ public sealed record JobFile(
     FileVersion Version,
     JobFileUse Use,
     string OwnerName,
-    IReadOnlyList<Node> Folders
+    IReadOnlyList<Node> Folders,
+    string? OwnerAvatar = null
 );
 
 /// <summary>A job with the files that use its content, best match first. Empty when no file uses it any more.</summary>
 /// <param name="RuleTag">For a keyword-rule run: the rule's tag, null once the rule is deleted (§13.4).</param>
-public sealed record JobEntry(Job Job, IReadOnlyList<JobFile> Files, string? RuleTag = null);
+/// <param name="Person">For a profile picture's job: whose picture it is (§5.1).</param>
+public sealed record JobEntry(
+    Job Job,
+    IReadOnlyList<JobFile> Files,
+    string? RuleTag = null,
+    User? Person = null
+);
 
 /// <summary>Where one processing step stands for a file (§10.1).</summary>
 public enum StepState
@@ -180,12 +188,14 @@ public sealed class JobMonitor(
         var files = await FilesAsync(jobs.Where(j => !ByNode(j.Type)).Select(j => j.Subject), ct);
         var byNode = await NodeFilesAsync(await NodesOfAsync(jobs, ct), ct);
         var rules = await RulesAsync(jobs, ct);
+        var people = await PeopleAsync(jobs, ct);
         return jobs.Select(j => new JobEntry(
                 j,
                 ByNode(j.Type)
                     ? byNode.GetValueOrDefault(j.Subject, [])
                     : files.GetValueOrDefault(j.Subject, []),
-                rules.GetValueOrDefault((j.Type, j.Subject))
+                rules.GetValueOrDefault((j.Type, j.Subject)),
+                j.Type == JobType.Avatar ? people.GetValueOrDefault(j.Subject) : null
             ))
             .ToList();
     }
@@ -588,6 +598,22 @@ public sealed class JobMonitor(
         return tags;
     }
 
+    /// <summary>The people whose profile pictures (§5.1) <paramref name="jobs"/> fetch, by subject.</summary>
+    private async Task<Dictionary<string, User>> PeopleAsync(List<Job> jobs, CancellationToken ct)
+    {
+        var ids = jobs.Where(j => j.Type == JobType.Avatar)
+            .Select(j => Guid.TryParse(j.Subject, out var id) ? id : (Guid?)null)
+            .OfType<Guid>()
+            .Distinct()
+            .ToList();
+        return ids.Count == 0
+            ? []
+            : await db
+                .Users.AsNoTracking()
+                .Where(u => ids.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id.ToString(), ct);
+    }
+
     /// <summary>Jobs whose files are named by node: filing one file, and merges and splits (by their sources).</summary>
     private static bool ByNode(JobType type) =>
         type == JobType.File || type == JobType.Pdf || type == JobType.PdfSave;
@@ -650,6 +676,7 @@ public sealed class JobMonitor(
                 Node = n,
                 Version = v,
                 Owner = u.DisplayName,
+                OwnerAvatar = u.AvatarVersion,
             }
         ).ToListAsync(ct);
         var folders = await drive.AncestorsAsync(rows.Select(r => r.Node).ToList(), ct);
@@ -660,7 +687,8 @@ public sealed class JobMonitor(
                 r.Version,
                 r.Node.IsTrashed ? JobFileUse.Trashed : JobFileUse.Current,
                 r.Owner,
-                folders[r.Node.Id]
+                folders[r.Node.Id],
+                r.OwnerAvatar
             )
         );
         return subjects.ToDictionary(
@@ -698,6 +726,7 @@ public sealed class JobMonitor(
                 Version = v,
                 Node = n,
                 Owner = u.DisplayName,
+                OwnerAvatar = u.AvatarVersion,
             }
         ).ToListAsync(ct);
         var files = rows.Select(r => new JobFile(
@@ -710,7 +739,8 @@ public sealed class JobMonitor(
                     _ => JobFileUse.Current,
                 },
                 r.Owner,
-                []
+                [],
+                r.OwnerAvatar
             ))
             // A file with the content in several versions (e.g. one restored) is listed once.
             .GroupBy(f => (f.Node.Id, f.Version.BlobHash))

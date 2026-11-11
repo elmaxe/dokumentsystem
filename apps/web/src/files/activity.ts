@@ -1,4 +1,4 @@
-import type { Activity, ActivityListing } from "@dokument/api";
+import { avatarUrl, type Activity, type ActivityListing } from "@dokument/api";
 import type { ActivityEntry } from "@dokument/ui";
 import { infiniteQueryOptions } from "@tanstack/react-query";
 import type { useTranslation } from "react-i18next";
@@ -83,5 +83,11 @@ export function activityEntry(t: TFunction, entry: Activity, me: string | undefi
         role,
       });
   }
-  return { id: entry.id, who: entry.actor?.name ?? who, what, at: entry.at };
+  return {
+    id: entry.id,
+    who: entry.actor?.name ?? who,
+    picture: entry.actor ? avatarUrl(entry.actor.id, entry.actor.avatar) : null,
+    what,
+    at: entry.at,
+  };
 }

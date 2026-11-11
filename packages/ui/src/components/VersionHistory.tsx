@@ -12,6 +12,8 @@ export type FileVersion = {
   /** "Keep forever" versions are exempt from retention (§8.2). */
   keep?: boolean;
   by: string;
+  /** The uploader's profile picture (§5.1). */
+  byPicture?: string | null;
   tone?: AvatarTone;
   /** ISO 8601. */
   at: string;
@@ -90,7 +92,7 @@ export function VersionHistory({
                 )}
               </span>
               <span className="tabular flex flex-wrap items-center gap-1 text-body-sm text-on-surface-variant">
-                <Avatar name={version.by} tone={version.tone} size="sm" />
+                <Avatar name={version.by} picture={version.byPicture} tone={version.tone} size="sm" />
                 {[
                   version.by,
                   format.date(version.at),

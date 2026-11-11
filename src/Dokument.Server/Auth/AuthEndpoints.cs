@@ -222,11 +222,20 @@ public sealed record UserProfile(
     string? Email,
     UserRole Role,
     string? Language,
-    bool ShowSeconds
+    bool ShowSeconds,
+    string? Avatar
 )
 {
     public static UserProfile From(User user) =>
-        new(user.Id, user.DisplayName, user.Email, user.Role, user.Locale?.Code, user.ShowSeconds);
+        new(
+            user.Id,
+            user.DisplayName,
+            user.Email,
+            user.Role,
+            user.Locale?.Code,
+            user.ShowSeconds,
+            user.AvatarVersion
+        );
 }
 
 /// <param name="Language"><c>sv</c>, <c>en</c>, or null to follow the browser.</param>

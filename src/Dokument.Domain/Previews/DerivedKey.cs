@@ -37,6 +37,9 @@ public sealed record DerivedKey
         return new DerivedKey($"previews/{hex[..2]}/{hex}/pages-{sheet}.webp");
     }
 
+    /// <summary>A person's profile picture (§5.1): <c>avatars/{person id}.webp</c>, apart from everyone's files.</summary>
+    public static DerivedKey ForAvatar(Guid personId) => new($"avatars/{personId:N}.webp");
+
     /// <summary>For values read back from the database.</summary>
     public static DerivedKey From(string value) =>
         (

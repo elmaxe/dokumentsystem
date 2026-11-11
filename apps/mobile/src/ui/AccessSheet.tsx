@@ -158,7 +158,7 @@ export function PersonRow({
       accessibilityLabel={[name, role, sub].filter(Boolean).join(", ")}
       className="min-h-16 flex-row items-center gap-4 py-2 pl-5 pr-4"
     >
-      <Avatar name={person.name} size={40} />
+      <Avatar name={person.name} id={person.id} avatar={person.avatar} size={40} tone={person.id === me ? 1 : 0} />
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-on-surface">
           {name}

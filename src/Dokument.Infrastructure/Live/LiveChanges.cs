@@ -25,7 +25,7 @@ public enum LiveTopics
     /// <summary>The storage meter: used, trashed and quota.</summary>
     Storage = 8,
 
-    /// <summary>The person's own settings, such as language or showing seconds.</summary>
+    /// <summary>The person's own settings, such as language or showing seconds, and their profile picture.</summary>
     Account = 16,
 
     /// <summary>A filing rule moved some of the person's files, so clients can offer to undo it (§13.6).</summary>

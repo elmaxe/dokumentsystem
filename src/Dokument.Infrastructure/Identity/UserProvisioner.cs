@@ -2,7 +2,9 @@ using System.Text.Json.Nodes;
 using Dokument.Application.Identity;
 using Dokument.Domain.Audit;
 using Dokument.Domain.Identity;
+using Dokument.Domain.Jobs;
 using Dokument.Infrastructure.Files;
+using Dokument.Infrastructure.Jobs;
 using Dokument.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,9 +12,14 @@ namespace Dokument.Infrastructure.Identity;
 
 /// <summary>
 /// Creates users on first login and refreshes their profile, role and claimed quota on every login (docs/design.md §5,
-/// §17.1).
+/// §17.1), and queues fetching their profile picture (§5.1).
 /// </summary>
-public sealed class UserProvisioner(DokumentDbContext db, AuditLog audit, TimeProvider time)
+public sealed class UserProvisioner(
+    DokumentDbContext db,
+    AuditLog audit,
+    JobQueue jobs,
+    TimeProvider time
+)
 {
     public async Task<ProvisioningResult> ProvisionAsync(
         OidcIdentity identity,
@@ -69,6 +76,7 @@ public sealed class UserProvisioner(DokumentDbContext db, AuditLog audit, TimePr
         user.DisplayName = DisplayNameFor(identity);
         user.Role = role;
         user.LastLoginAt = now;
+        user.PictureUrl = identity.Picture;
 
         var before = user.Quota;
         // A claim that went away also counts as the claim's change, even though admins own the quota afterwards.
@@ -83,6 +91,19 @@ public sealed class UserProvisioner(DokumentDbContext db, AuditLog audit, TimePr
                     ["to"] = QuotaAudit.Json(user.Quota),
                     ["source"] = QuotaAudit.SourceName(QuotaSource.Claim),
                 }
+            );
+        }
+
+        // Every sign-in fetches the picture again: the worker skips an unchanged one by its ETag, and removes ours once
+        // the claim is gone. Without either, there is nothing to do.
+        if (user.PictureUrl is not null || user.Avatar is not null)
+        {
+            await jobs.EnqueueAsync(
+                JobType.Avatar,
+                user.Id.ToString(),
+                JobPriority.Interactive,
+                ct,
+                evenIfRunning: true
             );
         }
 

@@ -14,7 +14,7 @@ import { VersionHistory, type VersionHistoryProps } from "./VersionHistory";
 
 export type DetailsTab = "info" | "sharing" | "versions" | "activity";
 
-export type ActivityEntry = { id: string; who: string; tone?: AvatarTone; what: string; at: string };
+export type ActivityEntry = { id: string; who: string; picture?: string | null; tone?: AvatarTone; what: string; at: string };
 
 export type FileDetails = {
   location: string;
@@ -175,7 +175,7 @@ export function DetailsPanel({
             <ul className="m-0 flex list-none flex-col p-0">
               {details.people.map((person) => (
                 <li key={person.id ?? person.email} className="flex min-w-0 items-center gap-3 py-2">
-                  <Avatar name={person.name} tone={person.tone} />
+                  <Avatar name={person.name} picture={person.picture} tone={person.tone} />
                   <span className="min-w-0 flex-1 truncate">
                     {person.you ? t("share.you", { name: person.name }) : person.name}
                   </span>
@@ -212,7 +212,7 @@ export function DetailsPanel({
             <ol className="m-0 flex list-none flex-col p-0 pt-2">
               {details.activity.map((entry) => (
                 <li key={entry.id} className="flex gap-3 py-2">
-                  <Avatar name={entry.who} tone={entry.tone} size="sm" className="mt-0.5" />
+                  <Avatar name={entry.who} picture={entry.picture} tone={entry.tone} size="sm" className="mt-0.5" />
                   <div className="flex min-w-0 flex-col">
                     <span className="text-body-md text-on-surface [overflow-wrap:anywhere]">{entry.what}</span>
                     <span className="tabular text-body-sm text-on-surface-variant">{date(entry.at)}</span>
