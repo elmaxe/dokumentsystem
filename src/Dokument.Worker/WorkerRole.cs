@@ -1,4 +1,5 @@
 using Dokument.Domain.Jobs;
+using Dokument.Worker.Avatars;
 using Dokument.Worker.Filing;
 using Dokument.Worker.Jobs;
 using Dokument.Worker.Media;
@@ -109,6 +110,26 @@ public static class WorkerRole
         // One at a time: PDFium works under one lock anyway (docs/design.md §8.4).
         services.AddScoped<PdfHandler>();
         services.AddSingleton(new JobHandlerRegistration(JobType.Pdf, typeof(PdfHandler), 1));
+
+        // Profile pictures from the sign-in provider (§5.1). At most 3 redirects; the fetcher limits time and size.
+        services
+            .AddHttpClient<AvatarFetcher>(
+                AvatarFetcher.ClientName,
+                http =>
+                {
+                    http.Timeout = AvatarFetcher.Timeout + TimeSpan.FromSeconds(5);
+                    http.DefaultRequestHeaders.UserAgent.ParseAdd("Dokumentsystem");
+                }
+            )
+            .ConfigurePrimaryHttpMessageHandler(() =>
+                new SocketsHttpHandler
+                {
+                    AllowAutoRedirect = true,
+                    MaxAutomaticRedirections = AvatarFetcher.MaxRedirects,
+                }
+            );
+        services.AddScoped<AvatarHandler>();
+        services.AddSingleton(new JobHandlerRegistration(JobType.Avatar, typeof(AvatarHandler), 1));
 
         services.AddHostedService<JobRunner>();
         services.AddHostedService<ThumbnailBackfill>();

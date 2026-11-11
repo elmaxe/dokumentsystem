@@ -95,6 +95,11 @@ public static class AuthSetup
         options.GetClaimsFromUserInfoEndpoint = true;
         options.ClaimActions.MapJsonKey(oidc.GroupsClaim, oidc.GroupsClaim);
         options.ClaimActions.MapUniqueJsonKey("preferred_username", "preferred_username");
+        if (oidc.PictureClaim is { } pictureClaim)
+        {
+            options.ClaimActions.MapUniqueJsonKey(pictureClaim, pictureClaim);
+        }
+
         if (oidc.QuotaClaim is { } quotaClaim)
         {
             options.ClaimActions.MapUniqueJsonKey(quotaClaim, quotaClaim);
@@ -192,8 +197,38 @@ public static class AuthSetup
                 .Select(c => c.Value)
                 .Distinct(StringComparer.Ordinal)
                 .ToList(),
-            Quota: quota
+            Quota: quota,
+            Picture: PictureFrom(principal, oidc)
         );
+
+    /// <summary>
+    /// The picture claim (§5.1) when it is something the worker may fetch: an http, https or <c>data:</c> URL of at
+    /// most <see cref="Avatar.MaxSourceLength"/> characters. Anything else counts as no picture.
+    /// </summary>
+    public static string? PictureFrom(ClaimsPrincipal principal, OidcSettings oidc)
+    {
+        if (oidc.PictureClaim is not { } claim || principal.FindFirstValue(claim) is not { } value)
+        {
+            return null;
+        }
+
+        value = value.Trim();
+        if (value.Length is 0 or > Avatar.MaxSourceLength)
+        {
+            return null;
+        }
+
+        if (value.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return value;
+        }
+
+        return
+            Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
+            ? uri.AbsoluteUri
+            : null;
+    }
 
     /// <summary>The quota claim's value (§17.1). One that can't be read is logged and changes nothing.</summary>
     internal static ClaimedQuota ReadQuotaClaim(

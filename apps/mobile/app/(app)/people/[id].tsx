@@ -202,7 +202,7 @@ export default function SharePeople() {
                 onPress={() => add(item)}
                 className={`min-h-16 flex-row items-center gap-4 px-4 py-2 active:bg-surface-container-high ${already ? "opacity-60" : ""}`}
               >
-                <Avatar name={item.name} size={40} />
+                <Avatar name={item.name} id={item.id} avatar={item.avatar} size={40} />
                 <View className="min-w-0 flex-1">
                   <Text numberOfLines={1} className="text-on-surface">
                     {item.name}

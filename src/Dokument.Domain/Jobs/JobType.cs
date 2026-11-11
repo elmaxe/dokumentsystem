@@ -45,6 +45,12 @@ public sealed record JobType
     /// </summary>
     public static readonly JobType PdfSave = new("pdf-save");
 
+    /// <summary>
+    /// Downloads a person's profile picture from their sign-in provider's picture claim and stores it as a small WebP
+    /// (§5.1). The subject is the person's id.
+    /// </summary>
+    public static readonly JobType Avatar = new("avatar");
+
     /// <summary>The steps every file goes through, in pipeline order (§10.2).</summary>
     public static readonly IReadOnlyList<JobType> FileSteps = [Thumbnail, Metadata, Text];
 
@@ -61,6 +67,7 @@ public sealed record JobType
         TagRule,
         File,
         FilingRule,
+        Avatar,
     ];
 
     private JobType(string name) => Name = name;

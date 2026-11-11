@@ -1,4 +1,4 @@
-import { contentUrl, type PathEntry, type TextPage } from "@dokument/api";
+import { avatarUrl, contentUrl, type PathEntry, type TextPage } from "@dokument/api";
 import { DetailsPanel, TextDialog, useSnackbar, type DetailsTab, type FileVersion } from "@dokument/ui";
 import { queryOptions, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -74,6 +74,7 @@ export function FileDetailsPanel({
           current: v.current,
           keep: v.keepForever,
           by: v.uploadedByName,
+          byPicture: avatarUrl(v.uploadedBy, v.uploadedByAvatar),
           at: v.uploadedAt,
           size: v.size,
           removedInDays: v.purgeAt ? Math.max(0, Math.ceil((Date.parse(v.purgeAt) - Date.now()) / 86_400_000)) : undefined,

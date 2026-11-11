@@ -71,7 +71,12 @@ export default function ActivityPage() {
           )}
           renderItem={({ item }) => (
             <View accessible className="flex-row items-start gap-4 px-4 py-2">
-              <Avatar name={item.actor?.name ?? "?"} size={32} />
+              <Avatar
+                name={item.actor?.name ?? "?"}
+                id={item.actor?.id}
+                avatar={item.actor?.avatar}
+                size={32}
+              />
               <View className="min-w-0 flex-1">
                 <Text variant="body-md" className="text-on-surface">
                   {activityText(t, item, me)}

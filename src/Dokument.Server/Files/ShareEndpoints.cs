@@ -186,9 +186,14 @@ public static class ShareEndpoints
     }
 }
 
-public sealed record PersonDto(Guid Id, string Name, string? Email)
+/// <param name="Avatar">
+/// The person's profile picture as a version, for <c>GET /people/{id}/avatar?v=…</c>; null when they have none and
+/// clients show initials (§5.1).
+/// </param>
+public sealed record PersonDto(Guid Id, string Name, string? Email, string? Avatar)
 {
-    public static PersonDto From(User user) => new(user.Id, user.DisplayName, user.Email);
+    public static PersonDto From(User user) =>
+        new(user.Id, user.DisplayName, user.Email, user.AvatarVersion);
 }
 
 /// <param name="YourAccess">What the person asking may do. Only the owner can change who has access.</param>

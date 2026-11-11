@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.56** · Last updated: 2026-11-11
+> Status: **Draft v0.57** · Last updated: 2026-11-11
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -225,6 +225,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   | `OIDC_ADMIN_GROUP` | `dokument-admins` | Members get the admin role |
   | `OIDC_PROVIDER_NAME` | unset | Shown on the button: "Sign in with …" |
   | `OIDC_QUOTA_CLAIM` | unset (quotas are set on the admin page) | A claim that sets each person's storage at login (§17.1) |
+  | `OIDC_PICTURE_CLAIM` | `picture` | The claim with each person's profile picture (§5.1). Set it empty to turn pictures off |
 
 - **`PUBLIC_URL`** sets the scheme, host and path base that the app sees itself at, behind the reverse proxy. It drives the redirect URI and the cookie's Secure flag.
 - **Sessions:** after a successful OIDC login, the server issues **its own session**. The IdP's tokens are discarded, except the ID token, which the session keeps only as the hint for signing out at the IdP. It is never accepted as a credential.
@@ -260,6 +261,22 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
   - the quota claim (§17.1), right after the admin settings page
 - **Built in M5:** the app's sign-in through the token endpoint and the callback page, device names, the session proof and the bearer token on the live hub.
 
+### 5.1 Profile pictures
+
+Built (decision 47). Every person has a circle wherever their name appears: their picture from the sign-in provider, or their initials.
+
+- **Source:** the `picture` claim (OIDC standard claims, `profile` scope), read from the ID token or userinfo like the groups claim. `OIDC_PICTURE_CLAIM` names another claim, and set but empty turns pictures off. There is no uploading your own picture: the sign-in provider is the one place to change it.
+- **At every sign-in** (web and app), the server stores the claim on the person as `picture_url` when it is an `http`, `https` or `data:image/…` URL of at most 64 KB, otherwise as none, and queues an `avatar` job for the person (subject = their id). Signing in never waits for the picture.
+- **The worker** downloads it: at most 5 MB, 10 s and 3 redirects, sending back the provider's last `ETag` so an unchanged picture costs one 304. A `data:` URL is decoded in place. libvips must recognise the bytes as a photo or drawing (JPEG, PNG, WebP, GIF, HEIF/AVIF, TIFF, SVG; never PDF or CSV); animations keep the first frame. It is turned upright, cropped from the middle to a square and re-encoded as a 256 px WebP without metadata, so nothing the provider sent is ever served as is.
+  - Local network addresses are allowed, since the provider often runs on the same network (Authentik, Pocket ID, Keycloak at home). Only a decoded image is kept and errors are only logged, which keeps that safe enough.
+  - A picture that can't be fetched or read keeps the one we have and isn't retried; the next sign-in tries again. A claim that went away deletes ours, and initials show again.
+  - The new picture is announced to the person's own clients with the live `account` topic (§15.4). Others see it the next time they load a list.
+- **Storage:** its own folder on the derived volume, `/data/derived/avatars/{person_id}.webp` (§7), apart from everyone's files: never in My files, not counted toward quota, not in exports. It lives under derived because it can always be fetched again, and because the worker may write there (§10.4).
+- **API:** every object that names a person carries the picture's version: `avatar` on `PersonDto` (people picker, access, activity, job person), on the session's `UserProfile` and on the admin's `AdminUser`, `uploadedByAvatar` on versions and `ownerAvatar` on the Jobs page's files. Null means initials. `GET /api/v1/people/{id}/avatar?v={avatar}` serves it to anyone signed in, never on public links, `private, max-age=31536000, immutable` when `v` matches (a new picture is a new URL), 404 without one. Loading it isn't audited. `avatarUrl()` in `@dokument/api` builds the URL.
+- **Initials:** the first letter of the first and the last word of the display name, uppercased in the UI language: Axel Elmarsson → AE, Anna Maria Svensson → AS, alice → A, an email used as the name → its first letter. One `initials()` in `@dokument/core` serves the web and the app.
+- **Looks:** the Avatar component (§16.4) shows the initials in a tonal circle and lays the picture over them once it loads, so lists never flash empty circles and a picture that fails to load leaves the initials. Sizes stay 24, 32 and 48 px on the web; the app uses 32, 40 and 56 px, and moved from one letter on `primary` to the web's two letters and tones (`primary-container` for the person themself, `secondary-container` for others). The account menu now shows the picture beside the name.
+- **Admin:** the Jobs page has a Profile pictures card; its jobs name whose picture they fetch.
+
 ---
 
 ## 6. Data model (sketch)
@@ -269,6 +286,8 @@ users(id, oidc_issuer, oidc_subject, email, display_name, role {user|admin},
       quota_bytes NULL→default, quota_unlimited,   -- own limit, the default, or no limit (§17)
       quota_source {admin|claim},                   -- who set it (§17.1)
       used_bytes, reserved_bytes, locale NULL→browser {sv|en}, created_at, last_login_at, disabled_at,
+      picture_url,                                  -- the picture claim at the last sign-in (§5.1)
+      avatar_version, avatar_source, avatar_etag,   -- the stored picture: hash, the URL it came from, the IdP's ETag
       UNIQUE (oidc_issuer, oidc_subject))
 
 nodes(id, owner_id, parent_id NULL, kind {folder|file}, name, name_key,
@@ -376,6 +395,7 @@ Notes:
   previews/ab/{sha256}/seek.webp     # a video's seek previews: frames for the timeline, as one sheet (§14)
   previews/ab/{sha256}/pages-{n}.webp  # a PDF's pages as small images for choosing pages, 100 to a sheet (§8.4)
   tmp/pdf/{operation_id}/{n}.pdf     # a merge or split's new PDFs, until the server saves them (§8.4)
+  avatars/{person_id}.webp           # each person's profile picture from the sign-in provider, 256 px (§5.1)
 /data/backups/              # DB dumps and name manifests (§7.1, §19)
 /data/exports/              # optional: readable copies written by export jobs (§7.1)
 ```
@@ -541,7 +561,7 @@ Sharing with people is built (decision 39). Public links and notifications follo
 - **Priorities:** interactive work (a user just uploaded) before bulk imports and rescans.
 - **Backfill:** when the worker starts, it queues the thumbnail, metadata and text stages at background priority for every blob without results from the current `pipeline_version`. That covers files from before a stage existed and pipeline upgrades. When video copies are made in the background, it also queues every copy still missing (never ones that failed), and it queues seek previews (§14) for every video of 10 s or more without them (again never failed ones).
 - **Timeouts per job type:** the default 5 minutes, except the text stage, which gets 30 minutes because a long scanned PDF is read page by page, the transcode stage, which gets 3 hours (`Worker__TranscodeJobTimeout`) because a long film is re-encoded on the CPU, and seek previews, which get 15 minutes (`Worker__SeekPreviewsJobTimeout`) for up to 100 seeks into a long 4K film.
-- **Admin UI** (built, decision 27): the Jobs page at `/admin/jobs` shows one card per queue (running, waiting, failed, done in the last 7 days) with **Pause/Resume**, then the running, waiting or failed jobs, filterable by type. Each job names the **files that use its content**, whoever owns them: name, owner, folder path, and whether it's the current file, an older version or in the trash. Playable copies and seek previews (§14) have their own cards, after the file stages. Tag-rule runs (§13.4) have their own card and name the rule's tag instead of files. Filing (§13.6) has two: `file` jobs name the file being filed, and a filing rule's "file existing" run names its tag (without a link, since filing rules are each person's own). Failed jobs show their last error and can be retried or cleared, one at a time or all at once. Jobs record `started_at`, so running jobs show how long they've been at it. A paused queue is stored in the `jobs` setting (`{"paused": ["text"]}`) and checked in the claim query, so every worker honours it. Still to come: "regenerate missing" and editing concurrency.
+- **Admin UI** (built, decision 27): the Jobs page at `/admin/jobs` shows one card per queue (running, waiting, failed, done in the last 7 days) with **Pause/Resume**, then the running, waiting or failed jobs, filterable by type. Each job names the **files that use its content**, whoever owns them: name, owner, folder path, and whether it's the current file, an older version or in the trash. Playable copies and seek previews (§14) have their own cards, after the file stages. Tag-rule runs (§13.4) have their own card and name the rule's tag instead of files. Filing (§13.6) has two: `file` jobs name the file being filed, and a filing rule's "file existing" run names its tag (without a link, since filing rules are each person's own). Profile pictures (§5.1) have one too, and name whose picture they fetch. Failed jobs show their last error and can be retried or cleared, one at a time or all at once. Jobs record `started_at`, so running jobs show how long they've been at it. A paused queue is stored in the `jobs` setting (`{"paused": ["text"]}`) and checked in the claim query, so every worker honours it. Still to come: "regenerate missing" and editing concurrency.
 - **Per file:** the details panel's Info tab has a **Processing** section with each stage's state (done, working on it, waiting with the number of jobs ahead, paused, nothing found, unsupported, unreadable, failed), and file listings carry the stages still waiting or running so grid and list can show a badge (§16.4). Admins also see a failed step's error and can retry it there. Video and audio files browsers can't play also list their **playable copy** (§14) after the stages: its progress while it's made, "made when someone opens the file" or "turned off" by the admin's setting, and ffmpeg's error for admins when it couldn't be converted. It is left out of the file-list badge, since the viewer shows its own progress. Videos of 10 s or more also list their **seek previews** last.
 
 ### 10.2 Stages
@@ -1032,6 +1052,7 @@ Web components are Radix primitives styled in the shadcn/ui pattern (we own the 
 - **VersionHistory:** the Versions tab of the details panel. It marks the current and "Keep forever" versions and warns "Removed in N days" per the retention policy.
 - **StorageMeter:** a warning at 80 % and a critical state at 95 %, in words as well as colour.
 - **FileViewer:** the §14 viewer: a header with the file's name, Share, Download, details and More; the preview; a floating toolbar for pages and zoom; previous/next arrows on wide screens and swipes on phones. States: loading, preparing (the worker is still making the preview), no preview, and failed, each with Download. Opened from search it takes the hits to mark (§14) and shows "Result 3 of 23".
+- **Avatar:** a person's profile picture or their initials in a tonal circle (§5.1); decorative, since the name is always written next to it.
 - **NavRail**, **BottomNav**, **EmptyState** (also the drag-and-drop target that names the destination folder).
 
 ### 16.5 Content and accessibility
@@ -1264,6 +1285,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 43 | Merging and splitting PDFs | 2026-11-04: PDFs only for now (Axel chose this over Office files and photos too); PDFium in the worker, not Gotenberg or the clients; results are new files next to the originals, never versions, with Move the originals to the trash off by default; sources pinned by blob; the worker writes to the derived volume and the server saves, hashing again; text, words and text corrections copied per page, people's tags carried over, details from the first source, filing rules skipped, "Made from" per version; duplicates made anyway with Remove this copy; quota reserved from the sources and settled; 100 files or 2,000 pages per merge, 500 parts per split; page sheets on demand; the tray follows operations by polling; the app's selection mode and screens come in a second pull request (§8.4) |
 | 44 | Signing out at the IdP | 2026-11-07: signing out on the web and in the app also ends the person's session at the IdP (RP-initiated logout) when its discovery lists an `end_session_endpoint`, so signing in again isn't silent (Axel chose web and app together over web only or staying local). The session keeps the IdP's ID token as `id_token_hint`; the IdP returns to `/api/v1/auth/signed-out` (web) or `/api/v1/auth/app-signed-out` (app), which must be registered as post-logout redirect URIs; without the endpoint, sign-out stays local. Ending sessions under Active devices stays local; back-channel logout is later (§5) |
 | 46 | Home Wi-Fi names in the app | 2026-11-10: the app can keep a list of home Wi-Fi names and then tries the local address only on those networks (Axel chose this over keeping the proof alone). Reading the name needs location permission, asked only when a network is added; when the name can't be read the local address is tried anyway, as the proof still protects the token. Partly reverses decision 37 (§15.3) |
+| 47 | Profile pictures | 2026-11-11: pictures come only from the sign-in provider's `picture` claim (`OIDC_PICTURE_CLAIM`, empty = off), no own uploads (Axel's choice); fetched by an `avatar` worker job at every sign-in with the ETag, re-encoded to a 256 px WebP in `/data/derived/avatars/` (Axel chose derived over a volume of its own); local addresses allowed; initials from the display name's first and last word, worked out in the clients (Axel chose this over `given_name` and `family_name`); DTOs carry the picture's version for an immutable URL (§5.1) |
 
 ## 26. Open questions
 

@@ -1,4 +1,4 @@
-import type { ShareRole } from "@dokument/api";
+import { avatarUrl, type ShareRole } from "@dokument/api";
 import { ShareDialog, useSnackbar } from "@dokument/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -50,7 +50,7 @@ export function ShareNodeDialog({ node, onClose }: { node: { id: string; name: s
       name={node.name}
       people={access.data ? accessPeople(access.data, you) : []}
       canManage={access.data?.yourAccess === "owner"}
-      candidates={(people.data ?? []).map((p) => ({ id: p.id, name: p.name, email: p.email }))}
+      candidates={(people.data ?? []).map((p) => ({ id: p.id, name: p.name, email: p.email, picture: avatarUrl(p.id, p.avatar) }))}
       onQueryChange={setTyped}
       onAdd={(candidate, r) =>
         void change(() => drive.share(node.id, candidate.id, r), t("toasts.shareAdded", { name: candidate.name }))

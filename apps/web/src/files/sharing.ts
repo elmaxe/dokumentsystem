@@ -1,4 +1,4 @@
-import type { NodeAccess, NodeRole } from "@dokument/api";
+import { avatarUrl, type NodeAccess, type NodeRole } from "@dokument/api";
 import { useSnackbar, type SharePerson } from "@dokument/ui";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -25,6 +25,7 @@ export function accessPeople(access: NodeAccess, you: string | undefined): Share
       email: access.owner.email ?? "",
       role: "owner",
       you: access.owner.id === you,
+      picture: avatarUrl(access.owner.id, access.owner.avatar),
       tone: 1,
     },
     ...access.people.map(
@@ -37,6 +38,7 @@ export function accessPeople(access: NodeAccess, you: string | undefined): Share
         inheritedFrom: p.inheritedFrom?.name,
         inheritedRole: p.inheritedRole ?? undefined,
         removable: !!p.shareId,
+        picture: avatarUrl(p.person.id, p.person.avatar),
       }),
     ),
   ];

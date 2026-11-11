@@ -1,3 +1,4 @@
+import { avatarUrl } from "@dokument/api";
 import { pickLanguage } from "@dokument/i18n";
 import {
   AccountMenu,
@@ -163,6 +164,7 @@ function Shell() {
   }
 
   const name = session.data?.user.displayName ?? "";
+  const picture = session.data ? avatarUrl(session.data.user.id, session.data.user.avatar) : null;
   const account = useAccountSettings();
   const picked = account.language;
 
@@ -207,6 +209,7 @@ function Shell() {
           )}
           <AccountMenu
             name={name}
+            picture={picture}
             email={session.data?.user.email}
             language={picked ?? "browser"}
             currentLanguage={i18n.language === "sv" ? "sv" : "en"}
@@ -222,7 +225,7 @@ function Shell() {
                 title={name}
                 className="ml-auto inline-flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-on-surface/8"
               >
-                <Avatar name={name} tone={1} />
+                <Avatar name={name} picture={picture} tone={1} />
               </button>
             }
           />

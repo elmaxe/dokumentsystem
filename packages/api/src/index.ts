@@ -111,6 +111,14 @@ export function contentUrl(nodeId: string, versionId?: string, baseUrl = ""): st
 }
 
 /**
+ * A person's profile picture (§5.1), from the `avatar` their DTO carries; null when they have none and initials show
+ * instead. The URL names the picture's version, so it can be cached for good.
+ */
+export function avatarUrl(personId: string, avatar: string | null | undefined, baseUrl = ""): string | null {
+  return avatar ? `${baseUrl}/api/v1/people/${personId}/avatar?v=${encodeURIComponent(avatar)}` : null;
+}
+
+/**
  * A file's thumbnail: small (256 px) for lists or medium (640 px) for the grid. Pass the current version id so the
  * browser's cache follows new versions. Only ready once the node's `thumbnail` is "ready".
  */

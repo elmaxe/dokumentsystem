@@ -675,6 +675,18 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AvatarETag")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_etag");
+
+                    b.Property<string>("AvatarSource")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_source");
+
+                    b.Property<string>("AvatarVersion")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_version");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -709,6 +721,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("oidc_subject");
+
+                    b.Property<string>("PictureUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("picture_url");
 
                     b.Property<long?>("QuotaBytes")
                         .HasColumnType("bigint")
