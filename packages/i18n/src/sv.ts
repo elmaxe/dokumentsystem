@@ -1460,6 +1460,18 @@ export const sv: Strings = {
       devicesCount_other: "{{count}} enheter",
       about: "Om",
       versions: "Appen {{app}} · Servern {{server}} · {{host}}",
+      yourFiles: "Dina filer",
+      filingRules_zero: "Inga regler än",
+      filingRules_one: "{{count}} regel · {{on}} på",
+      filingRules_other: "{{count}} regler · {{on}} på",
+    },
+    filing: {
+      position: "Regel {{index}} av {{count}}",
+      chooseFolder: "Välj mapp",
+      pickTitle: "Mapp för regeln",
+      pickHere: "Använd den här mappen",
+      pickTop: "Öppna mappen som filerna ska till.",
+      tagHint: "Välj en du använder, eller skriv en ny.",
     },
     addresses: {
       title: "Adresser",

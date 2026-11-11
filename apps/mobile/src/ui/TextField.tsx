@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ComponentRef, type Ref } from "react";
 import { TextInput, View, type TextInputProps } from "react-native";
 import { useTheme } from "../state/theme";
 import { font } from "./Text";
@@ -9,8 +9,9 @@ export function TextField({
   label,
   hint,
   error,
+  ref,
   ...input
-}: TextInputProps & { label: string; hint?: string; error?: string | null }) {
+}: TextInputProps & { label: string; hint?: string; error?: string | null; ref?: Ref<ComponentRef<typeof TextInput>> }) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
   const border = error
@@ -25,6 +26,7 @@ export function TextField({
       </Text>
       <TextInput
         {...input}
+        ref={ref}
         accessibilityLabel={label}
         accessibilityHint={error ?? hint}
         onFocus={(event) => {

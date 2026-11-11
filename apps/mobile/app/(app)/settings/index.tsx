@@ -8,6 +8,7 @@ import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { displayAddress } from "../../../src/lib/address";
 import { useAccountSettings } from "../../../src/state/account";
+import { filingRulesQuery } from "../../../src/state/filing";
 import { useFormat } from "../../../src/state/format";
 import { serverInfoQuery, sessionsQuery } from "../../../src/state/queries";
 import { useSignedIn } from "../../../src/state/session";
@@ -31,6 +32,7 @@ export default function Settings() {
   const { server, route } = useSignedIn();
   const info = useQuery(serverInfoQuery);
   const sessions = useQuery(sessionsQuery);
+  const rules = useQuery(filingRulesQuery);
   const [choosingLanguage, setChoosingLanguage] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -90,6 +92,23 @@ export default function Settings() {
               void save(account.setShowSeconds(value), t("account.settingFailed"))
             }
           />
+        </Section>
+        <Section title={t("mobile.settings.yourFiles")}>
+          <Card>
+            <NavRow
+              icon="drive_file_move"
+              label={t("filing.title")}
+              value={
+                rules.data
+                  ? t("mobile.settings.filingRules", {
+                      count: rules.data.length,
+                      on: rules.data.filter((rule) => rule.enabled).length,
+                    })
+                  : undefined
+              }
+              onPress={() => router.push("/settings/filing")}
+            />
+          </Card>
         </Section>
         <Section title={t("mobile.settings.connection")}>
           <Card>

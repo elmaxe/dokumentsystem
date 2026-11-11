@@ -2,6 +2,7 @@ import { router, Stack, usePathname } from "expo-router";
 import { useShareIntentContext } from "expo-share-intent";
 import { useEffect } from "react";
 import { View } from "react-native";
+import { useFiledMessages } from "../../src/state/filing";
 import { useLiveUpdates } from "../../src/state/live";
 import { resumeUploads } from "../../src/state/notify";
 import { useSharedWithYouNotices } from "../../src/state/sharing";
@@ -12,7 +13,7 @@ import { UploadPrompts } from "../../src/ui/UploadPrompts";
 /**
  * Everything behind sign-in. Live updates run while it's open (docs/design.md §15.4), uploads left over from the last
  * time carry on, files shared from another app open the share screen (§15.3), and a snackbar says when someone
- * shares something with the person (§9).
+ * shares something with the person (§9), and another when a filing rule moved their files (§13.6).
  */
 export default function SignedInLayout() {
   const theme = useTheme();
@@ -20,6 +21,7 @@ export default function SignedInLayout() {
   const { hasShareIntent } = useShareIntentContext();
   useLiveUpdates();
   useSharedWithYouNotices();
+  useFiledMessages();
 
   useEffect(() => {
     void resumeUploads();

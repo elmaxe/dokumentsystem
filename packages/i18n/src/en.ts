@@ -1454,6 +1454,18 @@ export const en = {
       devicesCount_other: "{{count}} devices",
       about: "About",
       versions: "App {{app}} · Server {{server}} · {{host}}",
+      yourFiles: "Your files",
+      filingRules_zero: "No rules yet",
+      filingRules_one: "{{count}} rule · {{on}} on",
+      filingRules_other: "{{count}} rules · {{on}} on",
+    },
+    filing: {
+      position: "Rule {{index}} of {{count}}",
+      chooseFolder: "Choose folder",
+      pickTitle: "Folder for the rule",
+      pickHere: "Use this folder",
+      pickTop: "Open the folder the files should go to.",
+      tagHint: "Pick one you use, or type a new one.",
     },
     addresses: {
       title: "Addresses",

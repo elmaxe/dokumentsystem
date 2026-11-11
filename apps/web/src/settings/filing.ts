@@ -30,30 +30,6 @@ export const filing = {
   undo: (nodeId: string) => send(api.POST("/api/v1/filings/{id}/undo", { params: { path: { id: nodeId } } })),
 };
 
-/** The placeholders a folder may hold, as the server reads them. */
-const placeholder = /\{[^{}]*\}/g;
-
-/** Why a folder template won't do, checked as the person types; the server checks names too. */
-export function folderProblem(template: string): "empty" | "placeholder" | null {
-  if (template.split("/").every((folder) => folder.trim() === "")) return "empty";
-  const unknown = [...template.matchAll(placeholder)].some((m) => !/^\{(year|month)\}$/i.test(m[0]));
-  return unknown || /[{}]/.test(template.replace(placeholder, "")) ? "placeholder" : null;
-}
-
-/** "Kvitton/{year}" as "Kvitton / 2026", for this month. */
-export function exampleFolder(template: string, now = new Date()): string {
-  return template
-    .split("/")
-    .map((folder) => folder.trim())
-    .filter(Boolean)
-    .map((folder) =>
-      folder.replace(placeholder, (m) =>
-        m.toLowerCase() === "{year}" ? String(now.getFullYear()) : String(now.getMonth() + 1).padStart(2, "0"),
-      ),
-    )
-    .join(" / ");
-}
-
 /**
  * Says when a filing rule moved the person's files, wherever they are in the app, with Undo (§13.6). The worker's
  * notice only says that something was filed; the files come from the API, newer than the last ones shown.
