@@ -1286,7 +1286,7 @@ export const sv: Strings = {
       moveDown: "Flytta ned {{name}}",
       leaveOut: "Ta bort {{name}} från sammanslagningen",
       mode: "Hur den delas upp",
-      pagesHint: "Tryck på en sida för att klippa efter den eller utelämna den.",
+      pagesHint: "Tryck på en sida för att utelämna den eller ta med den igen. Håll på den för att börja en ny fil efter den.",
       leftOut: "Utelämnad",
       inFile: "I fil {{number}}",
       cutAfter: "en ny fil börjar efter den",
@@ -1347,7 +1347,7 @@ export const sv: Strings = {
       sharedWith_other: "Med {{count}} personer",
       tagsReadOnly: "Bara de som kan redigera filen kan ändra dess taggar.",
       addTagHint: "Skilj flera åt med kommatecken.",
-      onTheWeb: "Att redigera detaljerna och äldre versioner finns på webben tills vidare.",
+      onTheWeb: "Att redigera detaljerna finns på webben tills vidare.",
     },
     search: {
       in: "I",
@@ -1474,8 +1474,26 @@ export const sv: Strings = {
       test: "Testa",
       add: "Lägg till",
       remove: "Ta bort",
+      otherNetwork: "Används inte: det här är inte ett av dina wifi-nätverk hemma. Kontrollerad {{date}}.",
       explain:
-        "Appen använder den lokala adressen när den här servern svarar där och bevisar att det är samma server. Den kontrollerar igen när nätverket ändras, så inget behöver din plats.",
+        "Appen använder den lokala adressen när den här servern svarar där och bevisar att det är samma server. Den kontrollerar igen när nätverket ändras.",
+      homeNetworks: "Wifi-nätverk hemma",
+      homeNetworksNone:
+        "Den lokala adressen prövas i alla nätverk. Lägg till ditt wifi hemma för att bara pröva den där.",
+      homeNetworksOnly: "Den lokala adressen prövas bara i de här nätverken.",
+      addThisNetwork: "Lägg till det här nätverket",
+      removeNetwork: "Ta bort {{name}}",
+      openSettings: "Öppna inställningar",
+      wifiProblem: {
+        denied: "Appen behöver tillgång till platsen för att läsa wifi-nätverkets namn.",
+        approximate:
+          "Android visar bara wifi-nätverkets namn med exakt plats. Slå på Använd exakt plats för appen.",
+        locationOff: "Slå på platstjänster i telefonen så att den kan visa wifi-nätverkets namn.",
+        notWifi: "Anslut till ditt wifi hemma först.",
+        unknown: "Wifi-nätverkets namn gick inte att läsa.",
+      },
+      locationWhy:
+        "Telefonen visar bara ett wifi-nätverks namn för appar som får se din plats. Appen läser bara namnet, aldrig var du är.",
     },
     devices: {
       title: "Aktiva enheter",

@@ -1,19 +1,20 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
+import { KeyboardAvoidingView, Linking, Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { parseAddress } from "../../../src/lib/address";
+import { readWifiName, type WifiProblem } from "../../../src/lib/wifi";
 import { useFormat } from "../../../src/state/format";
 import { useSession, useSignedIn } from "../../../src/state/session";
-import { Button } from "../../../src/ui/Button";
+import { Button, IconButton } from "../../../src/ui/Button";
 import { Icon } from "../../../src/ui/Icon";
 import { Notice } from "../../../src/ui/Notice";
-import { Section } from "../../../src/ui/SettingsRows";
+import { Card, Section } from "../../../src/ui/SettingsRows";
 import { Text } from "../../../src/ui/Text";
 import { TextField } from "../../../src/ui/TextField";
 import { TopBar } from "../../../src/ui/TopBar";
 
-/** The main address and an optional local one (docs/design.md §15.3, decision 2). */
+/** The main address, an optional local one, and the home Wi-Fi networks it is tried on (docs/design.md §15.3). */
 export default function Addresses() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -50,6 +51,11 @@ export default function Addresses() {
     switch (route.local) {
       case "verified":
         return { text: t("mobile.addresses.inUse", { date: checked }), className: "text-success" };
+      case "otherNetwork":
+        return {
+          text: t("mobile.addresses.otherNetwork", { date: checked }),
+          className: "text-on-surface-variant",
+        };
       case "wrong-server":
         return {
           text: t("mobile.addresses.wrongServer", { date: checked }),
@@ -141,7 +147,77 @@ export default function Addresses() {
           </View>
         </View>
         <Notice icon="info" text={t("mobile.addresses.explain")} />
+        {server.localUrl ? <HomeNetworks /> : null}
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/** The Wi-Fi networks the local address is tried on; none tries it everywhere. */
+function HomeNetworks() {
+  const { t } = useTranslation();
+  const { setHomeNetworks } = useSession();
+  const { server } = useSignedIn();
+  const names = server.homeNetworks ?? [];
+  const [problem, setProblem] = useState<WifiProblem | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const addThis = async () => {
+    setBusy(true);
+    setProblem(null);
+    const read = await readWifiName().catch(() => ({ error: "unknown" as const }));
+    if ("name" in read) {
+      if (!names.includes(read.name)) await setHomeNetworks([...names, read.name]);
+    } else {
+      setProblem(read.error);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Section title={t("mobile.addresses.homeNetworks")}>
+      <Text variant="body-sm" className="text-on-surface-variant">
+        {t(
+          names.length ? "mobile.addresses.homeNetworksOnly" : "mobile.addresses.homeNetworksNone",
+        )}
+      </Text>
+      {names.length ? (
+        <Card>
+          {names.map((name) => (
+            <View key={name} className="min-h-touch flex-row items-center gap-3 pl-4">
+              <Icon name="wifi" size={20} />
+              <Text className="flex-1 text-on-surface">{name}</Text>
+              <IconButton
+                icon="close"
+                label={t("mobile.addresses.removeNetwork", { name })}
+                onPress={() => void setHomeNetworks(names.filter((n) => n !== name))}
+              />
+            </View>
+          ))}
+        </Card>
+      ) : null}
+      {problem ? (
+        <Text variant="body-sm" className="text-error">
+          {t(`mobile.addresses.wifiProblem.${problem}`)}
+        </Text>
+      ) : null}
+      <View className="flex-row flex-wrap gap-2">
+        <Button
+          label={t("mobile.addresses.addThisNetwork")}
+          variant="tonal"
+          icon="add"
+          onPress={() => void addThis()}
+          busy={busy}
+        />
+        {problem === "denied" || problem === "approximate" ? (
+          <Button
+            label={t("mobile.addresses.openSettings")}
+            variant="text"
+            onPress={() => void Linking.openSettings()}
+          />
+        ) : null}
+      </View>
+      <Notice icon="location_on" text={t("mobile.addresses.locationWhy")} />
+    </Section>
   );
 }

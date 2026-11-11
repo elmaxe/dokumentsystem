@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { View } from "react-native";
+import { Keyboard, View } from "react-native";
 import { Button } from "./Button";
 import { Sheet } from "./Sheet";
 import { TextField } from "./TextField";
@@ -67,8 +67,9 @@ export function NameSheet({
             setValue(text);
             setError(null);
           }}
+          // Enter only puts the keyboard away; the button creates or renames.
           returnKeyType="done"
-          onSubmitEditing={() => void submit()}
+          onSubmitEditing={() => Keyboard.dismiss()}
         />
         <View className="flex-row justify-end gap-2">
           <Button variant="text" label={t("common.cancel")} onPress={onClose} />

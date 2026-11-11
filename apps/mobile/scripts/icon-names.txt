@@ -37,6 +37,8 @@ drive_file_move
 drive_file_rename_outline
 edit
 error
+error_outline
+expand_more
 filter_alt_off
 fingerprint
 folder
@@ -53,9 +55,12 @@ history
 hourglass_top
 image
 info
+keep
+keep_off
 keyboard_arrow_down
 keyboard_arrow_up
 link
+location_on
 login
 logout
 manage_search
@@ -79,6 +84,8 @@ radio_button_checked
 radio_button_unchecked
 refresh
 remove_circle
+remove_circle_outline
+replay
 replay_10
 restore_from_trash
 router

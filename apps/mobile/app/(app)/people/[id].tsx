@@ -19,7 +19,7 @@ import { Avatar } from "../../../src/ui/Avatar";
 import { Button, IconButton } from "../../../src/ui/Button";
 import { Icon } from "../../../src/ui/Icon";
 import { Notice } from "../../../src/ui/Notice";
-import { Sheet, SheetAction } from "../../../src/ui/Sheet";
+import { Sheet, SheetAction, useKept } from "../../../src/ui/Sheet";
 import { toast } from "../../../src/ui/Snackbar";
 import { font, Text } from "../../../src/ui/Text";
 
@@ -100,6 +100,9 @@ export default function SharePeople() {
 
   const candidates = (people.data ?? []).filter((person) => person.id !== data?.owner.id);
   const chosen = sheet && typeof sheet === "object" ? sheet : null;
+  // Shown while their sheets slide away after they were set back to null.
+  const shownPerson = useKept(chosen);
+  const shownRemoving = useKept(removing);
 
   return (
     <View
@@ -289,20 +292,20 @@ export default function SharePeople() {
         <Text className="mx-5 mb-2 text-on-surface-variant">{t("share.rolesHint")}</Text>
         <Text className="mx-5 mb-2 text-on-surface-variant">{t("mobile.sharing.inheritHint")}</Text>
       </Sheet>
-      <Sheet open={!!chosen} onClose={() => setSheet(null)} title={chosen?.person.name}>
-        {chosen
+      <Sheet open={!!chosen} onClose={() => setSheet(null)} title={shownPerson?.person.name}>
+        {shownPerson
           ? roles.map((r) => (
               <RoleChoice
                 key={r}
                 role={r}
-                selected={chosen.role === r}
+                selected={shownPerson.role === r}
                 // A role from a folder above can't be lowered here (§9).
-                disabled={chosen.inheritedRole === "editor" && r === "viewer"}
-                onPress={() => setPersonRole(chosen, r)}
+                disabled={shownPerson.inheritedRole === "editor" && r === "viewer"}
+                onPress={() => setPersonRole(shownPerson, r)}
               />
             ))
           : null}
-        {chosen?.shareId ? (
+        {shownPerson?.shareId ? (
           <>
             <View className="my-2 h-px bg-outline-variant" />
             <SheetAction
@@ -311,7 +314,7 @@ export default function SharePeople() {
               danger
               onPress={() => {
                 setSheet(null);
-                setRemoving(chosen);
+                setRemoving(shownPerson);
               }}
             />
           </>
@@ -321,13 +324,15 @@ export default function SharePeople() {
         open={!!removing}
         onClose={() => setRemoving(null)}
         title={
-          removing ? t("mobile.sharing.removeTitle", { name: removing.person.name }) : undefined
+          shownRemoving
+            ? t("mobile.sharing.removeTitle", { name: shownRemoving.person.name })
+            : undefined
         }
       >
         <View className="mx-5 gap-4">
           <Text className="text-on-surface-variant">
-            {removing
-              ? t("mobile.sharing.removeText", { name: removing.person.name, item: name })
+            {shownRemoving
+              ? t("mobile.sharing.removeText", { name: shownRemoving.person.name, item: name })
               : ""}
           </Text>
           <View className="flex-row justify-end gap-2">

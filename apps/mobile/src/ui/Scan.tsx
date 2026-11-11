@@ -52,7 +52,8 @@ export function NewButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
-  const [naming, setNaming] = useState(0);
+  // The name sheet stays mounted while it slides away; a new key starts it empty next time.
+  const [naming, setNaming] = useState({ key: 0, open: false });
 
   // Offline, the offline notice takes this place: uploads and merges wait for a connection anyway. The scanner is native
   // only, but the progress rows still show without it.
@@ -160,18 +161,18 @@ export function NewButton({
           label={t("mobile.new.folder")}
           onPress={() => {
             setMenu(false);
-            setNaming((n) => n + 1);
+            setNaming((n) => ({ key: n.key + 1, open: true }));
           }}
         />
         {scanner ? (
           <SheetAction icon={<Icon name="document_scanner" />} label={t("mobile.new.scan")} onPress={() => void scan()} />
         ) : null}
       </Sheet>
-      {naming > 0 ? (
+      {naming.key > 0 ? (
         <NameSheet
-          key={naming}
-          open
-          onClose={() => setNaming(0)}
+          key={naming.key}
+          open={naming.open}
+          onClose={() => setNaming((n) => ({ ...n, open: false }))}
           title={t("dialogs.newFolder.title")}
           label={t("dialogs.newFolder.label")}
           submitLabel={t("dialogs.newFolder.create")}

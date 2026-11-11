@@ -5,7 +5,8 @@ import { Image } from "expo-image";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as WebBrowser from "expo-web-browser";
 import { AppState } from "react-native";
-import { probeLocalAddress, type ProbeResult } from "../lib/localAddress";
+import { probeLocalAddress, tryLocalOn, type ProbeResult } from "../lib/localAddress";
+import { currentNetwork, networkOf } from "../lib/wifi";
 import { connect, disconnect, setUnauthorizedHandler } from "./api";
 import { drive } from "./queries";
 import { persister } from "./queryClient";
@@ -21,8 +22,12 @@ import {
   type SavedSession,
 } from "./storage";
 
-/** Which address the app talks to now, and what the last check of the local one found (docs/design.md §15.3). */
-export type Route = { using: "main" | "local"; local: ProbeResult | null; checkedAt: number | null };
+/**
+ * Which address the app talks to now, and what the last check of the local one found (docs/design.md §15.3):
+ * "otherNetwork" when the phone isn't on one of the home Wi-Fi networks, so it wasn't tried.
+ */
+export type LocalCheck = ProbeResult | "otherNetwork";
+export type Route = { using: "main" | "local"; local: LocalCheck | null; checkedAt: number | null };
 
 export type SessionState =
   | { status: "loading" }
@@ -40,8 +45,10 @@ type SessionContext = {
   /** The server ended this session (signed out or ended under Active devices elsewhere): back to signing in. */
   sessionEnded: (revoked: boolean) => Promise<void>;
   setLocalUrl: (localUrl: string | null) => Promise<void>;
+  /** The Wi-Fi networks the local address is tried on; empty tries it everywhere. */
+  setHomeNetworks: (names: string[]) => Promise<void>;
   /** Asks the local address to prove itself again now. */
-  checkLocal: () => Promise<ProbeResult | null>;
+  checkLocal: () => Promise<LocalCheck | null>;
 };
 
 const Context = createContext<SessionContext | null>(null);
@@ -64,6 +71,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!server.localUrl) {
       connect(server.mainUrl, session.token);
       return mainRoute;
+    }
+    if (!tryLocalOn(server.homeNetworks ?? [], await currentNetwork())) {
+      connect(server.mainUrl, session.token);
+      return { using: "main", local: "otherNetwork", checkedAt: Date.now() };
     }
     const local = await probeLocalAddress({
       localUrl: server.localUrl,
@@ -139,7 +150,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!hasLocal) return;
     let lastNetwork: string | null = null;
     const network = NetInfo.addEventListener((info) => {
-      const key = `${info.type}:${info.isConnected}`;
+      // A different Wi-Fi network counts as a change, for home networks.
+      const key = `${info.type}:${info.isConnected}:${networkOf(info).name ?? ""}`;
       if (lastNetwork !== null && key !== lastNetwork) void checkLocal();
       lastNetwork = key;
     });
@@ -185,6 +197,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const current = latest.current;
         if (current.status !== "signedIn") return;
         const server = { ...current.server, localUrl };
+        await saveServer(server);
+        const checked = await route(server, current.session);
+        setState({ ...current, server, route: checked });
+      },
+      setHomeNetworks: async (homeNetworks) => {
+        const current = latest.current;
+        if (current.status !== "signedIn") return;
+        const server = { ...current.server, homeNetworks };
         await saveServer(server);
         const checked = await route(server, current.session);
         setState({ ...current, server, route: checked });

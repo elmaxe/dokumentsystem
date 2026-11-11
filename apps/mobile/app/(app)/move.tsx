@@ -10,7 +10,7 @@ import { EmptyState } from "../../src/ui/EmptyState";
 import { TopBar } from "../../src/ui/TopBar";
 import { Button } from "../../src/ui/Button";
 import { FolderPicker } from "../../src/ui/FolderPicker";
-import { Sheet } from "../../src/ui/Sheet";
+import { Sheet, useKept } from "../../src/ui/Sheet";
 import { Text } from "../../src/ui/Text";
 
 /**
@@ -33,6 +33,7 @@ export default function Move() {
   const [busy, setBusy] = useState(false);
   const [target, setTarget] = useState<string | null>(null);
   const [losing, setLosing] = useState<Person[] | null>(null);
+  const shownLosing = useKept(losing);
   const moving = new Set(nodes.map((node) => node.id));
   // Something shared with the person at its own level sits in a folder they can't see, so there's nowhere to start.
   const outOfSight = queries.some(
@@ -89,11 +90,11 @@ export default function Move() {
       >
         <View className="mx-5 gap-4">
           <Text className="text-on-surface-variant">
-            {losing
+            {shownLosing
               ? t("dialogs.accessLost.text", {
                   count: nodes.length,
                   // Hermes has no Intl.ListFormat.
-                  names: losing.map((person) => person.name).join(", "),
+                  names: shownLosing.map((person) => person.name).join(", "),
                 })
               : ""}
           </Text>

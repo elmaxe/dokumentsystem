@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { probeLocalAddress } from "./localAddress";
+import { probeLocalAddress, tryLocalOn } from "./localAddress";
 import { sessionProof } from "./proof";
 
 const token = "q6Rk0n3o0Hc7wq1y2Nn9b0m0B0p3hN0u5tY0xQk1vXo";
@@ -33,5 +33,21 @@ describe("probeLocalAddress", () => {
     await expect(
       probeLocalAddress({ ...base, fetch: fetch as typeof globalThis.fetch, timeoutMs: 10 }),
     ).resolves.toBe("unreachable");
+  });
+});
+
+describe("tryLocalOn", () => {
+  it("tries everywhere without home Wi-Fi names", () => {
+    expect(tryLocalOn([], { wifi: false, name: null })).toBe(true);
+  });
+
+  it("tries only on a home Wi-Fi network once there are names", () => {
+    expect(tryLocalOn(["Home"], { wifi: true, name: "Home" })).toBe(true);
+    expect(tryLocalOn(["Home"], { wifi: true, name: "Café" })).toBe(false);
+    expect(tryLocalOn(["Home"], { wifi: false, name: null })).toBe(false);
+  });
+
+  it("tries when the name can't be read", () => {
+    expect(tryLocalOn(["Home"], { wifi: true, name: null })).toBe(true);
   });
 });

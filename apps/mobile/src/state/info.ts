@@ -1,6 +1,15 @@
-import type { FileDetailsDto, FileTags, FileTextDto, TagSuggestion, TextPage } from "@dokument/api";
+import type {
+  FileDetailsDto,
+  FileProcessing,
+  FileTags,
+  FileTextDto,
+  TagSuggestion,
+  TextPage,
+  VersionDto,
+} from "@dokument/api";
 import { keepPreviousData, queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api, send, unwrap } from "./api";
+import { pollWhilePending } from "./queries";
 
 /** What a file says about itself, with people's edits on top (docs/design.md §13.5). */
 export const fileDetailsQuery = (id: string, versionId: string | null) =>
@@ -62,4 +71,42 @@ export const invalidateTags = (queryClient: QueryClient) =>
     ["folder", "node", "tags", "search", "starred", "recent"].map((key) =>
       queryClient.invalidateQueries({ queryKey: [key] }),
     ),
+  );
+
+/** Where the worker is with each of a file's steps (§10.1), asked again while one is still to do. */
+export const processingQuery = (id: string, versionId: string | null) =>
+  queryOptions({
+    queryKey: ["processing", id, versionId],
+    queryFn: (): Promise<FileProcessing> =>
+      unwrap(api().GET("/api/v1/nodes/{id}/processing", { params: { path: { id } } })),
+    refetchInterval: (query) =>
+      pollWhilePending(
+        query.state.data?.steps.some((s) => ["waiting", "paused", "running"].includes(s.state)) ?? false,
+        query.state.dataUpdateCount,
+      ),
+  });
+
+/** Admins only: runs a failed step again. */
+export const retryJob = (jobId: string) =>
+  send(api().POST("/api/v1/admin/jobs/{id}/retry", { params: { path: { id: jobId } } }));
+
+/** A file's versions, newest first (§9). */
+export const versionsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ["versions", id],
+    queryFn: (): Promise<VersionDto[]> =>
+      unwrap(api().GET("/api/v1/nodes/{id}/versions", { params: { path: { id } } })),
+  });
+
+/** Makes an older version the current one: editors and the owner. */
+export const restoreVersion = (id: string, versionId: string) =>
+  unwrap(api().POST("/api/v1/nodes/{id}/versions/{versionId}/restore", { params: { path: { id, versionId } } }));
+
+/** Keeps a version out of retention, or puts it back: the owner only, as it uses their storage. */
+export const keepForever = (id: string, versionId: string, keep: boolean) =>
+  send(
+    api().PUT("/api/v1/nodes/{id}/versions/{versionId}/keep-forever", {
+      params: { path: { id, versionId } },
+      body: { keepForever: keep },
+    }),
   );

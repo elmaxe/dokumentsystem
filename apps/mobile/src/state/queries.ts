@@ -36,7 +36,7 @@ export const sessionsQuery = queryOptions({
 });
 
 /** Polled every 2 s while the worker still has something to do for a file on screen, then every 10 s. */
-const pollWhilePending = (pending: boolean, updates: number) => (pending ? (updates < 30 ? 2_000 : 10_000) : false);
+export const pollWhilePending = (pending: boolean, updates: number) => (pending ? (updates < 30 ? 2_000 : 10_000) : false);
 
 const busy = (node: NodeDto) => node.processing.length > 0 || node.thumbnail === "pending";
 

@@ -13,7 +13,7 @@ import { FileList } from "../../src/ui/FileList";
 import { FileTypeIcon } from "../../src/ui/FileTypeIcon";
 import { Icon } from "../../src/ui/Icon";
 import { Notice } from "../../src/ui/Notice";
-import { Sheet, SheetAction } from "../../src/ui/Sheet";
+import { Sheet, SheetAction, useKept } from "../../src/ui/Sheet";
 import { Text } from "../../src/ui/Text";
 import { TopBar } from "../../src/ui/TopBar";
 
@@ -32,9 +32,12 @@ export default function Trash() {
   const queryClient = useQueryClient();
   const trash = useQuery(trashQuery);
   const [chosen, setChosen] = useState<TrashItem | null>(null);
+  // Shown while the sheet slides away after it was set back to null.
+  const shownItem = useKept(chosen);
   const [confirm, setConfirm] = useState<
     { kind: "delete"; item: TrashItem } | { kind: "empty" } | null
   >(null);
+  const shownConfirm = useKept(confirm);
   const [busy, setBusy] = useState(false);
   const items = trash.data?.items ?? [];
   const byId = new Map(items.map((item) => [item.node.id, item]));
@@ -61,22 +64,22 @@ export default function Trash() {
   };
 
   const confirmTitle =
-    confirm?.kind === "delete"
-      ? t("trash.delete.titleOne", { name: confirm.item.node.name })
-      : confirm?.kind === "empty"
+    shownConfirm?.kind === "delete"
+      ? t("trash.delete.titleOne", { name: shownConfirm.item.node.name })
+      : shownConfirm?.kind === "empty"
         ? t("trash.empty.title")
         : undefined;
   const confirmText =
-    confirm?.kind === "delete"
+    shownConfirm?.kind === "delete"
       ? [
-          confirm.item.node.kind === "folder" && confirm.item.itemCount > 0
-            ? t("trash.delete.inside", { count: confirm.item.itemCount })
+          shownConfirm.item.node.kind === "folder" && shownConfirm.item.itemCount > 0
+            ? t("trash.delete.inside", { count: shownConfirm.item.itemCount })
             : null,
           t("trash.cantUndo"),
         ]
           .filter(Boolean)
           .join(" ")
-      : confirm?.kind === "empty"
+      : shownConfirm?.kind === "empty"
         ? `${t("trash.empty.text", { count: items.length, size: format.size(trash.data?.freeableBytes ?? 0) })} ${t("trash.cantUndo")}`
         : "";
 
@@ -131,23 +134,23 @@ export default function Trash() {
         />
       )}
       <Sheet open={!!chosen} onClose={() => setChosen(null)}>
-        {chosen ? (
+        {shownItem ? (
           <>
             <View className="mx-5 mb-2 flex-row items-center gap-3">
-              <FileTypeIcon kind={kindOfNode(chosen.node)} />
+              <FileTypeIcon kind={kindOfNode(shownItem.node)} />
               <View className="min-w-0 flex-1">
                 <Text variant="title-md" numberOfLines={2} className="text-on-surface">
-                  {chosen.node.name}
+                  {shownItem.node.name}
                 </Text>
                 <Text
                   variant="body-sm"
                   className={
-                    daysLeft(chosen) <= soonDays ? "text-warning" : "text-on-surface-variant"
+                    daysLeft(shownItem) <= soonDays ? "text-warning" : "text-on-surface-variant"
                   }
                 >
                   {t("trash.meta", {
-                    folder: chosen.path.at(-1)?.name ?? t("nav.myFiles"),
-                    count: daysLeft(chosen),
+                    folder: shownItem.path.at(-1)?.name ?? t("nav.myFiles"),
+                    count: daysLeft(shownItem),
                   })}
                 </Text>
               </View>
@@ -156,7 +159,7 @@ export default function Trash() {
               icon={<Icon name="restore_from_trash" />}
               label={t("actions.restore")}
               onPress={() => {
-                const item = chosen;
+                const item = shownItem;
                 setChosen(null);
                 void restore(t, queryClient, [item.node]);
               }}
@@ -166,7 +169,7 @@ export default function Trash() {
               label={t("actions.deleteForever")}
               danger
               onPress={() => {
-                const item = chosen;
+                const item = shownItem;
                 setChosen(null);
                 setConfirm({ kind: "delete", item });
               }}

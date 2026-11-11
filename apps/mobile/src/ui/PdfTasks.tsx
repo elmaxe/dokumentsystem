@@ -1,6 +1,6 @@
 import type { PdfOperation } from "@dokument/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { View } from "react-native";
@@ -23,6 +23,7 @@ export function PdfTaskRows() {
 }
 
 function PdfTaskRow({ op }: { op: PdfOperation }) {
+  const pathname = usePathname();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const busy = isActive(op);
@@ -71,7 +72,11 @@ function PdfTaskRow({ op }: { op: PdfOperation }) {
     void queryClient
       .fetchQuery(nodeQuery(first.nodeId))
       .then(({ node }) =>
-        node.parentId ? router.push({ pathname: "/folder/[id]", params: { id: node.parentId } }) : router.navigate("/"),
+        // Already in that folder: stay, so Back doesn't land in the same folder again.
+        node.parentId
+          ? pathname !== `/folder/${node.parentId}` &&
+            router.push({ pathname: "/folder/[id]", params: { id: node.parentId } })
+          : router.navigate("/"),
       )
       .catch(() => {});
   };
