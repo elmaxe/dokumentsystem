@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { canEdit, startMove, trash, useCanMove } from "../state/changes";
 import { readablePdf } from "../state/pdf";
 import { IconButton } from "./Button";
+import { TagsSheet } from "./TagsSheet";
 import { Text } from "./Text";
 
 /**
@@ -50,6 +51,9 @@ export function SelectionBar({ selection }: { selection: Selection }) {
   const editable = nodes.every((node) => canEdit(node.access));
   const pdfs = nodes.every(readablePdf);
   const single = nodes.length === 1 ? nodes[0] : undefined;
+  // Tags go on files only (§13.4). The sheet keeps the selection while it's open and ends it after a save.
+  const taggable = editable && nodes.every((node) => node.kind === "file");
+  const [tagging, setTagging] = useState({ key: 0, open: false });
   return (
     <View style={{ paddingTop: insets.top }} className="bg-secondary-container">
       <View className="h-topbar flex-row items-center gap-1 pl-1 pr-2" accessibilityLabel={t("selection.label")}>
@@ -85,6 +89,14 @@ export function SelectionBar({ selection }: { selection: Selection }) {
             }}
           />
         ) : null}
+        {taggable ? (
+          <IconButton
+            icon="sell"
+            label={t("tags.action")}
+            color="on-secondary-container"
+            onPress={() => setTagging((tags) => ({ key: tags.key + 1, open: true }))}
+          />
+        ) : null}
         {canMove(nodes) ? (
           <IconButton
             icon="drive_file_move"
@@ -108,6 +120,15 @@ export function SelectionBar({ selection }: { selection: Selection }) {
           />
         ) : null}
       </View>
+      {tagging.key > 0 ? (
+        <TagsSheet
+          key={tagging.key}
+          nodes={nodes}
+          open={tagging.open}
+          onClose={() => setTagging((tags) => ({ ...tags, open: false }))}
+          onSaved={selection.clear}
+        />
+      ) : null}
     </View>
   );
 }

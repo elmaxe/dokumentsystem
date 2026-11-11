@@ -16,6 +16,7 @@ import { NameSheet } from "./NameSheet";
 import { Icon } from "./Icon";
 import { Notice } from "./Notice";
 import { Sheet, SheetAction, useKept } from "./Sheet";
+import { TagsSheet } from "./TagsSheet";
 import { Text } from "./Text";
 
 /**
@@ -48,6 +49,7 @@ export function ItemSheet({
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<NodeDto | null>(null);
   const [viewing, setViewing] = useState<{ node: NodeDto; leave: boolean } | null>(null);
+  const [tagging, setTagging] = useState<{ key: number; node: NodeDto | null; open: boolean }>({ key: 0, node: null, open: false });
   // Each sheet keeps showing its item while it slides away after the item went back to null.
   const node = useKept(chosen);
   const renamed = useKept(renaming);
@@ -69,6 +71,14 @@ export function ItemSheet({
   const sheets = (
     <>
       {renameSheet}
+      {tagging.key > 0 ? (
+        <TagsSheet
+          key={tagging.key}
+          nodes={tagging.node ? [tagging.node] : []}
+          open={tagging.open}
+          onClose={() => setTagging((tags) => ({ ...tags, open: false }))}
+        />
+      ) : null}
       {viewed ? (
         <AccessSheet
           key={viewed.node.id}
@@ -230,6 +240,16 @@ export function ItemSheet({
       ) : editable ? (
         <>
           <View className="my-2 h-px bg-outline-variant" />
+          {isFolder ? null : (
+            <SheetAction
+              icon={<Icon name="sell" />}
+              label={t("tags.action")}
+              onPress={() => {
+                close();
+                setTagging((tags) => ({ key: tags.key + 1, node, open: true }));
+              }}
+            />
+          )}
           <SheetAction
             icon={<Icon name="drive_file_rename_outline" />}
             label={t("actions.rename")}

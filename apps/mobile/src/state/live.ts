@@ -12,16 +12,23 @@ const topicQueries: Record<LiveTopic, string[][]> = {
   trash: [["trash"]],
   storage: [["storage"]],
   account: [["auth", "session"], ["storage"]],
-  filings: [],
+  filings: [["filing-rules"]],
   shares: [["shared"], ["access"], ["folder"], ["node"], ["search"]],
 };
 
 const shareListeners = new Set<() => void>();
+const filingListeners = new Set<() => void>();
 
 /** Calls back on each notice that something was shared, changed or unshared with the person. */
 export function onShares(listener: () => void) {
   shareListeners.add(listener);
   return () => void shareListeners.delete(listener);
+}
+
+/** Calls back on each notice that a filing rule moved some of the person's files (§13.6). */
+export function onFilings(listener: () => void) {
+  filingListeners.add(listener);
+  return () => void filingListeners.delete(listener);
 }
 
 let connected = false;
@@ -79,6 +86,7 @@ export function useLiveUpdates() {
       const keys = new Set(message.topics.flatMap((topic) => topicQueries[topic] ?? []).map((key) => JSON.stringify(key)));
       keys.forEach((key) => void queryClient.invalidateQueries({ queryKey: JSON.parse(key) as string[] }));
       if (message.topics.includes("shares")) shareListeners.forEach((listener) => listener());
+      if (message.topics.includes("filings")) filingListeners.forEach((listener) => listener());
     });
     // Signed out here, or from Active devices somewhere else: the next request would get a 401 anyway. When this app
     // signed out itself, it has already left the signed-in state and this does nothing.

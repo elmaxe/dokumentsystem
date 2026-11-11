@@ -20,7 +20,8 @@ import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError, errorMessage, tagSuggestionsQuery } from "../files/drive";
-import { exampleFolder, filing, filingRulesQuery, folderProblem } from "./filing";
+import { exampleFolder, folderProblem, templateLabel } from "@dokument/core";
+import { filing, filingRulesQuery } from "./filing";
 
 type RuleAction = "edit" | "up" | "down" | "delete";
 
@@ -98,7 +99,7 @@ export function FilingRules() {
                     <span className="flex min-w-0 flex-col">
                       <span className={`flex items-center gap-1.5 text-title-sm ${rule.enabled ? "text-on-surface" : "text-on-surface-variant"}`}>
                         <Icon name="folder" size={18} className="text-on-surface-variant" />
-                        <span className="truncate">{templateLabel(t, rule.folder)}</span>
+                        <span className="truncate">{templateLabel(rule.folder, { year: t("filing.year"), month: t("filing.month") })}</span>
                       </span>
                       <span className="tabular text-body-sm text-on-surface-variant">
                         {rule.running ? (
@@ -186,18 +187,6 @@ export function FilingRules() {
       />
     </div>
   );
-}
-
-/** "Kvitton/{year}" as the list shows it: "Kvitton / year", in the person's language. */
-function templateLabel(t: ReturnType<typeof useTranslation>["t"], template: string) {
-  return template
-    .split("/")
-    .map((folder) =>
-      folder.replace(/\{(year|month)\}/gi, (_, part: string) =>
-        part.toLowerCase() === "year" ? t("filing.year") : t("filing.month"),
-      ),
-    )
-    .join(" / ");
 }
 
 /** Adds or edits a rule, with where a couple of the files that have the tag now would go. */
