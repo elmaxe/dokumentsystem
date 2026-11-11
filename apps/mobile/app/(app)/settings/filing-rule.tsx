@@ -63,7 +63,12 @@ export default function FilingRuleEditor() {
     setSaving(true);
     setError(null);
     try {
-      const body = { tag, folder, enabled: existing?.enabled ?? true, fileExisting: fileExisting && files > 0 };
+      const body = {
+        tag,
+        folder,
+        enabled: existing?.enabled ?? true,
+        fileExisting: fileExisting && files > 0,
+      };
       if (existing) await filing.update(existing.id, body);
       else await filing.create(body);
       await queryClient.invalidateQueries({ queryKey: filingRulesQuery.queryKey });
@@ -76,14 +81,28 @@ export default function FilingRuleEditor() {
   };
 
   const folderError =
-    problem === "placeholder" ? t("filing.badPlaceholder") : problem === "empty" ? t("filing.emptyFolder") : null;
+    problem === "placeholder"
+      ? t("filing.badPlaceholder")
+      : problem === "empty"
+        ? t("filing.emptyFolder")
+        : null;
 
   return (
     <View className="flex-1 bg-surface">
       <View style={{ paddingTop: insets.top }} className="bg-surface-container-low">
         <View className="h-topbar flex-row items-center gap-1 pl-1 pr-3">
-          <IconButton icon="close" label={t("common.cancel")} onPress={() => router.back()} color="on-surface" />
-          <Text variant="title-lg" numberOfLines={1} accessibilityRole="header" className="flex-1 text-on-surface">
+          <IconButton
+            icon="close"
+            label={t("common.cancel")}
+            onPress={() => router.back()}
+            color="on-surface"
+          />
+          <Text
+            variant="title-lg"
+            numberOfLines={1}
+            accessibilityRole="header"
+            className="flex-1 text-on-surface"
+          >
             {existing ? t("filing.editTitle") : t("filing.newTitle")}
           </Text>
           <Button
@@ -148,13 +167,30 @@ export default function FilingRuleEditor() {
             autoCorrect={false}
           />
           <View className="flex-row flex-wrap gap-2">
-            <Chip icon="drive_file_move" label={t("mobile.filing.chooseFolder")} onPress={() => setPicking(true)} />
-            <Chip icon="add" label={t("filing.year")} accessibilityLabel={`${t("filing.insert")} ${t("filing.year")}`} onPress={() => insert("{year}")} />
-            <Chip icon="add" label={t("filing.month")} accessibilityLabel={`${t("filing.insert")} ${t("filing.month")}`} onPress={() => insert("{month}")} />
+            <Chip
+              icon="drive_file_move"
+              label={t("mobile.filing.chooseFolder")}
+              onPress={() => setPicking(true)}
+            />
+            <Chip
+              icon="add"
+              label={t("filing.year")}
+              accessibilityLabel={`${t("filing.insert")} ${t("filing.year")}`}
+              onPress={() => insert("{year}")}
+            />
+            <Chip
+              icon="add"
+              label={t("filing.month")}
+              accessibilityLabel={`${t("filing.insert")} ${t("filing.month")}`}
+              onPress={() => insert("{month}")}
+            />
           </View>
         </View>
         {examples.length > 0 ? (
-          <View accessibilityLiveRegion="polite" className="gap-2 rounded-md bg-surface-container-low p-3">
+          <View
+            accessibilityLiveRegion="polite"
+            className="gap-2 rounded-md bg-surface-container-low p-3"
+          >
             <View className="flex-row items-center gap-2">
               <Icon name="drive_file_move" size={20} color="primary" />
               <Text variant="title-sm" className="text-on-surface">
@@ -164,10 +200,18 @@ export default function FilingRuleEditor() {
             {examples.map((example) => (
               <View key={example.nodeId} className="flex-row items-center gap-2">
                 <FileTypeIcon kind={kindOf(example.name, example.mimeType)} size={24} />
-                <Text variant="body-md" numberOfLines={1} className="min-w-0 flex-1 text-on-surface">
+                <Text
+                  variant="body-md"
+                  numberOfLines={1}
+                  className="min-w-0 flex-1 text-on-surface"
+                >
                   {example.name}
                 </Text>
-                <Text variant="body-sm" numberOfLines={1} className="max-w-[45%] text-on-surface-variant">
+                <Text
+                  variant="body-sm"
+                  numberOfLines={1}
+                  className="max-w-[45%] text-on-surface-variant"
+                >
                   {example.folder}
                 </Text>
               </View>
@@ -181,7 +225,11 @@ export default function FilingRuleEditor() {
             onPress={() => setFileExisting((on) => !on)}
             className="flex-row items-start gap-3 rounded-md py-1 active:bg-surface-container-high"
           >
-            <Icon name={fileExisting ? "check_box" : "check_box_outline_blank"} filled={fileExisting} color={fileExisting ? "primary" : "on-surface-variant"} />
+            <Icon
+              name={fileExisting ? "check_box" : "check_box_outline_blank"}
+              filled={fileExisting}
+              color={fileExisting ? "primary" : "on-surface-variant"}
+            />
             <View className="flex-1">
               <Text className="text-on-surface">{t("filing.fileExisting", { count: files })}</Text>
               <Text variant="body-sm" className="text-on-surface-variant">
@@ -191,7 +239,12 @@ export default function FilingRuleEditor() {
           </Pressable>
         ) : null}
       </ScrollView>
-      <Modal visible={picking} animationType="slide" onRequestClose={() => setPicking(false)} statusBarTranslucent>
+      <Modal
+        visible={picking}
+        animationType="slide"
+        onRequestClose={() => setPicking(false)}
+        statusBarTranslucent
+      >
         {/* A Modal renders outside the themed tree, so it sets the theme's variables again. */}
         <View style={[{ flex: 1 }, theme.vars]}>
           <FolderPicker
@@ -234,8 +287,13 @@ function Chip({
       onPress={onPress}
       className={`h-8 flex-row items-center gap-1.5 rounded-sm px-3 active:opacity-70 ${on ? "bg-secondary-container" : "border border-outline-variant"}`}
     >
-      {icon ? <Icon name={icon} size={18} color={on ? "on-secondary-container" : "on-surface-variant"} /> : null}
-      <Text variant="label-lg" className={on ? "text-on-secondary-container" : "text-on-surface-variant"}>
+      {icon ? (
+        <Icon name={icon} size={18} color={on ? "on-secondary-container" : "on-surface-variant"} />
+      ) : null}
+      <Text
+        variant="label-lg"
+        className={on ? "text-on-secondary-container" : "text-on-surface-variant"}
+      >
         {label}
       </Text>
     </Pressable>

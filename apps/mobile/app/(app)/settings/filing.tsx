@@ -4,7 +4,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Switch, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Switch,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { filing, filingRulesQuery } from "../../../src/state/filing";
 import { useTheme } from "../../../src/state/theme";
@@ -103,7 +110,11 @@ export default function FilingRules() {
           </>
         )}
       </ScrollView>
-      <View pointerEvents="box-none" style={{ bottom: insets.bottom + 16 }} className="absolute right-4">
+      <View
+        pointerEvents="box-none"
+        style={{ bottom: insets.bottom + 16 }}
+        className="absolute right-4"
+      >
         <Pressable
           accessibilityRole="button"
           onPress={() => edit(null)}
@@ -217,7 +228,9 @@ function RuleRow({
   const theme = useTheme();
   const folder = templateLabel(rule.folder, { year: t("filing.year"), month: t("filing.month") });
   return (
-    <View className={`flex-row items-center gap-2 py-3 pl-4 pr-1 ${divider ? "border-t border-outline-variant" : ""}`}>
+    <View
+      className={`flex-row items-center gap-2 py-3 pl-4 pr-1 ${divider ? "border-t border-outline-variant" : ""}`}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${rule.tag}, ${folder}`}
@@ -264,7 +277,10 @@ function RuleRow({
         accessibilityLabel={t("filing.enabled", { tag: rule.tag })}
         value={rule.enabled}
         onValueChange={onEnabled}
-        trackColor={{ true: theme.color("primary"), false: theme.color("surface-container-highest") }}
+        trackColor={{
+          true: theme.color("primary"),
+          false: theme.color("surface-container-highest"),
+        }}
         thumbColor={theme.color(rule.enabled ? "on-primary" : "outline")}
       />
       <IconButton icon="more_vert" label={t("filing.more", { tag: rule.tag })} onPress={onMore} />
