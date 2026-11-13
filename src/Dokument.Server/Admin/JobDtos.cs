@@ -34,6 +34,7 @@ public sealed record JobList(List<JobDto> Items, bool More);
 /// For a keyword-rule run (<c>tagRule</c>) or a filing rule's run (<c>filingRule</c>): the tag of the rule it runs.
 /// Null once the rule is deleted.
 /// </param>
+/// <param name="Person">For a profile picture's job (<c>avatar</c>): whose picture it fetches.</param>
 public sealed record JobDto(
     Guid Id,
     JobKind Type,
@@ -48,7 +49,8 @@ public sealed record JobDto(
     long? Size,
     string? MimeType,
     List<JobFileDto> Files,
-    string? RuleTag
+    string? RuleTag,
+    PersonDto? Person
 )
 {
     public static JobDto From(JobEntry entry) =>
@@ -66,7 +68,8 @@ public sealed record JobDto(
             entry.Files.FirstOrDefault()?.Version.Size,
             entry.Files.FirstOrDefault()?.Version.MimeType,
             entry.Files.Select(JobFileDto.From).ToList(),
-            entry.RuleTag
+            entry.RuleTag,
+            entry.Person is { } person ? PersonDto.From(person) : null
         );
 }
 
@@ -77,6 +80,7 @@ public sealed record JobFileDto(
     string Name,
     Guid OwnerId,
     string OwnerName,
+    string? OwnerAvatar,
     JobFileUse Use,
     int VersionNumber,
     List<PathEntry> Path
@@ -88,6 +92,7 @@ public sealed record JobFileDto(
             file.Node.Name.Value,
             file.Node.OwnerId,
             file.OwnerName,
+            file.OwnerAvatar,
             file.Use,
             file.Version.Number,
             file.Folders.Select(f => new PathEntry(f.Id, f.Name.Value)).ToList()

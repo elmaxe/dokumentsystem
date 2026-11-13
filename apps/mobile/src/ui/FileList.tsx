@@ -29,7 +29,8 @@ const pairs = (nodes: NodeDto[]) =>
 
 /**
  * Folders, then files, as a grid or a list (docs/design.md §16.4). Rows are flattened so long folders scroll
- * smoothly. A tap opens a file and the more button its actions. With `onSelect`, a long press on a file selects it,
+ * smoothly. A tap opens a file and the more button its actions. With `onSelect`, a long press on a file selects it
+ * (a folder's long press opens its actions, which can select it),
  * and while any are selected a tap selects or unselects (§8.4); without it, a long press opens the actions.
  */
 export function FileList({
@@ -150,7 +151,9 @@ export function FileList({
                   <FolderTile
                     key={node.id}
                     node={node}
-                    onPress={() => onOpenFolder(node)}
+                    selected={selected?.has(node.id)}
+                    selecting={selecting}
+                    onPress={() => (selecting && onSelect ? onSelect(node) : onOpenFolder(node))}
                     onLongPress={() => onMore(node)}
                   />
                 ))}
@@ -193,24 +196,30 @@ export function FileList({
   );
 }
 
+/** A folder: a tap opens it, or selects it while selecting; a long press opens its actions, which can select it. */
 function FolderTile({
   node,
+  selected,
+  selecting,
   onPress,
   onLongPress,
 }: {
   node: NodeDto;
+  selected?: boolean;
+  selecting?: boolean;
   onPress: () => void;
   onLongPress: () => void;
 }) {
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={selecting ? "checkbox" : "button"}
+      accessibilityState={selecting ? { checked: !!selected } : undefined}
       accessibilityLabel={node.name}
       onPress={onPress}
       onLongPress={onLongPress}
-      className="h-14 min-w-0 flex-1 flex-row items-center gap-3 rounded-md border border-outline-variant bg-surface-container-lowest px-3 active:bg-surface-container-high"
+      className={`h-14 min-w-0 flex-1 flex-row items-center gap-3 rounded-md border px-3 active:bg-surface-container-high ${selected ? "border-primary bg-primary-container" : "border-outline-variant bg-surface-container-lowest"}`}
     >
-      <FileTypeIcon kind="folder" />
+      {selecting ? <SelectMark selected={selected} /> : <FileTypeIcon kind="folder" />}
       <Text numberOfLines={1} className="flex-1 text-on-surface">
         {node.name}
       </Text>
@@ -232,7 +241,7 @@ function useMeta(meta?: (node: NodeDto) => string) {
   };
 }
 
-function Thumbnail({
+export function Thumbnail({
   node,
   size,
   className,

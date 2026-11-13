@@ -12,7 +12,8 @@ public sealed class LinkTests
         Assert.Equal(22, token.Value.Length);
         Assert.True(LinkToken.TryParse(token.Value, out var parsed));
         Assert.Equal(token, parsed);
-        Assert.Equal(token.Hash(), parsed.Hash());
+        Assert.Equal(token, LinkToken.Parse(token.Value));
+        Assert.Throws<FormatException>(() => LinkToken.Parse("nope"));
         Assert.DoesNotContain(token.Value, token.ToString());
         Assert.False(LinkToken.TryParse(token.Value[..21], out _));
         Assert.False(LinkToken.TryParse(token.Value + "A", out _));
@@ -40,14 +41,32 @@ public sealed class LinkTests
     {
         Assert.True(LinkPassword.TryCreate("semester", out var password, out _));
         var hash = LinkPasswordHasher.Hash(password);
-        Assert.StartsWith("$argon2id$v=19$m=19456,t=2,p=1$", hash);
+        Assert.Equal(PasswordHashVersion.Argon2idV1, hash.Version);
+        var stored = hash.ToBytes();
+        Assert.Equal(1, stored[0]);
+        Assert.Equal(1 + 16 + 32, stored.Length);
+        Assert.Equal(hash, PasswordHash.FromBytes(stored));
         Assert.True(LinkPasswordHasher.Verify("semester", hash));
         Assert.False(LinkPasswordHasher.Verify("semestr", hash));
-        Assert.False(LinkPasswordHasher.Verify("semester", "$bcrypt$nope"));
+        Assert.True(LinkPasswordHasher.Verify("semester", PasswordHash.FromBytes(stored)));
+        Assert.DoesNotContain(Convert.ToHexString(hash.Hash), hash.ToString());
 
         var again = LinkPasswordHasher.Hash(password);
         Assert.NotEqual(hash, again);
-        Assert.NotEqual(LinkPasswordHasher.Stamp(hash), LinkPasswordHasher.Stamp(again));
+        Assert.NotEqual(hash.Stamp(), again.Stamp());
+    }
+
+    [Fact]
+    public void Only_known_versions_with_their_length_are_password_hashes()
+    {
+        Assert.False(PasswordHash.TryFromBytes(null, out _));
+        Assert.False(PasswordHash.TryFromBytes([], out _));
+        Assert.False(PasswordHash.TryFromBytes([1, 2, 3], out _));
+        Assert.False(PasswordHash.TryFromBytes([2, .. new byte[48]], out _));
+        Assert.False(PasswordHash.TryFromBytes([0, .. new byte[48]], out _));
+        Assert.True(PasswordHash.TryFromBytes([1, .. new byte[48]], out var hash));
+        Assert.Equal(16, hash.Salt.Length);
+        Assert.Equal(32, hash.Hash.Length);
     }
 
     [Fact]
@@ -57,8 +76,7 @@ public sealed class LinkTests
         var link = new Link
         {
             NodeId = Guid.NewGuid(),
-            TokenHash = [],
-            ProtectedToken = "",
+            Token = LinkToken.Create(),
             AllowDownload = true,
             CreatedBy = Guid.NewGuid(),
         };

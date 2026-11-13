@@ -3,11 +3,14 @@ import type {
   FolderListing,
   NodeDetails,
   NodeDto,
+  Person,
   RecentListing,
+  RestoredItem,
   ServerInfo,
   SessionInfo,
   StarredListing,
   StorageUsage,
+  TrashListing,
 } from "@dokument/api";
 import { thumbnailUrl } from "@dokument/api";
 import { formatDuration, kindOf, type FileKind } from "@dokument/core";
@@ -33,7 +36,7 @@ export const sessionsQuery = queryOptions({
 });
 
 /** Polled every 2 s while the worker still has something to do for a file on screen, then every 10 s. */
-const pollWhilePending = (pending: boolean, updates: number) => (pending ? (updates < 30 ? 2_000 : 10_000) : false);
+export const pollWhilePending = (pending: boolean, updates: number) => (pending ? (updates < 30 ? 2_000 : 10_000) : false);
 
 const busy = (node: NodeDto) => node.processing.length > 0 || node.thumbnail === "pending";
 
@@ -67,6 +70,30 @@ export const recentQuery = queryOptions({
   queryFn: (): Promise<RecentListing> => unwrap(api().GET("/api/v1/recent")),
 });
 
+export const trashQuery = queryOptions({
+  queryKey: ["trash"],
+  queryFn: (): Promise<TrashListing> => unwrap(api().GET("/api/v1/trash")),
+});
+
+/** Refetches the folders that changed, and the places that show their items, after a change in them. */
+export async function invalidateFolders(queryClient: QueryClient, folderIds: (string | null)[]) {
+  await Promise.all([
+    ...Array.from(new Set(folderIds.map((id) => id ?? "root")), (key) =>
+      queryClient.invalidateQueries({ queryKey: ["folder", key] }),
+    ),
+    ...["node", "storage", "starred", "recent"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
+  ]);
+}
+
+/** Refetches everything an item going into or out of the trash shows up in. */
+export async function invalidateTrash(queryClient: QueryClient) {
+  await Promise.all(
+    ["trash", "folder", "node", "storage", "starred", "recent"].map((key) =>
+      queryClient.invalidateQueries({ queryKey: [key] }),
+    ),
+  );
+}
+
 /** Refetches what shows stars: every listing, the open file, and Starred itself. */
 export async function invalidateStars(queryClient: QueryClient) {
   await Promise.all(
@@ -81,7 +108,20 @@ export const drive = {
   opened: (id: string) => send(api().POST("/api/v1/nodes/{id}/opened", { params: { path: { id } } })),
   /** Asks for a playable copy now, ahead of background work. Refused when copies are turned off (§14). */
   requestPlayable: (id: string) => unwrap(api().POST("/api/v1/nodes/{id}/playable", { params: { path: { id } } })),
+  createFolder: (folderId: string | null, name: string): Promise<NodeDto> =>
+    unwrap(api().POST("/api/v1/folders", { body: { folderId, name } })),
+  rename: (id: string, name: string): Promise<NodeDto> =>
+    unwrap(api().POST("/api/v1/nodes/{id}/rename", { params: { path: { id } }, body: { name } })),
+  move: (id: string, folderId: string | null): Promise<NodeDto> =>
+    unwrap(api().POST("/api/v1/nodes/{id}/move", { params: { path: { id } }, body: { folderId } })),
+  /** Who would stop seeing these items if they moved to the folder (§9). */
+  losingAccess: async (ids: string[], folderId: string | null): Promise<Person[]> =>
+    (await unwrap(api().POST("/api/v1/nodes/move-check", { body: { ids, folderId } }))).losingAccess,
   trash: (ids: string[]) => send(api().POST("/api/v1/nodes/trash", { body: { ids } })),
+  restore: async (ids: string[]): Promise<RestoredItem[]> =>
+    (await unwrap(api().POST("/api/v1/trash/restore", { body: { ids } }))).items,
+  deleteForever: (ids: string[]) => send(api().POST("/api/v1/trash/delete", { body: { ids } })),
+  emptyTrash: async () => (await unwrap(api().POST("/api/v1/trash/empty"))).items,
   endSession: (id: string) => send(api().DELETE("/api/v1/sessions/{id}", { params: { path: { id } } })),
   /** Ends this session; answers the IdP's end-session URL, or null when the IdP has none (§5). */
   signOut: () => unwrap(api().POST("/api/v1/auth/logout")).then((result) => result.endSessionUrl ?? null),

@@ -1,4 +1,4 @@
-export { formatFileDate, formatFullDate } from "./date";
+export { formatFileDate, formatFullDate, formatTaken, type DatePrecision, type TakenView } from "./date";
 export { formatBytes, formatDuration } from "./format";
 export { findHits, matchesTerm, splitHighlights } from "./search";
 export {
@@ -26,3 +26,5 @@ export {
   type PageList,
   type PagesProblem,
 } from "./pdf";
+export { seekFrame, type SeekSheet } from "./media";
+export { initials } from "./people";

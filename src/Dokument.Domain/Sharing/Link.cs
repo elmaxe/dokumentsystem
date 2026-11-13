@@ -10,16 +10,13 @@ public sealed class Link
     public Guid Id { get; init; } = Guid.CreateVersion7();
     public required Guid NodeId { get; init; }
 
-    /// <summary>SHA-256 of the token, which is how a request finds its link.</summary>
-    public required byte[] TokenHash { get; init; }
-
-    /// <summary>The token encrypted with the server's Data Protection keys, so the owner can copy the link again.</summary>
-    public required string ProtectedToken { get; init; }
+    /// <summary>The secret in the link's address, stored as it is so the owner can copy the link again.</summary>
+    public required LinkToken Token { get; init; }
 
     public required bool AllowDownload { get; set; }
 
-    /// <summary>An Argon2id hash in PHC form, or null when the link has no password.</summary>
-    public string? PasswordHash { get; set; }
+    /// <summary>Null when the link has no password.</summary>
+    public PasswordHash? PasswordHash { get; set; }
 
     /// <summary>When it stops working; null for never.</summary>
     public DateTimeOffset? ExpiresAt { get; set; }

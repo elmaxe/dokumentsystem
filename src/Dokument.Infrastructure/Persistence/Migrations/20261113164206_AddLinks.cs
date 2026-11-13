@@ -17,10 +17,9 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     node_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    token_hash = table.Column<byte[]>(type: "bytea", nullable: false),
-                    protected_token = table.Column<string>(type: "text", nullable: false),
+                    token = table.Column<string>(type: "text", nullable: false),
                     allow_download = table.Column<bool>(type: "boolean", nullable: false),
-                    password_hash = table.Column<string>(type: "text", nullable: true),
+                    password_hash = table.Column<byte[]>(type: "bytea", nullable: true),
                     expires_at = table.Column<DateTimeOffset>(
                         type: "timestamp with time zone",
                         nullable: true
@@ -70,9 +69,9 @@ namespace Dokument.Infrastructure.Persistence.Migrations
             );
 
             migrationBuilder.CreateIndex(
-                name: "IX_links_token_hash",
+                name: "IX_links_token",
                 table: "links",
-                column: "token_hash",
+                column: "token",
                 unique: true
             );
         }

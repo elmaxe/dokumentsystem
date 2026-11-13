@@ -97,6 +97,38 @@
         }
       }
     },
+    "/api/v1/people/{id}/avatar": {
+      "get": {
+        "tags": [
+          "People"
+        ],
+        "description": "A person's profile picture: a 256 px square WebP from their sign-in provider. 404 when they have none, so clients show initials. Pass the person's avatar as v; such a URL never changes and is cached for a year. Not audited.",
+        "operationId": "GetAvatar",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/v1/auth/config": {
       "get": {
         "tags": [
@@ -4534,7 +4566,8 @@
           "quotaSource",
           "effectiveQuotaBytes",
           "lastLoginAt",
-          "disabled"
+          "disabled",
+          "avatar"
         ],
         "type": "object",
         "properties": {
@@ -4580,6 +4613,12 @@
           },
           "disabled": {
             "type": "boolean"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -5651,7 +5690,8 @@
           "size",
           "mimeType",
           "files",
-          "ruleTag"
+          "ruleTag",
+          "person"
         ],
         "type": "object",
         "properties": {
@@ -5724,6 +5764,16 @@
               "null",
               "string"
             ]
+          },
+          "person": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PersonDto"
+              }
+            ]
           }
         }
       },
@@ -5733,6 +5783,7 @@
           "name",
           "ownerId",
           "ownerName",
+          "ownerAvatar",
           "use",
           "versionNumber",
           "path"
@@ -5752,6 +5803,12 @@
           },
           "ownerName": {
             "type": "string"
+          },
+          "ownerAvatar": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "use": {
             "$ref": "#/components/schemas/JobFileUse"
@@ -5788,7 +5845,8 @@
           "pdfSave",
           "tagRule",
           "file",
-          "filingRule"
+          "filingRule",
+          "avatar"
         ]
       },
       "JobList": {
@@ -5887,10 +5945,7 @@
             "format": "uuid"
           },
           "url": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "allowDownload": {
             "type": "boolean"
@@ -6868,7 +6923,8 @@
         "required": [
           "id",
           "name",
-          "email"
+          "email",
+          "avatar"
         ],
         "type": "object",
         "properties": {
@@ -6880,6 +6936,12 @@
             "type": "string"
           },
           "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "avatar": {
             "type": [
               "null",
               "string"
@@ -8479,7 +8541,8 @@
           "email",
           "role",
           "language",
-          "showSeconds"
+          "showSeconds",
+          "avatar"
         ],
         "type": "object",
         "properties": {
@@ -8507,6 +8570,12 @@
           },
           "showSeconds": {
             "type": "boolean"
+          },
+          "avatar": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -8532,6 +8601,7 @@
           "originalName",
           "uploadedBy",
           "uploadedByName",
+          "uploadedByAvatar",
           "uploadedAt",
           "clientModifiedAt",
           "keepForever",
@@ -8565,6 +8635,12 @@
           },
           "uploadedByName": {
             "type": "string"
+          },
+          "uploadedByAvatar": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "uploadedAt": {
             "type": "string",
@@ -8671,6 +8747,9 @@
     },
     {
       "name": "Auth"
+    },
+    {
+      "name": "People"
     },
     {
       "name": "Sessions"

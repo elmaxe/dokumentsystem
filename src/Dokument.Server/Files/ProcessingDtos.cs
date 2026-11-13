@@ -22,6 +22,7 @@ public enum JobKind
     TagRule,
     File,
     FilingRule,
+    Avatar,
 }
 
 /// <summary>
@@ -65,6 +66,7 @@ public static class JobKinds
             _ when type == JobType.TagRule => JobKind.TagRule,
             _ when type == JobType.File => JobKind.File,
             _ when type == JobType.FilingRule => JobKind.FilingRule,
+            _ when type == JobType.Avatar => JobKind.Avatar,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(type),
                 type,
@@ -90,6 +92,7 @@ public static class JobKinds
             JobKind.TagRule => JobType.TagRule,
             JobKind.File => JobType.File,
             JobKind.FilingRule => JobType.FilingRule,
+            JobKind.Avatar => JobType.Avatar,
             _ => JobType.Text,
         };
 }

@@ -5,8 +5,8 @@ using System.Text;
 namespace Dokument.Domain.Sharing;
 
 /// <summary>
-/// The secret part of a public link, <c>/s/{token}</c>: 128 random bits as base64url, 22 characters. Stored only as
-/// <see cref="Hash"/> and encrypted. <see cref="ToString"/> never prints it, so it can't leak into logs.
+/// The secret part of a public link, <c>/s/{token}</c>: 128 random bits as base64url, 22 characters.
+/// <see cref="ToString"/> never prints it, so it can't leak into logs.
 /// </summary>
 public sealed record LinkToken
 {
@@ -38,7 +38,9 @@ public sealed record LinkToken
         return true;
     }
 
-    public byte[] Hash() => SHA256.HashData(Encoding.UTF8.GetBytes(Value));
+    /// <summary>A token read back from storage, which is always well formed.</summary>
+    public static LinkToken Parse(string value) =>
+        TryParse(value, out var token) ? token : throw new FormatException("Not a link token.");
 
     public bool Equals(LinkToken? other) =>
         other is not null

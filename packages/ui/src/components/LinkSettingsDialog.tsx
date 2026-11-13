@@ -24,7 +24,7 @@ export type LinkSettingsDialogProps = {
   onOpenChange: (open: boolean) => void;
   name: string;
   isFolder: boolean;
-  link: ShareLink & { url?: string | null; opens: number; lastOpenedAt?: string | null };
+  link: ShareLink & { url: string; opens: number; lastOpenedAt?: string | null };
   onCopy: () => void;
   onSave: (change: LinkSettingsChange) => void;
   onDelete: () => void;
@@ -120,12 +120,12 @@ export function LinkSettingsDialog({
         <div className="flex min-w-0 gap-2">
           <input
             readOnly
-            value={link.url ?? t("share.linkUnreadable")}
+            value={link.url}
             aria-label={t("share.publicLink")}
             onFocus={(event) => event.target.select()}
             className="h-control min-w-0 flex-1 rounded-sm border border-outline bg-surface-container px-3 text-on-surface-variant outline-none focus:outline-2 focus:outline-offset-2 focus:outline-focus-ring pointer-coarse:h-touch"
           />
-          <Button icon="content_copy" onClick={onCopy} disabled={!link.url}>
+          <Button icon="content_copy" onClick={onCopy}>
             {t("share.copy")}
           </Button>
         </div>

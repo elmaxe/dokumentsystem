@@ -24,6 +24,8 @@ public sealed class DokumentApp(
 
     public string OriginalsPath => Path.Combine(dataRoot, "originals");
 
+    public string DerivedPath => Path.Combine(dataRoot, "derived");
+
     /// <param name="services">Replaces services for the test, e.g. a fake ML service behind its HTTP client.</param>
     public static async Task<DokumentApp> StartAsync(
         PostgresFixture postgres,

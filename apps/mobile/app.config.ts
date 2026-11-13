@@ -37,6 +37,8 @@ const config: ExpoConfig = {
       NSLocalNetworkUsageDescription:
         "Connects to your Dokumentsystem server at its local address.",
     },
+    // The Wi-Fi network's name, for home networks (§15.3).
+    entitlements: { "com.apple.developer.networking.wifi-info": true },
   },
   android: {
     package: "io.github.elmaxe.dokumentsystem",
@@ -85,6 +87,41 @@ const config: ExpoConfig = {
     [
       "react-native-document-scanner-plugin",
       { cameraPermission: "Dokumentsystem uses the camera to scan documents." },
+    ],
+    // Uploads (§15.3): the system pickers hand over only what's picked, so the app asks for no photo library access.
+    [
+      "expo-image-picker",
+      { photosPermission: false, cameraPermission: false, microphonePermission: false },
+    ],
+    // Audio keeps playing with the screen off and shows the now playing notification (§15.3), which needs the
+    // playback service in the manifest.
+    ["expo-video", { supportsBackgroundPlayback: true, supportsPictureInPicture: false }],
+    // Home Wi-Fi networks (§15.3): the system only tells an app the Wi-Fi network's name when it may see the
+    // location, so the app asks while in use, and only when the person adds a network.
+    [
+      "expo-location",
+      {
+        locationWhenInUsePermission:
+          "Dokumentsystem reads your Wi-Fi network's name to know when you're home. It never reads where you are.",
+        isAndroidBackgroundLocationEnabled: false,
+        isIosBackgroundLocationEnabled: false,
+      },
+    ],
+    // Only local notifications, for uploads that carried on after the app was closed (decision 37).
+    ["expo-notifications", { enableRemoteNotifications: false }],
+    // Files, photos and videos shared from another app open the share screen; text and links don't.
+    [
+      "expo-share-intent",
+      {
+        iosActivationRules: {
+          NSExtensionActivationSupportsImageWithMaxCount: 50,
+          NSExtensionActivationSupportsMovieWithMaxCount: 50,
+          NSExtensionActivationSupportsFileWithMaxCount: 50,
+        },
+        iosShareExtensionName: "Dokumentsystem",
+        androidIntentFilters: ["*/*"],
+        androidMultiIntentFilters: ["*/*"],
+      },
     ],
   ],
   experiments: { typedRoutes: true },

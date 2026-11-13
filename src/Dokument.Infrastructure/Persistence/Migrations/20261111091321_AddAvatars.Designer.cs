@@ -14,8 +14,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Dokument.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(DokumentDbContext))]
-    [Migration("20261107172534_AddLinks")]
-    partial class AddLinks
+    [Migration("20261111091321_AddAvatars")]
+    partial class AddAvatars
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -678,6 +678,18 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AvatarETag")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_etag");
+
+                    b.Property<string>("AvatarSource")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_source");
+
+                    b.Property<string>("AvatarVersion")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_version");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -712,6 +724,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("oidc_subject");
+
+                    b.Property<string>("PictureUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("picture_url");
 
                     b.Property<long?>("QuotaBytes")
                         .HasColumnType("bigint")
@@ -1207,65 +1223,6 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.ToTable("version_details", (string)null);
                 });
 
-            modelBuilder.Entity("Dokument.Domain.Sharing.Link", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<bool>("AllowDownload")
-                        .HasColumnType("boolean")
-                        .HasColumnName("allow_download");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("CreatedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by");
-
-                    b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expires_at");
-
-                    b.Property<Guid>("NodeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("node_id");
-
-                    b.Property<string>("PasswordHash")
-                        .HasColumnType("text")
-                        .HasColumnName("password_hash");
-
-                    b.Property<string>("ProtectedToken")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("protected_token");
-
-                    b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("revoked_at");
-
-                    b.Property<byte[]>("TokenHash")
-                        .IsRequired()
-                        .HasColumnType("bytea")
-                        .HasColumnName("token_hash");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedBy");
-
-                    b.HasIndex("NodeId")
-                        .IsUnique()
-                        .HasFilter("revoked_at IS NULL");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
-
-                    b.ToTable("links", (string)null);
-                });
-
             modelBuilder.Entity("Dokument.Domain.Sharing.Share", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1660,21 +1617,6 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                     b.HasOne("Dokument.Domain.Files.FileVersion", null)
                         .WithOne()
                         .HasForeignKey("Dokument.Domain.Search.VersionDetails", "VersionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Dokument.Domain.Sharing.Link", b =>
-                {
-                    b.HasOne("Dokument.Domain.Identity.User", null)
-                        .WithMany()
-                        .HasForeignKey("CreatedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Dokument.Domain.Files.Node", null)
-                        .WithMany()
-                        .HasForeignKey("NodeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

@@ -6,12 +6,12 @@ using Microsoft.AspNetCore.Http;
 namespace Dokument.Server.Files;
 
 /// <summary>A node's public link, for its owner (§9).</summary>
-/// <param name="Url">The link to send, or null if the server can no longer read its token (turn it off and on for a new one).</param>
+/// <param name="Url">The link to send.</param>
 /// <param name="ExpiresAt">When it stops working; null for never.</param>
 /// <param name="Opens">How many times it was opened, and when last.</param>
 public sealed record LinkDto(
     Guid Id,
-    string? Url,
+    string Url,
     bool AllowDownload,
     bool HasPassword,
     DateTimeOffset? ExpiresAt,
@@ -23,9 +23,7 @@ public sealed record LinkDto(
     public static LinkDto From(LinkView view, HttpContext context) =>
         new(
             view.Link.Id,
-            view.Token is { } token
-                ? $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}/s/{token}"
-                : null,
+            $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}/s/{view.Link.Token.Value}",
             view.Link.AllowDownload,
             view.Link.PasswordHash is not null,
             view.Link.ExpiresAt,

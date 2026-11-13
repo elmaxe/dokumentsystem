@@ -106,7 +106,8 @@ public sealed record AdminUser(
     QuotaSource QuotaSource,
     long? EffectiveQuotaBytes,
     DateTimeOffset? LastLoginAt,
-    bool Disabled
+    bool Disabled,
+    string? Avatar
 );
 
 /// <param name="Bytes">Only for <c>limit</c>.</param>

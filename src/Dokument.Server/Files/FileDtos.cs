@@ -246,6 +246,7 @@ public sealed record VersionDto(
     string OriginalName,
     Guid UploadedBy,
     string UploadedByName,
+    string? UploadedByAvatar,
     DateTimeOffset UploadedAt,
     DateTimeOffset? ClientModifiedAt,
     bool KeepForever,

@@ -96,6 +96,7 @@ public static class ServerRole
         api.MapStarredAndRecentEndpoints();
         api.MapShareEndpoints();
         api.MapLinkEndpoints();
+        api.MapAvatarEndpoints();
         api.MapActivityEndpoints();
         api.MapSearchEndpoints();
         api.MapTagEndpoints();

@@ -30,7 +30,6 @@ public sealed class LinkService(
     /// <summary>How long typing a link's password lets a browser in.</summary>
     public static readonly TimeSpan UnlockLifetime = TimeSpan.FromHours(12);
 
-    private readonly IDataProtector tokens = protection.CreateProtector("Dokument.Links.Token");
     private readonly ITimeLimitedDataProtector unlocks = protection
         .CreateProtector("Dokument.Links.Unlock")
         .ToTimeLimitedDataProtector();
@@ -65,12 +64,10 @@ public sealed class LinkService(
         var created = link is null;
         if (link is null)
         {
-            var token = LinkToken.Create();
             link = new Link
             {
                 NodeId = node.Id,
-                TokenHash = token.Hash(),
-                ProtectedToken = tokens.Protect(token.Value),
+                Token = LinkToken.Create(),
                 AllowDownload = settings.AllowDownload,
                 CreatedBy = actor.UserId,
                 CreatedAt = now,
@@ -170,10 +167,7 @@ public sealed class LinkService(
             throw new DriveException(DriveError.WrongPassword, "That's not the password.");
         }
 
-        return unlocks.Protect(
-            $"{link.Id:N}:{LinkPasswordHasher.Stamp(hash)}",
-            time.GetUtcNow() + UnlockLifetime
-        );
+        return unlocks.Protect($"{link.Id:N}:{hash.Stamp()}", time.GetUtcNow() + UnlockLifetime);
     }
 
     /// <summary>Records that someone opened the link (§18). Opening it again is another access.</summary>
@@ -288,9 +282,8 @@ public sealed class LinkService(
             throw gone;
         }
 
-        var hash = token.Hash();
         var link =
-            await db.Links.AsNoTracking().SingleOrDefaultAsync(l => l.TokenHash == hash, ct)
+            await db.Links.AsNoTracking().SingleOrDefaultAsync(l => l.Token == token, ct)
             ?? throw gone;
         if (!link.WorksAt(time.GetUtcNow()))
         {
@@ -307,7 +300,7 @@ public sealed class LinkService(
         return owner.IsDisabled ? throw gone : new OpenLink(link, root, owner);
     }
 
-    private bool Unlocked(Link link, string hash, string? cookie)
+    private bool Unlocked(Link link, PasswordHash hash, string? cookie)
     {
         if (string.IsNullOrEmpty(cookie))
         {
@@ -316,7 +309,7 @@ public sealed class LinkService(
 
         try
         {
-            return unlocks.Unprotect(cookie) == $"{link.Id:N}:{LinkPasswordHasher.Stamp(hash)}";
+            return unlocks.Unprotect(cookie) == $"{link.Id:N}:{hash.Stamp()}";
         }
         catch (CryptographicException)
         {
@@ -339,18 +332,7 @@ public sealed class LinkService(
         );
         var count = await opens.CountAsync(ct);
         var last = count == 0 ? null : await opens.MaxAsync(e => (DateTimeOffset?)e.At, ct);
-        string? token;
-        try
-        {
-            token = tokens.Unprotect(link.ProtectedToken);
-        }
-        catch (CryptographicException)
-        {
-            // The keys that encrypted it are gone; the link still works for whoever has it.
-            token = null;
-        }
-
-        return new LinkView(link, token, count, last, link.WorksAt(time.GetUtcNow()));
+        return new LinkView(link, count, last, link.WorksAt(time.GetUtcNow()));
     }
 }
 
@@ -373,14 +355,8 @@ public abstract record PasswordChange
     public sealed record Set(LinkPassword Password) : PasswordChange;
 }
 
-/// <summary>A link as its owner sees it. <paramref name="Token"/> is null when the server can no longer decrypt it.</summary>
-public sealed record LinkView(
-    Link Link,
-    string? Token,
-    int Opens,
-    DateTimeOffset? LastOpenedAt,
-    bool Works
-);
+/// <summary>A link as its owner sees it.</summary>
+public sealed record LinkView(Link Link, int Opens, DateTimeOffset? LastOpenedAt, bool Works);
 
 /// <summary>A working link someone has opened: the link, its own node and the node's owner.</summary>
 public sealed record OpenLink(Link Link, Node Root, User Owner);

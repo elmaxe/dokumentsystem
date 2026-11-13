@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { BackHandler, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQueryClient } from "@tanstack/react-query";
+import { canEdit, startMove, trash, useCanMove } from "../state/changes";
 import { readablePdf } from "../state/pdf";
 import { IconButton } from "./Button";
 import { Text } from "./Text";
 
 /**
- * Files picked with a long press (docs/design.md §8.4), in the order they were picked, which is the order a merge
+ * Files and folders picked with a long press (docs/design.md §8.4), in the order they were picked, which is the order a merge
  * starts from. The system's back gesture clears them before it leaves the page.
  */
 export function useSelection() {
@@ -42,7 +44,10 @@ export type Selection = ReturnType<typeof useSelection>;
 export function SelectionBar({ selection }: { selection: Selection }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const canMove = useCanMove();
   const { nodes } = selection;
+  const editable = nodes.every((node) => canEdit(node.access));
   const pdfs = nodes.every(readablePdf);
   const single = nodes.length === 1 ? nodes[0] : undefined;
   return (
@@ -77,6 +82,28 @@ export function SelectionBar({ selection }: { selection: Selection }) {
             onPress={() => {
               selection.clear();
               router.push({ pathname: "/merge", params: { ids: nodes.map((node) => node.id).join(",") } });
+            }}
+          />
+        ) : null}
+        {canMove(nodes) ? (
+          <IconButton
+            icon="drive_file_move"
+            label={t("actions.move")}
+            color="on-secondary-container"
+            onPress={() => {
+              selection.clear();
+              startMove(nodes);
+            }}
+          />
+        ) : null}
+        {editable ? (
+          <IconButton
+            icon="delete"
+            label={t("actions.trash")}
+            color="on-secondary-container"
+            onPress={() => {
+              selection.clear();
+              void trash(t, queryClient, nodes);
             }}
           />
         ) : null}

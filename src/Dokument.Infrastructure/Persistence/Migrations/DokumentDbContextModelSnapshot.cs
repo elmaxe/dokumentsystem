@@ -675,6 +675,18 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AvatarETag")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_etag");
+
+                    b.Property<string>("AvatarSource")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_source");
+
+                    b.Property<string>("AvatarVersion")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_version");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -709,6 +721,10 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("oidc_subject");
+
+                    b.Property<string>("PictureUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("picture_url");
 
                     b.Property<long?>("QuotaBytes")
                         .HasColumnType("bigint")
@@ -1231,23 +1247,18 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("node_id");
 
-                    b.Property<string>("PasswordHash")
-                        .HasColumnType("text")
+                    b.Property<byte[]>("PasswordHash")
+                        .HasColumnType("bytea")
                         .HasColumnName("password_hash");
-
-                    b.Property<string>("ProtectedToken")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("protected_token");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("revoked_at");
 
-                    b.Property<byte[]>("TokenHash")
+                    b.Property<string>("Token")
                         .IsRequired()
-                        .HasColumnType("bytea")
-                        .HasColumnName("token_hash");
+                        .HasColumnType("text")
+                        .HasColumnName("token");
 
                     b.HasKey("Id");
 
@@ -1257,7 +1268,7 @@ namespace Dokument.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasFilter("revoked_at IS NULL");
 
-                    b.HasIndex("TokenHash")
+                    b.HasIndex("Token")
                         .IsUnique();
 
                     b.ToTable("links", (string)null);

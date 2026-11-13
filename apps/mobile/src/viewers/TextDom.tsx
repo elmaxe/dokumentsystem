@@ -1,7 +1,8 @@
 "use dom";
 
+import { findHits } from "@dokument/core";
 import type { DOMProps } from "expo/dom";
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -12,6 +13,8 @@ export type TextColors = {
   link: string;
   code: string;
   border: string;
+  /** Search hits: warning-container. */
+  mark: string;
 };
 
 /**
@@ -24,6 +27,8 @@ export default function TextDom({
   colors,
   imageLabel,
   openLink,
+  terms,
+  onMarks,
 }: {
   text: string;
   markdown: boolean;
@@ -31,8 +36,53 @@ export default function TextDom({
   /** "Image: {{alt}}", shown where a Markdown image would be. */
   imageLabel: string;
   openLink: (url: string) => Promise<void>;
+  /** Opened from search: the words to mark, by the same rule as the server (docs/design.md §13.3). */
+  terms?: string[];
+  /** How many were marked. */
+  onMarks?: (count: number) => Promise<void>;
   dom?: DOMProps;
 }) {
+  const root = useRef<HTMLDivElement>(null);
+  const termsKey = terms?.join(" ") ?? "";
+  const counted = useRef(onMarks);
+  useEffect(() => {
+    counted.current = onMarks;
+  }, [onMarks]);
+
+  // Marks the hits in what's drawn, a text node at a time, and scrolls to the first. The content is drawn afresh
+  // whenever the terms change (its key), so old marks never stay behind.
+  useEffect(() => {
+    const element = root.current;
+    if (!element || !termsKey) return;
+    const words = termsKey.split(" ");
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
+    let count = 0;
+    for (const node of nodes) {
+      const value = node.nodeValue ?? "";
+      const hits = findHits(value, words);
+      if (hits.length === 0) continue;
+      const parts = document.createDocumentFragment();
+      let at = 0;
+      for (const [start, end] of hits) {
+        parts.append(value.slice(at, start));
+        const mark = document.createElement("mark");
+        mark.textContent = value.slice(start, end);
+        mark.style.background = colors.mark;
+        mark.style.color = "inherit";
+        mark.style.borderRadius = "2px";
+        parts.append(mark);
+        at = end;
+        count++;
+      }
+      parts.append(value.slice(at));
+      node.replaceWith(parts);
+    }
+    element.querySelector("mark")?.scrollIntoView({ block: "center" });
+    void counted.current?.(count);
+  }, [termsKey, colors.mark]);
+
   const page: CSSProperties = {
     margin: 0,
     padding: "16px 16px 48px",
@@ -55,6 +105,7 @@ export default function TextDom({
 
   if (!markdown) {
     return (
+      <div ref={root} key={termsKey}>
       <pre
         style={{
           ...page,
@@ -65,6 +116,7 @@ export default function TextDom({
       >
         {text}
       </pre>
+      </div>
     );
   }
 
@@ -145,7 +197,7 @@ export default function TextDom({
   };
 
   return (
-    <div style={page}>
+    <div ref={root} key={termsKey} style={page}>
       <Markdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </Markdown>

@@ -29,7 +29,7 @@ import { Button, IconButton } from "../../../src/ui/Button";
 import { Icon } from "../../../src/ui/Icon";
 import { Notice } from "../../../src/ui/Notice";
 import { Segmented, SwitchRow } from "../../../src/ui/SettingsRows";
-import { Sheet, SheetAction } from "../../../src/ui/Sheet";
+import { Sheet, SheetAction, useKept } from "../../../src/ui/Sheet";
 import { Text } from "../../../src/ui/Text";
 import { TextField } from "../../../src/ui/TextField";
 import { TopBar } from "../../../src/ui/TopBar";
@@ -109,6 +109,7 @@ export default function Split() {
   const [folderName, setFolderName] = useState<string | null>(null);
   const [trash, setTrash] = useState(false);
   const [page, setPage] = useState<number | null>(null);
+  const shownPage = useKept(page);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -298,7 +299,9 @@ export default function Split() {
                           .join(", ")
                   }
                   disabled={mode === "ranges"}
-                  onPress={() => setPage(p)}
+                  // A tap leaves the page out or puts it back; holding it offers the cut after it.
+                  onPress={() => setLeft((set) => toggle(set, p))}
+                  onLongPress={() => setPage(p)}
                   className="items-center gap-1"
                 >
                   <View
@@ -454,25 +457,25 @@ export default function Split() {
       <Sheet
         open={page !== null}
         onClose={() => setPage(null)}
-        title={page !== null ? t("pdf.split.pageMenu", { page }) : undefined}
+        title={shownPage !== null ? t("pdf.split.pageMenu", { page: shownPage }) : undefined}
       >
-        {page !== null ? (
+        {shownPage !== null ? (
           <>
-            {page < pageCount ? (
+            {shownPage < pageCount ? (
               <SheetAction
                 icon={<Icon name="content_cut" />}
-                label={cuts.has(page) ? t("pdf.split.joinAfter") : t("pdf.split.cutAfter")}
+                label={cuts.has(shownPage) ? t("pdf.split.joinAfter") : t("pdf.split.cutAfter")}
                 onPress={() => {
-                  setCuts((set) => toggle(set, page));
+                  setCuts((set) => toggle(set, shownPage));
                   setPage(null);
                 }}
               />
             ) : null}
             <SheetAction
-              icon={<Icon name={left.has(page) ? "add_circle" : "remove_circle"} />}
-              label={left.has(page) ? t("pdf.split.putBack") : t("pdf.split.leaveOut")}
+              icon={<Icon name={left.has(shownPage) ? "add_circle" : "remove_circle"} />}
+              label={left.has(shownPage) ? t("pdf.split.putBack") : t("pdf.split.leaveOut")}
               onPress={() => {
-                setLeft((set) => toggle(set, page));
+                setLeft((set) => toggle(set, shownPage));
                 setPage(null);
               }}
             />

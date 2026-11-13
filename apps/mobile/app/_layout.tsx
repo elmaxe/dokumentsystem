@@ -1,6 +1,7 @@
 import "../global.css";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useFonts } from "expo-font";
+import { ShareIntentProvider } from "expo-share-intent";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -22,19 +23,22 @@ export default function RootLayout() {
   const [fontsLoaded] = useFonts(Platform.OS === "web" ? webFonts : {});
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
-          <SessionProvider>
-            <I18nProvider>
-              <ThemeProvider>
-                <Navigation ready={fontsLoaded} />
-              </ThemeProvider>
-            </I18nProvider>
-          </SessionProvider>
-        </PersistQueryClientProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    // Files shared from another app arrive before anything else is ready; the share screen picks them up (§15.3).
+    <ShareIntentProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+            <SessionProvider>
+              <I18nProvider>
+                <ThemeProvider>
+                  <Navigation ready={fontsLoaded} />
+                </ThemeProvider>
+              </I18nProvider>
+            </SessionProvider>
+          </PersistQueryClientProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ShareIntentProvider>
   );
 }
 

@@ -1,6 +1,7 @@
 import { DropdownMenu } from "radix-ui";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
 
 /** "browser" follows the browser's language; the others are the UI languages (§23). */
@@ -10,6 +11,8 @@ export type AccountMenuProps = {
   trigger: ReactNode;
   name: string;
   email?: string | null;
+  /** The person's profile picture (§5.1); their initials without one. */
+  picture?: string | null;
   language: LanguageChoice;
   /** The language the UI is in now, shown next to "Same as browser". */
   currentLanguage: "sv" | "en";
@@ -36,6 +39,7 @@ export function AccountMenu({
   trigger,
   name,
   email,
+  picture,
   language,
   currentLanguage,
   onLanguageChange,
@@ -60,9 +64,12 @@ export function AccountMenu({
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={4} collisionPadding={8} className={content}>
-          <DropdownMenu.Label className="flex flex-col px-4 pt-1 pb-3">
-            <span className="text-title-sm">{name}</span>
-            {email && <span className="text-body-sm text-on-surface-variant">{email}</span>}
+          <DropdownMenu.Label className="flex items-center gap-3 px-4 pt-1 pb-3">
+            <Avatar name={name} picture={picture} tone={1} size="lg" />
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate text-title-sm">{name}</span>
+              {email && <span className="truncate text-body-sm text-on-surface-variant">{email}</span>}
+            </span>
           </DropdownMenu.Label>
           <DropdownMenu.Separator className={separator} />
           <DropdownMenu.Sub>

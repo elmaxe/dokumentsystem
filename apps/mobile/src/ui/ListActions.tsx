@@ -40,7 +40,12 @@ export function AccountButton() {
         onPress={() => setOpen(true)}
         className="h-touch w-touch items-center justify-center rounded-full active:bg-surface-container-highest"
       >
-        <Avatar name={session.data?.user.displayName ?? ""} />
+        <Avatar
+          name={session.data?.user.displayName ?? ""}
+          id={session.data?.user.id}
+          avatar={session.data?.user.avatar}
+          tone={1}
+        />
       </Pressable>
       <AccountSheet open={open} onClose={() => setOpen(false)} />
     </>

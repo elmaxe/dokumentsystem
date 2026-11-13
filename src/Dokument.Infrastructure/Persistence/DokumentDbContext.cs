@@ -92,10 +92,13 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
             e.HasKey(l => l.Id);
             e.Property(l => l.Id).HasColumnName("id");
             e.Property(l => l.NodeId).HasColumnName("node_id");
-            e.Property(l => l.TokenHash).HasColumnName("token_hash");
-            e.Property(l => l.ProtectedToken).HasColumnName("protected_token");
+            e.Property(l => l.Token)
+                .HasColumnName("token")
+                .HasConversion(t => t.Value, v => LinkToken.Parse(v));
             e.Property(l => l.AllowDownload).HasColumnName("allow_download");
-            e.Property(l => l.PasswordHash).HasColumnName("password_hash");
+            e.Property(l => l.PasswordHash)
+                .HasColumnName("password_hash")
+                .HasConversion(h => h!.ToBytes(), b => PasswordHash.FromBytes(b));
             e.Property(l => l.ExpiresAt).HasColumnName("expires_at");
             e.Property(l => l.CreatedBy).HasColumnName("created_by");
             e.Property(l => l.CreatedAt).HasColumnName("created_at");
@@ -108,7 +111,7 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
                 .WithMany()
                 .HasForeignKey(l => l.CreatedBy)
                 .OnDelete(DeleteBehavior.Restrict);
-            e.HasIndex(l => l.TokenHash).IsUnique();
+            e.HasIndex(l => l.Token).IsUnique();
 
             // One working link per node; turned-off ones stay for the audit trail.
             e.HasIndex(l => l.NodeId).IsUnique().HasFilter("revoked_at IS NULL");
@@ -146,6 +149,11 @@ public sealed class DokumentDbContext(DbContextOptions<DokumentDbContext> option
                 .HasColumnName("locale")
                 .HasConversion(l => l!.Code, v => UiLanguage.TryParse(v));
             e.Property(u => u.ShowSeconds).HasColumnName("show_seconds");
+            e.Property(u => u.PictureUrl).HasColumnName("picture_url");
+            e.Property(u => u.AvatarVersion).HasColumnName("avatar_version");
+            e.Property(u => u.AvatarSource).HasColumnName("avatar_source");
+            e.Property(u => u.AvatarETag).HasColumnName("avatar_etag");
+            e.Ignore(u => u.Avatar);
             e.Property(u => u.CreatedAt).HasColumnName("created_at");
             e.Property(u => u.LastLoginAt).HasColumnName("last_login_at");
             e.Property(u => u.DisabledAt).HasColumnName("disabled_at");

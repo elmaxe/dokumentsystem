@@ -26,11 +26,13 @@ export type SharePerson = {
   inheritedRole?: GrantRole;
   /** Whether there is a share on this item itself, so "Remove access" applies. */
   removable?: boolean;
+  /** Their profile picture (§5.1). */
+  picture?: string | null;
   tone?: AvatarTone;
 };
 
 /** Someone the person can share with, offered as they type. */
-export type ShareCandidate = { id: string; name: string; email?: string | null };
+export type ShareCandidate = { id: string; name: string; email?: string | null; picture?: string | null };
 
 /** A node's public link (§9), as the share dialog sums it up. */
 export type ShareLink = {
@@ -163,7 +165,7 @@ export function ShareDialog({
                     onClick={() => add(candidate)}
                     className="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left hover:bg-on-surface/8"
                   >
-                    <Avatar name={candidate.name} size="sm" />
+                    <Avatar name={candidate.name} picture={candidate.picture} size="sm" />
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate text-on-surface">{candidate.name}</span>
                       {candidate.email && <span className="truncate text-body-sm">{candidate.email}</span>}
@@ -194,7 +196,7 @@ export function ShareDialog({
         <ul className="m-0 flex list-none flex-col p-0">
           {people.map((person) => (
             <li key={person.id ?? person.email} className="flex min-w-0 items-center gap-3 py-2">
-              <Avatar name={person.name} tone={person.tone} />
+              <Avatar name={person.name} picture={person.picture} tone={person.tone} />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate font-medium text-on-surface">
                   {person.you ? t("share.you", { name: person.name }) : person.name}
