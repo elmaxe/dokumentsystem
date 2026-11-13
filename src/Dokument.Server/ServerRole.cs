@@ -56,6 +56,7 @@ public static class ServerRole
 
     public static WebApplication MapServerRole(this WebApplication app)
     {
+        app.UseTrustedProxies(TrustedProxies.FromConfiguration(app.Configuration));
         app.UsePublicUrl(PublicUrl.FromConfiguration(app.Configuration));
         app.UseExceptionHandler();
 

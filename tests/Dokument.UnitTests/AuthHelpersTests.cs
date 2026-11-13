@@ -1,3 +1,4 @@
+using System.Net;
 using Dokument.Domain.Identity;
 using Dokument.Server.Auth;
 using Microsoft.Extensions.Configuration;
@@ -109,6 +110,28 @@ public class AuthHelpersTests
 
         Assert.Throws<InvalidOperationException>(() => PublicUrl.FromConfiguration(config));
     }
+
+    [Fact]
+    public void Trusted_proxies_take_addresses_and_networks()
+    {
+        Assert.Null(TrustedProxies.FromConfiguration(Config("TRUSTED_PROXIES", " ")));
+        var proxies = TrustedProxies.FromConfiguration(
+            Config("TRUSTED_PROXIES", "172.16.0.0/12, 10.0.0.5 ,fd00::/8")
+        )!;
+        Assert.Equal([IPAddress.Parse("10.0.0.5")], proxies.Addresses);
+        Assert.Equal(["172.16.0.0/12", "fd00::/8"], proxies.Networks.Select(n => n.ToString()));
+        Assert.Throws<InvalidOperationException>(() =>
+            TrustedProxies.FromConfiguration(Config("TRUSTED_PROXIES", "caddy"))
+        );
+        Assert.Throws<InvalidOperationException>(() =>
+            TrustedProxies.FromConfiguration(Config("TRUSTED_PROXIES", "10.0.0.0/40"))
+        );
+    }
+
+    private static IConfiguration Config(string key, string? value) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [key] = value })
+            .Build();
 
     private static OidcSettings Settings(Dictionary<string, string?> values) =>
         OidcSettings.FromConfiguration(
