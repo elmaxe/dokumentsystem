@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { cn } from "../lib/cn";
+import { dayLabel, lastDay } from "../lib/links";
 import { Avatar, type AvatarTone } from "./Avatar";
 import { Button } from "./Button";
-import { Chip } from "./Chip";
 import { Dialog, type DialogVariant } from "./Dialog";
 import { Icon } from "./Icon";
 import { ActionMenu } from "./Menu";
@@ -35,11 +34,11 @@ export type SharePerson = {
 /** Someone the person can share with, offered as they type. */
 export type ShareCandidate = { id: string; name: string; email?: string | null; picture?: string | null };
 
+/** A node's public link (§9), as the share dialog sums it up. */
 export type ShareLink = {
-  enabled: boolean;
-  /** Days until it expires; undefined means no expiry. */
-  expiresInDays?: number;
-  password: boolean;
+  /** When it stops working, ISO 8601; null for never. */
+  expiresAt?: string | null;
+  hasPassword: boolean;
   allowDownload: boolean;
 };
 
@@ -59,10 +58,14 @@ export type ShareDialogProps = {
   onRoleChange: (person: SharePerson, role: GrantRole | "remove") => void;
   /** Why the last change was refused, shown under the field. */
   error?: string;
-  /** The public link section; left out until links can be made. */
-  link?: ShareLink;
-  onLinkChange?: (link: ShareLink) => void;
+  /**
+   * The public link section, for the owner: the link when it's on, null when it's off. Left out, the section isn't
+   * shown, as for people it's shared with.
+   */
+  link?: ShareLink | null;
+  onLinkToggle?: (on: boolean) => void;
   onCopyLink?: () => void;
+  onLinkSettings?: () => void;
   variant?: DialogVariant;
 };
 
@@ -85,11 +88,12 @@ export function ShareDialog({
   onRoleChange,
   error,
   link,
-  onLinkChange,
+  onLinkToggle,
   onCopyLink,
+  onLinkSettings,
   variant,
 }: ShareDialogProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [draft, setDraft] = useState("");
   const [role, setRole] = useState<GrantRole>("viewer");
   const already = new Set(people.map((p) => p.id ?? p.email));
@@ -111,16 +115,7 @@ export function ShareDialog({
       onOpenChange={onOpenChange}
       variant={variant}
       title={t("share.title", { name })}
-      footer={
-        <>
-          {link && onCopyLink && (
-            <Button variant="outlined" icon="link" onClick={onCopyLink} disabled={!link.enabled}>
-              {t("share.copyLink")}
-            </Button>
-          )}
-          <Button onClick={() => onOpenChange(false)}>{t("common.done")}</Button>
-        </>
-      }
+      footer={<Button onClick={() => onOpenChange(false)}>{t("common.done")}</Button>}
     >
       {canManage ? (
         <div className="flex flex-col gap-1">
@@ -257,51 +252,42 @@ export function ShareDialog({
         {canManage && <p className="m-0 mt-1 text-body-sm text-on-surface-variant">{t("share.rolesHint")}</p>}
       </section>
 
-      {link && onLinkChange && (
+      {link !== undefined && onLinkToggle && (
         <section>
           <h3 className="m-0 mb-2 text-title-sm text-on-surface">{t("share.publicLink")}</h3>
           <div className="flex flex-col gap-3 rounded-md border border-outline-variant bg-surface-container-lowest px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
-              <Avatar icon={link.enabled ? "public" : "lock"} tone={link.enabled ? 1 : 0} />
+              <Avatar icon={link ? "link" : "lock"} tone={link ? 1 : 0} />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="font-medium text-on-surface">
-                  {link.enabled ? t("share.linkOn") : t("share.linkOff")}
+                <span className="font-medium text-on-surface">{link ? t("share.linkOn") : t("share.linkOff")}</span>
+                <span className="text-body-sm">
+                  {link
+                    ? [
+                        link.expiresAt
+                          ? t("share.linkUntil", { date: dayLabel(lastDay(link.expiresAt), i18n.language) })
+                          : t("share.noExpiry"),
+                        link.allowDownload ? t("share.downloadAllowed") : t("share.viewOnly"),
+                        ...(link.hasPassword ? [t("share.passwordSet")] : []),
+                      ].join(" · ")
+                    : t("share.linkOffHint")}
                 </span>
-                <span className="text-body-sm">{link.enabled ? t("share.linkOnHint") : t("share.linkOffHint")}</span>
               </div>
-              <Switch
-                checked={link.enabled}
-                onCheckedChange={(enabled) => onLinkChange({ ...link, enabled })}
-                label={t("share.publicLink")}
-              />
+              <Switch checked={!!link} onCheckedChange={onLinkToggle} label={t("share.publicLink")} />
             </div>
-            <div className={cn("flex flex-wrap gap-2", !link.enabled && "hidden")}>
-              <Chip
-                icon="event"
-                selected={link.expiresInDays !== undefined}
-                onClick={() =>
-                  onLinkChange({ ...link, expiresInDays: link.expiresInDays === undefined ? 7 : undefined })
-                }
-              >
-                {link.expiresInDays === undefined
-                  ? t("share.noExpiry")
-                  : t("share.expiresIn", { count: link.expiresInDays })}
-              </Chip>
-              <Chip
-                icon="password"
-                selected={link.password}
-                onClick={() => onLinkChange({ ...link, password: !link.password })}
-              >
-                {link.password ? t("share.passwordSet") : t("share.addPassword")}
-              </Chip>
-              <Chip
-                icon={link.allowDownload ? "download" : "file_download_off"}
-                selected={link.allowDownload}
-                onClick={() => onLinkChange({ ...link, allowDownload: !link.allowDownload })}
-              >
-                {link.allowDownload ? t("share.downloadAllowed") : t("share.viewOnly")}
-              </Chip>
-            </div>
+            {link && (
+              <div className="flex flex-wrap gap-2">
+                {onCopyLink && (
+                  <Button variant="outlined" icon="content_copy" onClick={onCopyLink}>
+                    {t("share.copyLink")}
+                  </Button>
+                )}
+                {onLinkSettings && (
+                  <Button variant="text" icon="tune" onClick={onLinkSettings}>
+                    {t("share.linkSettings")}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </section>
       )}

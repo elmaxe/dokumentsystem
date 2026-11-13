@@ -924,6 +924,173 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Owner only. The node's public link, or 204 when it has none. */
+        get: operations["GetLink"];
+        /** @description Owner only. Turns the node's public link on, or changes its expiry, password or download setting. */
+        put: operations["SaveLink"];
+        post?: never;
+        /** @description Owner only. Turns the public link off; it stops working at once. */
+        delete: operations["RevokeLink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What a public link shows, without signing in. Audited as an access. 404 linkGone when it was turned off, has expired or its file is gone; 401 passwordRequired until the password is given. */
+        get: operations["OpenLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/{token}/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Checks the link's password and sets a cookie that lets this browser in for 12 hours. */
+        post: operations["UnlockLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/{token}/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A folder behind a public link: the link's own folder, or one inside it. */
+        get: operations["ListLinkFolder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/{token}/nodes/{nodeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetLinkNode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/{token}/nodes/{nodeId}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetLinkThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/{token}/nodes/{nodeId}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetLinkPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/{token}/nodes/{nodeId}/waveform": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetLinkWaveform"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/{token}/nodes/{nodeId}/seek-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetLinkSeekPreviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/{token}/nodes/{nodeId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The current version's bytes, when the link allows downloads. Audited as a download through the link. */
+        get: operations["DownloadLinkFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/activity": {
         parameters: {
             query?: never;
@@ -1871,6 +2038,7 @@ export interface components {
             at: string;
             action: string;
             actor: null | components["schemas"]["PersonDto"];
+            viaLink: boolean;
             /** Format: uuid */
             nodeId: string;
             nodeName: null | string;
@@ -2247,6 +2415,54 @@ export interface components {
         KeepForeverRequest: {
             keepForever: boolean;
         };
+        LinkDto: {
+            /** Format: uuid */
+            id: string;
+            url: string;
+            allowDownload: boolean;
+            hasPassword: boolean;
+            /** Format: date-time */
+            expiresAt: null | string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            opens: number;
+            /** Format: date-time */
+            lastOpenedAt: null | string;
+        };
+        LinkFolder: {
+            folder: components["schemas"]["LinkNodeDto"];
+            path: components["schemas"]["PathEntry"][];
+            items: components["schemas"]["LinkNodeDto"][];
+        };
+        LinkNodeDetails: {
+            node: components["schemas"]["LinkNodeDto"];
+            path: components["schemas"]["PathEntry"][];
+        };
+        LinkNodeDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            parentId: null | string;
+            kind: components["schemas"]["NodeKind"];
+            name: string;
+            /** Format: int64 */
+            size: null | number;
+            mimeType: null | string;
+            /** Format: date-time */
+            modifiedAt: string;
+            thumbnail: components["schemas"]["ThumbnailState"];
+            contents: null | components["schemas"]["FolderCounts"];
+            media: null | components["schemas"]["MediaDto"];
+            shownAsPdf: boolean;
+        };
+        LinkPage: {
+            node: components["schemas"]["LinkNodeDto"];
+            sharedBy: string;
+            /** Format: date-time */
+            expiresAt: null | string;
+            allowDownload: boolean;
+        };
         MatchesResponse: {
             terms: string[];
             pages: components["schemas"]["PageMatchDto"][];
@@ -2527,6 +2743,14 @@ export interface components {
         };
         RestoreResponse: {
             items: components["schemas"]["RestoredItem"][];
+        };
+        SaveLinkRequest: {
+            allowDownload: boolean;
+            /** Format: date-time */
+            expiresAt: null | string;
+            password: null | string;
+            /** @default false */
+            removePassword: boolean;
         };
         ScannerSettingsDto: {
             address: null | string;
@@ -2842,6 +3066,9 @@ export interface components {
         TrashSettingsDto: {
             /** Format: int32 */
             keepDays: number;
+        };
+        UnlockLinkRequest: {
+            password: string;
         };
         UpdateMlSettingsRequest: {
             endpoints: components["schemas"]["MlEndpointUpdate"][];
@@ -4261,6 +4488,292 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MoveCheckResponse"];
                 };
+            };
+        };
+    };
+    GetLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDto"];
+                };
+            };
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SaveLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDto"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    RevokeLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OpenLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkPage"];
+                };
+            };
+        };
+    };
+    UnlockLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnlockLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ListLinkFolder: {
+        parameters: {
+            query?: {
+                folderId?: string;
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkFolder"];
+                };
+            };
+        };
+    };
+    GetLinkNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkNodeDetails"];
+                };
+            };
+        };
+    };
+    GetLinkThumbnail: {
+        parameters: {
+            query?: {
+                size?: string;
+            };
+            header?: never;
+            path: {
+                token: string;
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetLinkPreview: {
+        parameters: {
+            query?: {
+                original?: boolean;
+            };
+            header?: never;
+            path: {
+                token: string;
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetLinkWaveform: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GetLinkSeekPreviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DownloadLinkFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -35,4 +35,13 @@ public enum DriveError
     /// <summary>The bytes didn't match the hash the client sent, or the upload is in a state that refuses the request.</summary>
     UploadMismatch,
     UploadBusy,
+
+    /// <summary>A public link that was turned off, has expired, or whose file or folder is gone (§9).</summary>
+    LinkGone,
+
+    /// <summary>A public link with a password that this browser hasn't been let in with yet.</summary>
+    PasswordRequired,
+
+    /// <summary>The password typed for a public link isn't its password.</summary>
+    WrongPassword,
 }

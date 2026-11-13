@@ -62,7 +62,8 @@ export type FileViewerProps = {
   item: FileItem;
   preview: PreviewSource;
   onClose: () => void;
-  onDownload: () => void;
+  /** Left out where the file can't be downloaded, such as through a view-only public link (§9). */
+  onDownload?: () => void;
   onShare?: () => void;
   /** The "More" menu: rename, move, trash and so on. */
   menuActions?: MenuAction[];
@@ -181,9 +182,11 @@ export function FileViewer({
       title={failed ? t("viewer.failedTitle") : t("viewer.noPreviewTitle")}
       text={failed ? t("viewer.failedText") : t("viewer.noPreviewText")}
       action={
-        <Button icon="download" onClick={onDownload}>
-          {t("actions.download")}
-        </Button>
+        onDownload && (
+          <Button icon="download" onClick={onDownload}>
+            {t("actions.download")}
+          </Button>
+        )
       }
       className="m-4 max-w-md bg-surface-container-low"
     />
@@ -273,7 +276,7 @@ export function FileViewer({
             <IconButton icon="person_add" label={t("actions.share")} onClick={onShare} className="md:hidden" />
           </>
         )}
-        <IconButton icon="download" label={t("actions.download")} onClick={onDownload} />
+        {onDownload && <IconButton icon="download" label={t("actions.download")} onClick={onDownload} />}
         {onDetailsChange && (
           <IconButton
             icon="info"
@@ -364,9 +367,11 @@ export function FileViewer({
                       label={t("viewer.convertingTitle")}
                       className="w-full max-w-64"
                     />
-                    <Button variant="outlined" icon="download" onClick={onDownload}>
-                      {t("actions.download")}
-                    </Button>
+                    {onDownload && (
+                      <Button variant="outlined" icon="download" onClick={onDownload}>
+                        {t("actions.download")}
+                      </Button>
+                    )}
                   </div>
                 }
                 className="m-4 max-w-md bg-surface-container-low"
@@ -379,9 +384,11 @@ export function FileViewer({
                 title={t("viewer.unplayableTitle")}
                 text={t("viewer.unplayableText")}
                 action={
-                  <Button icon="download" onClick={onDownload}>
-                    {t("actions.download")}
-                  </Button>
+                  onDownload && (
+                    <Button icon="download" onClick={onDownload}>
+                      {t("actions.download")}
+                    </Button>
+                  )
                 }
                 className="m-4 max-w-md bg-surface-container-low"
               />

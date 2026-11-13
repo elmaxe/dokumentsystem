@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Dokument.Domain.Identity;
 using Dokument.Infrastructure.Identity;
+using Dokument.Server.Files;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
@@ -63,6 +64,7 @@ public static class AuthSetup
                         }
                     )
             );
+            options.AddLinkRateLimits();
         });
 
         return builder;

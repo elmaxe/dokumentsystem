@@ -53,6 +53,7 @@ public static class DependencyInjection
         services.AddScoped<PdfService>();
         services.AddScoped<StarService>();
         services.AddScoped<Sharing.ShareService>();
+        services.AddScoped<Sharing.LinkService>();
         services.AddScoped<Files.ActivityService>();
         services.AddScoped<RecentFiles>();
         services.AddScoped<JobQueue>();

@@ -22,7 +22,7 @@ namespace Dokument.Server.Files;
 /// <param name="Media">For video and audio files, once the worker has looked at them. Null for everything else.</param>
 /// <param name="ShownAsPdf">Whether <c>/nodes/{id}/preview</c> serves a PDF made of the file, for Office documents.</param>
 /// <param name="Access">What the person asking may do: own it, edit it or only view it (§9).</param>
-/// <param name="Shared">For the owner: whether this node itself is shared with someone. Always false for others.</param>
+/// <param name="Shared">For the owner: whether this node itself is shared with someone or has a public link. Always false for others.</param>
 /// <param name="Pdf">For PDFs the worker has looked at: pages, for merging and splitting (§8.4). Null for everything else.</param>
 public sealed record NodeDto(
     Guid Id,

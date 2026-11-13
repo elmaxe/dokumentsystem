@@ -555,6 +555,25 @@ public sealed class DriveService(
     )
     {
         var node = await GetFileAsync(actor, id, ct);
+        var content = await ContentOfAsync(node, versionId, ct);
+        if (audited)
+        {
+            audit.Add(actor, AuditActions.FileDownload, node.Id, content.Version.Id);
+            await recent.RecordAsync(actor.UserId, node.Id, RecentAction.Downloaded, ct);
+            await db.SaveChangesAsync(ct);
+            await live.NotifyAsync(actor.UserId, LiveTopics.Recent, ct);
+        }
+
+        return content;
+    }
+
+    /// <summary>A version's bytes on disk, for a file the caller has already checked access to (a public link's, §9).</summary>
+    public async Task<FileContent> ContentOfAsync(
+        Node node,
+        Guid? versionId,
+        CancellationToken ct = default
+    )
+    {
         var wanted = versionId ?? node.CurrentVersionId;
         var version =
             await db
@@ -564,14 +583,6 @@ public sealed class DriveService(
         var blob = await db
             .Blobs.AsNoTracking()
             .SingleAsync(b => b.OwnerId == node.OwnerId && b.Hash == version.BlobHash, ct);
-        if (audited)
-        {
-            audit.Add(actor, AuditActions.FileDownload, node.Id, version.Id);
-            await recent.RecordAsync(actor.UserId, node.Id, RecentAction.Downloaded, ct);
-            await db.SaveChangesAsync(ct);
-            await live.NotifyAsync(actor.UserId, LiveTopics.Recent, ct);
-        }
-
         return new FileContent(node, version, blobs.PathOf(blob.StorageKey));
     }
 

@@ -30,6 +30,12 @@ public sealed class DriveExceptionHandler(IProblemDetailsService problems) : IEx
             ),
             DriveError.UploadMismatch => (StatusCodes.Status409Conflict, "Upload conflict"),
             DriveError.UploadBusy => (StatusCodes.Status423Locked, "Upload busy"),
+            DriveError.LinkGone => (StatusCodes.Status404NotFound, "This link no longer works"),
+            DriveError.PasswordRequired => (
+                StatusCodes.Status401Unauthorized,
+                "This link needs a password"
+            ),
+            DriveError.WrongPassword => (StatusCodes.Status401Unauthorized, "Wrong password"),
             _ => (StatusCodes.Status400BadRequest, "Invalid request"),
         };
 

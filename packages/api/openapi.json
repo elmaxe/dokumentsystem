@@ -1773,6 +1773,432 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/link": {
+      "get": {
+        "tags": [
+          "Links"
+        ],
+        "description": "Owner only. The node's public link, or 204 when it has none.",
+        "operationId": "GetLink",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDto"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Links"
+        ],
+        "description": "Owner only. Turns the node's public link on, or changes its expiry, password or download setting.",
+        "operationId": "SaveLink",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Links"
+        ],
+        "description": "Owner only. Turns the public link off; it stops working at once.",
+        "operationId": "RevokeLink",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/links/{token}": {
+      "get": {
+        "tags": [
+          "Public links"
+        ],
+        "description": "What a public link shows, without signing in. Audited as an access. 404 linkGone when it was turned off, has expired or its file is gone; 401 passwordRequired until the password is given.",
+        "operationId": "OpenLink",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/links/{token}/unlock": {
+      "post": {
+        "tags": [
+          "Public links"
+        ],
+        "description": "Checks the link's password and sets a cookie that lets this browser in for 12 hours.",
+        "operationId": "UnlockLink",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnlockLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/v1/links/{token}/nodes": {
+      "get": {
+        "tags": [
+          "Public links"
+        ],
+        "description": "A folder behind a public link: the link's own folder, or one inside it.",
+        "operationId": "ListLinkFolder",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "folderId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkFolder"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/links/{token}/nodes/{nodeId}": {
+      "get": {
+        "tags": [
+          "Public links"
+        ],
+        "operationId": "GetLinkNode",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkNodeDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/links/{token}/nodes/{nodeId}/thumbnail": {
+      "get": {
+        "tags": [
+          "Public links"
+        ],
+        "operationId": "GetLinkThumbnail",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v1/links/{token}/nodes/{nodeId}/preview": {
+      "get": {
+        "tags": [
+          "Public links"
+        ],
+        "operationId": "GetLinkPreview",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "original",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/links/{token}/nodes/{nodeId}/waveform": {
+      "get": {
+        "tags": [
+          "Public links"
+        ],
+        "operationId": "GetLinkWaveform",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v1/links/{token}/nodes/{nodeId}/seek-previews": {
+      "get": {
+        "tags": [
+          "Public links"
+        ],
+        "operationId": "GetLinkSeekPreviews",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/v1/links/{token}/nodes/{nodeId}/content": {
+      "get": {
+        "tags": [
+          "Public links"
+        ],
+        "description": "The current version's bytes, when the link allows downloads. Audited as a download through the link.",
+        "operationId": "DownloadLinkFile",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/activity": {
       "get": {
         "tags": [
@@ -3903,6 +4329,7 @@
           "at",
           "action",
           "actor",
+          "viaLink",
           "nodeId",
           "nodeName",
           "isFolder",
@@ -3939,6 +4366,9 @@
                 "$ref": "#/components/schemas/PersonDto"
               }
             ]
+          },
+          "viaLink": {
+            "type": "boolean"
           },
           "nodeId": {
             "type": "string",
@@ -5497,6 +5927,204 @@
           }
         }
       },
+      "LinkDto": {
+        "required": [
+          "id",
+          "url",
+          "allowDownload",
+          "hasPassword",
+          "expiresAt",
+          "createdAt",
+          "opens",
+          "lastOpenedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "url": {
+            "type": "string"
+          },
+          "allowDownload": {
+            "type": "boolean"
+          },
+          "hasPassword": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "opens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastOpenedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "LinkFolder": {
+        "required": [
+          "folder",
+          "path",
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "folder": {
+            "$ref": "#/components/schemas/LinkNodeDto"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkNodeDto"
+            }
+          }
+        }
+      },
+      "LinkNodeDetails": {
+        "required": [
+          "node",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/LinkNodeDto"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathEntry"
+            }
+          }
+        }
+      },
+      "LinkNodeDto": {
+        "required": [
+          "id",
+          "parentId",
+          "kind",
+          "name",
+          "size",
+          "mimeType",
+          "modifiedAt",
+          "thumbnail",
+          "contents",
+          "media",
+          "shownAsPdf"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodeKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "modifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "thumbnail": {
+            "$ref": "#/components/schemas/ThumbnailState"
+          },
+          "contents": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FolderCounts"
+              }
+            ]
+          },
+          "media": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MediaDto"
+              }
+            ]
+          },
+          "shownAsPdf": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LinkPage": {
+        "required": [
+          "node",
+          "sharedBy",
+          "expiresAt",
+          "allowDownload"
+        ],
+        "type": "object",
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/LinkNodeDto"
+          },
+          "sharedBy": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "allowDownload": {
+            "type": "boolean"
+          }
+        }
+      },
       "MatchesResponse": {
         "required": [
           "terms",
@@ -6605,6 +7233,36 @@
             "items": {
               "$ref": "#/components/schemas/RestoredItem"
             }
+          }
+        }
+      },
+      "SaveLinkRequest": {
+        "required": [
+          "allowDownload",
+          "expiresAt",
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "allowDownload": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "removePassword": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -7782,6 +8440,17 @@
           }
         }
       },
+      "UnlockLinkRequest": {
+        "required": [
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        }
+      },
       "UpdateMlSettingsRequest": {
         "required": [
           "endpoints"
@@ -8099,6 +8768,12 @@
     },
     {
       "name": "Sharing"
+    },
+    {
+      "name": "Links"
+    },
+    {
+      "name": "Public links"
     },
     {
       "name": "Search"

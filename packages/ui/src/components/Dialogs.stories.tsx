@@ -42,7 +42,11 @@ export const DuplicateSheet: Story = {
 
 function Share() {
   const [list, setList] = useState(people);
-  const [link, setLink] = useState<ShareLink>({ enabled: true, expiresInDays: 7, password: false, allowDownload: true });
+  const [link, setLink] = useState<ShareLink | null>({
+    expiresAt: "2026-12-01T00:00:00Z",
+    hasPassword: false,
+    allowDownload: true,
+  });
   return (
     <ShareDialog
       open
@@ -61,8 +65,9 @@ function Share() {
         )
       }
       link={link}
-      onLinkChange={setLink}
+      onLinkToggle={(on) => setLink(on ? { hasPassword: false, allowDownload: true } : null)}
       onCopyLink={noop}
+      onLinkSettings={noop}
     />
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DetailsTab } from "../components/DetailsPanel";
 import { DuplicateDialog, type DuplicateMatch } from "../components/DuplicateDialog";
-import { ShareDialog, type ShareLink } from "../components/ShareDialog";
+import { ShareDialog } from "../components/ShareDialog";
 import { useSnackbar } from "../lib/snackbar";
 import type { UploadItem } from "../components/UploadTray";
 import { isFolder, type Sort } from "../lib/files";
@@ -53,7 +53,7 @@ export function MockupApp({
   const [share, setShare] = useState<MockupState["share"]>({
     itemId: initialShare ?? null,
     people,
-    link: { enabled: true, expiresInDays: 7, password: false, allowDownload: true },
+    link: { hasPassword: false, allowDownload: true },
   });
   const [pending, setPending] = useState<Pending | null>(null);
   const targets = useRef(new Map<string, { parentId: string | null; url?: string; duplicate?: boolean }>());
@@ -301,7 +301,7 @@ export function MockupApp({
           })
         }
         link={share.link}
-        onLinkChange={(link: ShareLink) => setShare({ ...share, link })}
+        onLinkToggle={(on) => setShare({ ...share, link: on ? { hasPassword: false, allowDownload: true } : null })}
         onCopyLink={() => toast(t("toasts.linkCopied"))}
       />
       <DuplicateDialog

@@ -87,6 +87,12 @@ export type ActivityListing = components["schemas"]["ActivityListing"];
 export type NodeAccess = components["schemas"]["AccessDto"];
 export type AccessPerson = components["schemas"]["AccessPersonDto"];
 export type SharedItem = components["schemas"]["SharedItemDto"];
+export type ShareLinkDto = components["schemas"]["LinkDto"];
+export type SaveLinkRequest = components["schemas"]["SaveLinkRequest"];
+export type LinkPage = components["schemas"]["LinkPage"];
+export type LinkFolder = components["schemas"]["LinkFolder"];
+export type LinkNode = components["schemas"]["LinkNodeDto"];
+export type LinkNodeDetails = components["schemas"]["LinkNodeDetails"];
 export type TranscriptionSettings = components["schemas"]["TranscriptionSettingsDto"];
 export type TranscriptionProgress = components["schemas"]["TranscriptionProgress"];
 export type PdfInfo = components["schemas"]["PdfDto"];
@@ -166,12 +172,39 @@ export function captionsUrl(nodeId: string, baseUrl = ""): string {
   return `${baseUrl}/api/v1/nodes/${nodeId}/captions.vtt`;
 }
 
+/**
+ * What a public link serves (§9), for its page: the same renditions as for people signed in, but only the current
+ * version, and `content` only when the link allows downloads. Nothing here is audited except `content`.
+ */
+export function linkUrls(token: string, baseUrl = "") {
+  const node = (nodeId: string) => `${baseUrl}/api/v1/links/${encodeURIComponent(token)}/nodes/${nodeId}`;
+  return {
+    content: (nodeId: string) => `${node(nodeId)}/content`,
+    thumbnail: (nodeId: string, size: "small" | "medium" = "medium") =>
+      `${node(nodeId)}/thumbnail${size === "small" ? "?size=small" : ""}`,
+    preview: (nodeId: string, { original = false }: { original?: boolean } = {}) =>
+      `${node(nodeId)}/preview${original ? "?original=true" : ""}`,
+    waveform: (nodeId: string) => `${node(nodeId)}/waveform`,
+    seekPreviews: (nodeId: string) => `${node(nodeId)}/seek-previews`,
+  };
+}
+
 /** The RFC 9457 problem body the server sends for refused requests. File operations add a machine-readable code. */
 export type Problem = {
   title?: string;
   detail?: string;
   status?: number;
-  code?: "notFound" | "invalidRequest" | "nameTaken" | "quotaExceeded" | "uploadMismatch" | "uploadBusy" | "forbidden";
+  code?:
+    | "notFound"
+    | "invalidRequest"
+    | "nameTaken"
+    | "quotaExceeded"
+    | "uploadMismatch"
+    | "uploadBusy"
+    | "forbidden"
+    | "linkGone"
+    | "passwordRequired"
+    | "wrongPassword";
   conflictingNodeId?: string;
 };
 

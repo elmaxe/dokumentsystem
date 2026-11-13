@@ -29,7 +29,7 @@ export type MockupState = {
   uploads: UploadItem[];
   setUploads: (update: (uploads: UploadItem[]) => UploadItem[]) => void;
   startUpload: (files: { name: string; size: number; url?: string }[]) => void;
-  share: { itemId: string | null; people: SharePerson[]; link: ShareLink };
+  share: { itemId: string | null; people: SharePerson[]; link: ShareLink | null };
   setShare: (share: MockupState["share"]) => void;
   versions: FileVersion[];
   setVersions: (versions: FileVersion[]) => void;

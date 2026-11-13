@@ -7,6 +7,7 @@ import { sessionQuery } from "../api";
 import { jobs } from "../admin/jobsApi";
 import {
   accessQuery,
+  linkQuery,
   ApiError,
   download,
   drive,
@@ -61,6 +62,7 @@ export function FileDetailsPanel({
   const me = useQuery(sessionQuery).data?.user.id;
   const editable = canEdit(item.node.access);
   const access = useQuery({ ...accessQuery(item.id), enabled: tab === "sharing" });
+  const link = useQuery({ ...linkQuery(item.id), enabled: tab === "sharing" && item.node.access === "owner" });
   const activity = useInfiniteQuery({ ...activityQuery(item.id), enabled: tab === "activity" });
   const sharedDirectly = access.data?.people.some((p) => p.person.id === me && !!p.shareId) ?? false;
   const versions = useQuery({
@@ -202,6 +204,7 @@ export function FileDetailsPanel({
         location: pathLabel(item.node.ownerId === me ? t("nav.myFiles") : t("nav.sharedWithMe"), folderPath),
         created: item.node.createdAt,
         checksum: item.node.sha256 ?? undefined,
+        publicLink: !!link.data,
         people: access.data
           ? accessPeople(access.data, me)
           : [{ id: item.node.ownerId, name: item.owner, email: "", role: "owner", you: item.node.ownerId === me }],

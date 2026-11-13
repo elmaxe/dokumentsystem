@@ -18,6 +18,8 @@ import type {
   RestoredItem,
   SharedItem,
   ShareRole,
+  ShareLinkDto,
+  SaveLinkRequest,
   StarredListing,
   StorageUsage,
   TagSuggestion,
@@ -227,6 +229,18 @@ export const accessQuery = (id: string) =>
     queryFn: (): Promise<NodeAccess> => unwrap(api.GET("/api/v1/nodes/{id}/access", { params: { path: { id } } })),
   });
 
+/** A node's public link, for its owner; null when it has none (§9). Under ["access"] so sharing changes refresh it. */
+export const linkQuery = (id: string) =>
+  queryOptions({
+    queryKey: ["access", id, "link"],
+    queryFn: async (): Promise<ShareLinkDto | null> => {
+      const { data, error, response } = await api.GET("/api/v1/nodes/{id}/link", { params: { path: { id } } });
+      if (response.status === 204) return null;
+      if (!response.ok || !data) throw new ApiError(response.status, (error ?? {}) as Problem);
+      return data;
+    },
+  });
+
 /** People to share with, by name or email. */
 export const peopleQuery = (q: string) =>
   queryOptions({
@@ -308,6 +322,9 @@ export const drive = {
   changeShare: (shareId: string, role: ShareRole): Promise<NodeAccess> =>
     unwrap(api.PUT("/api/v1/shares/{id}", { params: { path: { id: shareId } }, body: { role } })),
   removeShare: (shareId: string) => send(api.DELETE("/api/v1/shares/{id}", { params: { path: { id: shareId } } })),
+  saveLink: (id: string, body: SaveLinkRequest): Promise<ShareLinkDto> =>
+    unwrap(api.PUT("/api/v1/nodes/{id}/link", { params: { path: { id } }, body })),
+  revokeLink: (id: string) => send(api.DELETE("/api/v1/nodes/{id}/link", { params: { path: { id } } })),
   /** Stops seeing something shared with the person directly. */
   leave: (id: string) => send(api.POST("/api/v1/nodes/{id}/leave", { params: { path: { id } } })),
   /** Opened from Shared with me: no longer New. */
