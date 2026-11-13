@@ -164,6 +164,30 @@ var web = builder
     .WithReference(server)
     .WaitFor(server);
 
+// Public links from outside (docs/design.md §9.1), as with the compose "links" profile: the links gateway serves the
+// link-only build, which rebuilds as you edit, and forwards the link API to the server's links port. The links that
+// owners copy point at the gateway, so opening one shows the page exactly as visitors from outside get it.
+server.WithHttpEndpoint(name: "links", env: "LINKS_PORT");
+var linksWeb = builder
+    .AddJavaScriptApp("links-web", "../../apps/web", "watch:links")
+    // web installs the packages; two installs at once in one folder would trip over each other.
+    .WithPnpm(install: false)
+    .WaitFor(web);
+
+// The gateway reads its web root once at start, so the folder must exist before the first build lands in it.
+var linksRoot = Directory
+    .CreateDirectory(Path.Combine(builder.AppHostDirectory, "../../apps/web/dist-links"))
+    .FullName;
+var links = builder
+    .AddProject<Projects.Dokument_Links>("links")
+    .WithHttpEndpoint(env: "HTTP_PORTS")
+    .WithHttpHealthCheck("/health/live")
+    .WithEnvironment("LINKS_UPSTREAM", server.GetEndpoint("links"))
+    .WithEnvironment("ASPNETCORE_WEBROOT", linksRoot)
+    .WaitFor(server)
+    .WaitFor(linksWeb);
+server.WithEnvironment("LINKS_PUBLIC_URL", links.GetEndpoint("http"));
+
 // No PUBLIC_URL: Vite's proxy passes on the address each device used, so redirects go back to localhost:5173 in the
 // browser on this machine and to the network address on a phone. A browser needs localhost, because plain http
 // anywhere else isn't a secure context.

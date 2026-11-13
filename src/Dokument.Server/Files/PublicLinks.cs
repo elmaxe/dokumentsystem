@@ -84,7 +84,14 @@ public static class PublicLinksSetup
             // Added to the ports or addresses already configured, so the main port keeps working as it is.
             var ports = builder.WebHost.GetSetting(WebHostDefaults.HttpPortsKey);
             var urls = builder.WebHost.GetSetting(WebHostDefaults.ServerUrlsKey);
-            if (!string.IsNullOrEmpty(ports))
+            if (
+                $"{ports};{urls}".Contains($":{port}", StringComparison.Ordinal)
+                || ports?.Split(';').Contains($"{port}") == true
+            )
+            {
+                // Already listening there, e.g. when Aspire gave the port.
+            }
+            else if (!string.IsNullOrEmpty(ports))
             {
                 builder.WebHost.UseSetting(WebHostDefaults.HttpPortsKey, $"{ports};{port}");
             }
