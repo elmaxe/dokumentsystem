@@ -5,6 +5,7 @@
     <Project Path="src/Dokument.Domain/Dokument.Domain.csproj" />
     <Project Path="src/Dokument.Host/Dokument.Host.csproj" />
     <Project Path="src/Dokument.Infrastructure/Dokument.Infrastructure.csproj" />
+    <Project Path="src/Dokument.Links/Dokument.Links.csproj" />
     <Project Path="src/Dokument.Server/Dokument.Server.csproj" />
     <Project Path="src/Dokument.Worker/Dokument.Worker.csproj" />
   </Folder>

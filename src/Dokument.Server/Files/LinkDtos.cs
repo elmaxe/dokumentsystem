@@ -2,6 +2,7 @@ using Dokument.Domain.Files;
 using Dokument.Domain.Previews;
 using Dokument.Infrastructure.Sharing;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Dokument.Server.Files;
 
@@ -23,7 +24,9 @@ public sealed record LinkDto(
     public static LinkDto From(LinkView view, HttpContext context) =>
         new(
             view.Link.Id,
-            $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}/s/{view.Link.Token.Value}",
+            context
+                .RequestServices.GetRequiredService<PublicLinks>()
+                .Address(context, view.Link.Token.Value),
             view.Link.AllowDownload,
             view.Link.PasswordHash is not null,
             view.Link.ExpiresAt,

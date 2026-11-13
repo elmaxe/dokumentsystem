@@ -146,6 +146,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=app
       - uses: docker/build-push-action@v6
         with:
+          context: .
+          file: docker/links/Dockerfile
+          tags: dokumentsystem-links:ci
+          load: true
+          cache-from: type=gha,scope=links
+          cache-to: type=gha,mode=max,scope=links
+      - uses: docker/build-push-action@v6
+        with:
           context: ml
           tags: dokumentsystem-ml:ci
           load: true
@@ -163,6 +171,7 @@ jobs:
           cat > .env <<ENV
           DOKUMENT_IMAGE=dokumentsystem
           DOKUMENT_POSTGRES_IMAGE=dokumentsystem-postgres
+          DOKUMENT_LINKS_IMAGE=dokumentsystem-links
           DOKUMENT_VERSION=ci
           PUID=$(id -u)
           PGID=$(id -g)
@@ -172,8 +181,14 @@ jobs:
           DB_DATA_LOCATION=./ci/postgres
           DB_PASSWORD=ci-password
           ENV
-          docker compose up -d --wait --wait-timeout 180
+          docker compose --profile links up -d --wait --wait-timeout 180
           curl --fail --silent http://localhost:8080/api/v1/server/info
           curl --fail --silent http://localhost:8080/ | grep -q '<div id="root">'
+          # The links gateway serves the link page and reaches the server's link API, and nothing else.
+          curl --fail --silent http://localhost:8090/s/AAAAAAAAAAAAAAAAAAAAAA | grep -q '<div id="root">'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8090/api/v1/links/AAAAAAAAAAAAAAAAAAAAAA)" = 404
+          curl --silent http://localhost:8090/api/v1/links/AAAAAAAAAAAAAAAAAAAAAA | grep -q linkGone
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8090/api/v1/server/info)" = 404
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8090/)" = 404
       - if: failure()
-        run: docker compose logs
+        run: docker compose --profile links logs

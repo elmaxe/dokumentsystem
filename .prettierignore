@@ -1,5 +1,6 @@
 pnpm-lock.yaml
 **/dist
+**/dist-links
 packages/api/openapi.json
 packages/api/src/schema.d.ts
 src/

@@ -1,6 +1,7 @@
 using System.Net;
 using Dokument.Domain.Identity;
 using Dokument.Server.Auth;
+using Dokument.Server.Files;
 using Microsoft.Extensions.Configuration;
 
 namespace Dokument.UnitTests;
@@ -125,6 +126,38 @@ public class AuthHelpersTests
         );
         Assert.Throws<InvalidOperationException>(() =>
             TrustedProxies.FromConfiguration(Config("TRUSTED_PROXIES", "10.0.0.0/40"))
+        );
+    }
+
+    [Fact]
+    public void Public_links_take_a_gateway_host_and_a_port()
+    {
+        var none = PublicLinks.FromConfiguration(Config("LINKS_PORT", null));
+        Assert.Null(none.PublicUrl);
+        Assert.Null(none.Port);
+        Assert.Equal(
+            "https://links.example.com/",
+            PublicLinks
+                .FromConfiguration(Config("LINKS_PUBLIC_URL", "https://links.example.com/"))
+                .PublicUrl?.ToString()
+        );
+        Assert.Equal(8081, PublicLinks.FromConfiguration(Config("LINKS_PORT", "8081")).Port);
+        foreach (
+            var url in new[]
+            {
+                "links.example.com",
+                "https://example.com/share",
+                "ftp://links.example.com",
+            }
+        )
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+                PublicLinks.FromConfiguration(Config("LINKS_PUBLIC_URL", url))
+            );
+        }
+
+        Assert.Throws<InvalidOperationException>(() =>
+            PublicLinks.FromConfiguration(Config("LINKS_PORT", "99999"))
         );
     }
 

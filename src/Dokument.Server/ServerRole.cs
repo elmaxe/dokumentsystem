@@ -51,11 +51,13 @@ public static class ServerRole
             options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
         });
         builder.AddDokumentAuth();
+        builder.AddPublicLinks();
         return builder;
     }
 
     public static WebApplication MapServerRole(this WebApplication app)
     {
+        app.UseLinksPort(app.Services.GetRequiredService<PublicLinks>());
         app.UseTrustedProxies(TrustedProxies.FromConfiguration(app.Configuration));
         app.UsePublicUrl(PublicUrl.FromConfiguration(app.Configuration));
         app.UseExceptionHandler();
