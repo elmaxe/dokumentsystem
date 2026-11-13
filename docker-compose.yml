@@ -38,8 +38,13 @@ services:
     environment:
       <<: *app-env
       ROLE: server
+      # The port only the links gateway reaches, with nothing but the link API on it (docs/design.md §9.1).
+      LINKS_PORT: 8081
+      # The gateway's public address, which owners copy; unset, links use PUBLIC_URL.
+      LINKS_PUBLIC_URL: ${LINKS_PUBLIC_URL:-}
     ports:
       - "${DOKUMENT_PORT:-8080}:8080"
+    networks: [default, links]
     volumes:
       - ${ORIGINALS_LOCATION:?Set ORIGINALS_LOCATION in .env}:/data/originals
       - ${DERIVED_LOCATION:?Set DERIVED_LOCATION in .env}:/data/derived
@@ -115,6 +120,34 @@ services:
     restart: unless-stopped
     volumes:
       - clamav-db:/var/lib/clamav
+
+  # Public links from outside while Dokumentsystem itself stays private, e.g. behind a VPN (docs/design.md §9.1).
+  # The gateway holds no secrets and reaches no database or storage: only the server's links port, over a network
+  # with no way out. Put your TLS proxy in front of LINKS_GATEWAY_PORT and set LINKS_PUBLIC_URL to its address.
+  links:
+    profiles: [links]
+    image: ${DOKUMENT_LINKS_IMAGE:-ghcr.io/elmaxe/dokumentsystem-links}:${DOKUMENT_VERSION:-edge}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      LINKS_UPSTREAM: http://server:8081
+      # Your TLS proxy's address or network, so each visitor is counted apart (docs/design.md §21).
+      TRUSTED_PROXIES: ${LINKS_TRUSTED_PROXIES:-}
+    ports:
+      - "${LINKS_GATEWAY_PORT:-8090}:8080"
+    networks: [links, links-edge]
+    depends_on:
+      server:
+        condition: service_healthy
+
+networks:
+  # Between the server's links port and the gateway only; containers on it can't reach anything else.
+  links:
+    internal: true
+  # The gateway's published port.
+  links-edge:
 
 volumes:
   ml-cache:

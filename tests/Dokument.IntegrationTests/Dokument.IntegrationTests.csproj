@@ -19,5 +19,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dokument.Host\Dokument.Host.csproj" />
+    <ProjectReference Include="..\..\src\Dokument.Links\Dokument.Links.csproj" />
   </ItemGroup>
 </Project>

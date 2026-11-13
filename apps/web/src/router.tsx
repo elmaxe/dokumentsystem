@@ -13,7 +13,8 @@ import { validateSearchParams } from "./search/search";
 import { SearchPage } from "./search/SearchPage";
 import { SettingsPage } from "./settings/SettingsPage";
 import { SignInPage } from "./SignInPage";
-import { LinkPage, type LinkSearch } from "./links/LinkPage";
+import { LinkPage } from "./links/LinkPage";
+import { validateLinkSearch } from "./links/search";
 
 const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: Outlet });
 
@@ -152,10 +153,7 @@ const signInRoute = createRoute({
 const linkRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/s/$token",
-  validateSearch: (search: Record<string, unknown>): LinkSearch => ({
-    folder: typeof search.folder === "string" && search.folder ? search.folder : undefined,
-    file: typeof search.file === "string" && search.file ? search.file : undefined,
-  }),
+  validateSearch: validateLinkSearch,
   component: function LinkRoute() {
     const { token } = linkRoute.useParams();
     const { folder, file } = linkRoute.useSearch();

@@ -25,8 +25,8 @@ import { useTranslation } from "react-i18next";
 import { api, serverInfoQuery, sessionQuery } from "../api";
 import { ApiError, download, send, unwrap } from "../files/drive";
 import { previewOf, type PreviewUrls } from "../files/preview";
+import type { LinkSearch } from "./search";
 
-export type LinkSearch = { folder?: string; file?: string };
 
 type LinkItem = FileItem & { node: LinkNode };
 
@@ -55,15 +55,18 @@ const nodeQuery = (token: string, nodeId: string) =>
       unwrap(api.GET("/api/v1/links/{token}/nodes/{nodeId}", { params: { path: { token, nodeId } } })),
   });
 
-/** What anyone with a public link sees, without signing in (§9): the file, or the folder to browse and open files in. */
-export function LinkPage({ token, folder, file }: { token: string } & LinkSearch) {
+/**
+ * What anyone with a public link sees, without signing in (§9): the file, or the folder to browse and open files in.
+ * `standalone` is the links gateway's page (§9.1), which reaches only the link API, so it doesn't ask for a session.
+ */
+export function LinkPage({ token, folder, file, standalone }: { token: string; standalone?: boolean } & LinkSearch) {
   const { t } = useTranslation();
   const page = useQuery({ ...pageQuery(token), retry: false });
   const problem = page.error instanceof ApiError ? page.error.problem.code : undefined;
 
   return (
     <div className="flex min-h-dvh flex-col bg-surface text-on-surface">
-      <Header />
+      {standalone ? <BareHeader /> : <Header />}
       {page.isPending ? null : page.data ? (
         <Opened token={token} page={page.data} folder={folder} file={file} />
       ) : problem === "passwordRequired" ? (
@@ -105,6 +108,13 @@ function Header() {
     </header>
   );
 }
+
+/** The links gateway's header: no server name or sign-in, which it can't ask the server for. */
+const BareHeader = () => (
+  <header className="flex h-16 shrink-0 items-center gap-2 border-b border-outline-variant px-4 sm:px-6">
+    <img src="/favicon.svg" alt="" width={24} height={24} className="size-6" />
+  </header>
+);
 
 const Centered = ({ children }: { children: ReactNode }) => (
   <main className="flex flex-1 items-center justify-center p-4">{children}</main>

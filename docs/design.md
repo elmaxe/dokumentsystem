@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.58** · Last updated: 2026-11-13
+> Status: **Draft v0.59** · Last updated: 2026-11-13
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -186,7 +186,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 
 ### 4.3 Configuration
 
-- **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `TRUSTED_PROXIES`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
+- **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `TRUSTED_PROXIES`, `LINKS_PORT`, `LINKS_PUBLIC_URL`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
 - **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17, 18, 24, 32 and 33): the default quota, trash and version retention, text recognition on or off, video copies (when they're made and their size), the Gotenberg URL, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
   - quota defaults
   - trash and version retention
@@ -553,6 +553,12 @@ Sharing with people (decision 39) and public links (decision 48) are built. Noti
   - **Rate-limited** per address: 1,200 requests a minute for browsing (a folder of thumbnails, a video seeking), 10 password tries a minute.
   - **Audited:** each open (`link.access`, with the link as the actor) and each download (`file.download`, with the link as the actor); turning on, changing and deleting (`link.create`, `link.change`, `link.revoke`, naming what changed but never the password). The Activity tab shows the owner's link changes to everyone with access and downloads through the link to the owner, as "Someone with the link"; opens show only as the count in the settings.
   - A node with a working link counts as **Shared** for its owner, like one shared with a person.
+  - **From outside while the rest stays private** (decision 50), for example with Dokumentsystem behind a VPN: the **links gateway**, its own image (`dokumentsystem-links`, compose profile `links`), is the only thing on the internet.
+    - It serves the link page (a second Vite entry, `link.html`, with none of the rest of the app's code) at `/s/{token}` and forwards `/api/v1/links/{token}/…` to the server's **links port** (`LINKS_UPSTREAM`, e.g. `http://server:8081`): GET and HEAD, and POST only for `/unlock`. A token of the wrong shape goes no further, and anything else is 404.
+    - It passes on a fixed list of request headers (`Accept`, `Accept-Language`, `Content-Type`, `Range`, the `If-*` headers, `User-Agent`) and only the `dk_link` cookie, sets `X-Forwarded-For` to the visitor, caps bodies at 4 KB and streams responses. It answers with `Referrer-Policy: no-referrer`, so the token never goes along to another site.
+    - It holds no secrets and reaches no database or storage. The image is chiseled (no shell or package manager), runs as a non-root user, read-only, with every capability dropped and `no-new-privileges`, and checks its own health with `healthcheck`.
+    - **The links port** (`LINKS_PORT`, 8081 in compose) is never published: it sits on an internal Docker network shared only with the gateway. On it the server answers only `/api/v1/links/…` and `/health/live`, takes the visitor's address from the gateway's `X-Forwarded-For`, and drops every cookie but `dk_link` and any `Authorization`. Someone who takes over the gateway gets what a link visitor gets.
+    - **`LINKS_PUBLIC_URL`** is the gateway's public address (a host, no path), used for the links owners copy. Unset, links use `PUBLIC_URL` as before. The gateway's own `TRUSTED_PROXIES` names the TLS proxy in front of it.
 - **Notifications (the PR after):** in-app and email when something is shared with you.
 - **Groups:** not in v1. User-to-user shares are enough for a small group. The model leaves room for `grantee_group_id` later.
 
@@ -1298,6 +1304,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 47 | Profile pictures | 2026-11-11: pictures come only from the sign-in provider's `picture` claim (`OIDC_PICTURE_CLAIM`, empty = off), no own uploads (Axel's choice); fetched by an `avatar` worker job at every sign-in with the ETag, re-encoded to a 256 px WebP in `/data/derived/avatars/` (Axel chose derived over a volume of its own); local addresses allowed; initials from the display name's first and last word, worked out in the clients (Axel chose this over `given_name` and `family_name`); DTOs carry the picture's version for an immutable URL (§5.1) |
 | 48 | Public links (M4) | 2026-11-07: one link per file or folder, owner only, viewer-only; expiry none unless a last day is set, optional password (Argon2id), Allow download on by default but previews always inline; a 128-bit token stored as it is so the owner can copy it again; password hashes start with a version byte so the hashing can change later; anonymous `/s/{token}` page with folders, the viewer and downloads when allowed, no versions, tags, details, places, transcripts or search; a password unlocks one browser for 12 hours; gone links say nothing about what they were; rate-limited per address; opens and downloads audited with the link as the actor, opens shown as a count in the link settings (§9) |
 | 49 | Trusted proxies | 2026-11-13: `TRUSTED_PROXIES` lists the reverse proxies whose `X-Forwarded-For` the server believes, walked back to the first untrusted hop; only the client address is taken, since `PUBLIC_URL` sets scheme and host. Unset keeps ASP.NET's loopback-only default. Before this, every visitor behind a proxy shared one rate-limit bucket (§21) |
+| 50 | Links gateway | 2026-11-13: for running Dokumentsystem privately (behind a VPN) with public links still open, a separate, locked-down deployment rather than a path allowlist on the main server: a small gateway image with no secrets, database or storage (chiseled, read-only, non-root, no capabilities) serves a link-only bundle and forwards the link API to a server port that answers nothing else. Our own code rather than an off-the-shelf proxy, so it can check token shapes, strip headers and ship the link page (§9) |
 
 ## 26. Open questions
 

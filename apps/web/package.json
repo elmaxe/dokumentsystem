@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @dokument/tokens build && vite",
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.link.config.ts",
+    "watch:links": "vite build --config vite.link.config.ts --watch",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json"

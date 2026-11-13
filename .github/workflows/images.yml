@@ -19,6 +19,10 @@ jobs:
           - name: dokumentsystem
             context: .
             platforms: linux/amd64,linux/arm64
+          - name: dokumentsystem-links
+            context: .
+            file: docker/links/Dockerfile
+            platforms: linux/amd64,linux/arm64
           - name: dokumentsystem-postgres
             context: docker/postgres
             platforms: linux/amd64,linux/arm64
@@ -53,6 +57,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.file || format('{0}/Dockerfile', matrix.context) }}
           platforms: ${{ matrix.platforms }}
           push: true
           build-args: |
