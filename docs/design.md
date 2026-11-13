@@ -1,6 +1,6 @@
 # Dokumentsystem — Design Document
 
-> Status: **Draft v0.57** · Last updated: 2026-11-13
+> Status: **Draft v0.58** · Last updated: 2026-11-13
 >
 > A self-hosted, free and open-source alternative to Google Drive, in the spirit of
 > [Immich](https://immich.app). Built to run on a home NAS with Docker.
@@ -186,7 +186,7 @@ Images are published to GHCR for amd64 and arm64: `edge` from the default branch
 
 ### 4.3 Configuration
 
-- **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
+- **Environment variables, for bootstrap only:** DB connection (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, or `ConnectionStrings__Dokument`), OIDC issuer/client, paths, `PUBLIC_URL`, `TRUSTED_PROXIES`, `ROLE`, the standard `OTEL_*` variables and `METRICS_PORT` (§22.1).
 - **Everything else is admin settings stored in the DB** and edited on the admin settings page (`/admin`, admins only). Each is one row of `settings` (key → JSON); a missing row means the default, so a fresh install needs no seeding. Each section of the page saves on its own, and every change writes a `settings.change` audit event naming the key (never the value). Built so far (decisions 17, 18, 24, 32 and 33): the default quota, trash and version retention, text recognition on or off, video copies (when they're made and their size), the Gotenberg URL, the ML URLs and the ClamAV address. Sign-in is shown on the page read-only, because OIDC stays in environment variables (§5). The rest of the list below follows as its features land:
   - quota defaults
   - trash and version retention
@@ -1156,7 +1156,7 @@ People who are managed in an IdP can get their storage from it instead of from t
 
 ## 21. Security
 
-- **TLS** terminates at the reverse proxy. `PUBLIC_URL` must be set for correct redirects and links. Trusted-proxy configuration for forwarded headers.
+- **TLS** terminates at the reverse proxy. `PUBLIC_URL` must be set for correct redirects and links. `TRUSTED_PROXIES` (addresses or networks, comma-separated) names the proxies whose `X-Forwarded-For` is believed, so rate limits and the audit log see each visitor's own address. Unset, only a proxy on the same machine is trusted, and everyone behind any other proxy shares its address (decision 49).
 - **User content is never rendered in our origin.**
   - Downloads get `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, and a strict CSP sandbox.
   - SVG and HTML are previewed only as rasterized or plain text.
@@ -1297,6 +1297,7 @@ Telemetry is **off by default** and costs nothing until it is turned on. A house
 | 46 | Home Wi-Fi names in the app | 2026-11-10: the app can keep a list of home Wi-Fi names and then tries the local address only on those networks (Axel chose this over keeping the proof alone). Reading the name needs location permission, asked only when a network is added; when the name can't be read the local address is tried anyway, as the proof still protects the token. Partly reverses decision 37 (§15.3) |
 | 47 | Profile pictures | 2026-11-11: pictures come only from the sign-in provider's `picture` claim (`OIDC_PICTURE_CLAIM`, empty = off), no own uploads (Axel's choice); fetched by an `avatar` worker job at every sign-in with the ETag, re-encoded to a 256 px WebP in `/data/derived/avatars/` (Axel chose derived over a volume of its own); local addresses allowed; initials from the display name's first and last word, worked out in the clients (Axel chose this over `given_name` and `family_name`); DTOs carry the picture's version for an immutable URL (§5.1) |
 | 48 | Public links (M4) | 2026-11-07: one link per file or folder, owner only, viewer-only; expiry none unless a last day is set, optional password (Argon2id), Allow download on by default but previews always inline; a 128-bit token stored as it is so the owner can copy it again; password hashes start with a version byte so the hashing can change later; anonymous `/s/{token}` page with folders, the viewer and downloads when allowed, no versions, tags, details, places, transcripts or search; a password unlocks one browser for 12 hours; gone links say nothing about what they were; rate-limited per address; opens and downloads audited with the link as the actor, opens shown as a count in the link settings (§9) |
+| 49 | Trusted proxies | 2026-11-13: `TRUSTED_PROXIES` lists the reverse proxies whose `X-Forwarded-For` the server believes, walked back to the first untrusted hop; only the client address is taken, since `PUBLIC_URL` sets scheme and host. Unset keeps ASP.NET's loopback-only default. Before this, every visitor behind a proxy shared one rate-limit bucket (§21) |
 
 ## 26. Open questions
 
